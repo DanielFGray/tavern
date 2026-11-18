@@ -52,7 +52,7 @@ defmodule TavernWeb.BannedLive do
               This account is banned from this server.
             </h1>
             <p class="mt-5 max-w-2xl text-base leading-7 text-base-content/70">
-              Because each Tavern deployment is a single server, this ban blocks access to the server shell while still letting us explain what happened.
+              This ban blocks access to the server shell while still letting us explain what happened.
             </p>
           <% else %>
             <h1

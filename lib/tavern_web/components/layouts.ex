@@ -66,9 +66,6 @@ defmodule TavernWeb.Layouts do
         <p class="truncate text-sm font-semibold tracking-tight text-base-content">
           {server_name(@server)}
         </p>
-        <p class="mt-0.5 text-[11px] font-medium uppercase tracking-[0.18em] text-base-content/50">
-          single server
-        </p>
       </div>
     </div>
     """

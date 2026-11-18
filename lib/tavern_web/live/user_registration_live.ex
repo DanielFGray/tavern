@@ -83,9 +83,6 @@ defmodule TavernWeb.UserRegistrationLive do
               <div class="space-y-5">
                 <div>
                   <p class="text-2xl font-semibold text-base-content">Create account</p>
-                  <p class="mt-2 text-sm text-base-content/70">
-                    Your user becomes a member of this single server instance.
-                  </p>
                 </div>
 
                 <.input

@@ -88,7 +88,7 @@ defmodule Tavern.Bootstrap do
     %Role{}
     |> Role.changeset(%{
       name: "@everyone",
-      description: "Default permissions for all members of this single server.",
+      description: "Default permissions for all members.",
       permissions: PermissionBits.combine(@default_seed_permissions),
       position: 0,
       mentionable: false,
@@ -100,7 +100,7 @@ defmodule Tavern.Bootstrap do
       on_conflict: [
         set: [
           name: "@everyone",
-          description: "Default permissions for all members of this single server.",
+          description: "Default permissions for all members.",
           position: 0,
           mentionable: false,
           hoist: false,
