@@ -17,8 +17,8 @@ defmodule Tavern.AccountsTest do
     :ok
   end
 
-  test "register_user/1 creates a member account with hashed password" do
-    assert {:ok, user} =
+  test "register_user/1 makes the first account the owner, later accounts plain members" do
+    assert {:ok, owner} =
              Accounts.register_user(%{
                email: "new@example.com",
                username: "new_user",
@@ -26,10 +26,19 @@ defmodule Tavern.AccountsTest do
                password: "supersecurepass"
              })
 
-    assert user.email == "new@example.com"
-    assert user.hashed_password
-    assert user.membership.user_id == user.id
-    refute user.membership.is_owner
+    assert owner.hashed_password
+    assert owner.membership.user_id == owner.id
+    assert owner.membership.is_owner
+
+    assert {:ok, member} =
+             Accounts.register_user(%{
+               email: "second@example.com",
+               username: "second_user",
+               display_name: "Second User",
+               password: "supersecurepass"
+             })
+
+    refute member.membership.is_owner
   end
 
   describe "promote_first_owner/1" do
@@ -58,6 +67,52 @@ defmodule Tavern.AccountsTest do
       |> Repo.insert!()
 
       assert {:error, :not_found} = Accounts.promote_first_owner(bot.email)
+    end
+  end
+
+  describe "ensure_first_owner!/0" do
+    test "promotes the oldest active human member when no owner exists" do
+      older = user_fixture(%{email: "older@example.com", username: "older_user"})
+      _newer = user_fixture(%{email: "newer@example.com", username: "newer_user"})
+
+      assert {:ok, owner} = Accounts.ensure_first_owner!()
+      assert owner.email == older.email
+
+      assert Repo.get_by!(Membership, user_id: older.id).is_owner
+    end
+
+    test "promotes no one when an owner exists" do
+      _owner = owner_fixture()
+      member = user_fixture(%{email: "plain@example.com", username: "plain_user"})
+
+      assert {:ok, :none} = Accounts.ensure_first_owner!()
+      refute Repo.get_by!(Membership, user_id: member.id).is_owner
+    end
+
+    test "skips bots, deleted and deactivated members" do
+      bot =
+        %User{bot: true}
+        |> User.account_changeset(%{
+          email: "bot@example.com",
+          username: "bot_user",
+          display_name: "Bot"
+        })
+        |> Repo.insert!()
+
+      %Membership{user_id: bot.id}
+      |> Membership.join_changeset(DateTime.utc_now())
+      |> Repo.insert!()
+
+      deactivated = user_fixture(%{email: "gone@example.com", username: "gone_user"})
+
+      Membership.deactivate_changeset(deactivated.membership, DateTime.utc_now(), %{})
+      |> Repo.update!()
+
+      active = user_fixture(%{email: "active@example.com", username: "active_user"})
+
+      assert {:ok, owner} = Accounts.ensure_first_owner!()
+      assert owner.email == active.email
+      refute Repo.get_by!(Membership, user_id: bot.id).is_owner
     end
   end
 

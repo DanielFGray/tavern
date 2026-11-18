@@ -72,7 +72,7 @@ defmodule TavernWeb.UserAuthLiveTest do
     refute Ecto.Changeset.get_change(changeset, :hashed_password)
   end
 
-  test "first registration signs in a member", %{conn: conn} do
+  test "first registration signs in the owner", %{conn: conn} do
     {:ok, view, _html} = live(conn, ~p"/register")
 
     registration_form =
@@ -95,7 +95,7 @@ defmodule TavernWeb.UserAuthLiveTest do
       Tavern.Accounts.get_user_by_email("owner-signup@example.com")
       |> Tavern.Repo.preload(:membership)
 
-    refute member.membership.is_owner
+    assert member.membership.is_owner
     assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Account created"
   end
 
@@ -169,7 +169,9 @@ defmodule TavernWeb.UserAuthLiveTest do
 
     {:ok, view, _html} = live_hydrated(conn, ~p"/")
 
+    view |> element("#user-menu-button") |> render_click()
     assert has_element?(view, "#logout-link")
+    assert has_element?(view, "#user-menu-settings")
     assert render(view) =~ "@server_user"
 
     html =

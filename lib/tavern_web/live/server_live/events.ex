@@ -43,7 +43,9 @@ defmodule TavernWeb.ServerLive.Events do
              "toggle_mobile_sidebar",
              "close_mobile_sidebar",
              "toggle_mobile_members",
-             "close_mobile_members"
+             "close_mobile_members",
+             "toggle_user_menu",
+             "close_user_menu"
            ] do
     Mobile.handle_event(event, params, socket)
   end

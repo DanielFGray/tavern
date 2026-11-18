@@ -97,6 +97,9 @@ defmodule Tavern.Accounts do
 
   def register_user(attrs) do
     Repo.transaction(fn ->
+      # The ownership lock comes first, in the same order `change_ownership/3` takes it, so a
+      # first registration and a concurrent ownership transfer never lock each other out.
+      lock_ownership!()
       now = DateTime.utc_now()
 
       user =
@@ -105,6 +108,14 @@ defmodule Tavern.Accounts do
         |> Repo.insert!()
 
       membership = create_membership!(user, now)
+
+      # The first human member owns the server, as the seeded welcome message says.
+      membership =
+        if owner_exists?() do
+          membership
+        else
+          membership |> Membership.ownership_changeset(true) |> Repo.update!()
+        end
 
       user
       |> Repo.preload([:membership, member_roles: :role])
@@ -394,6 +405,51 @@ defmodule Tavern.Accounts do
           subject_membership |> Membership.ownership_changeset(is_owner) |> Repo.update!()
       end
     end)
+  end
+
+  @doc """
+  Promotes the oldest active human member to owner when no owner exists.
+
+  Bootstrap runs this on every release, so a server whose members registered before
+  ownership became automatic still gets its owner. Returns `{:ok, user}` when a member
+  was promoted, or `{:ok, :none}` when an owner already exists or no member qualifies.
+  """
+  def ensure_first_owner! do
+    Repo.transaction(fn ->
+      lock_ownership!()
+
+      if owner_exists?() do
+        :none
+      else
+        case oldest_active_human_membership() do
+          nil ->
+            :none
+
+          membership ->
+            promoted =
+              membership
+              |> Membership.ownership_changeset(true)
+              |> Repo.update!()
+
+            Repo.get!(User, promoted.user_id)
+        end
+      end
+    end)
+    |> case do
+      {:ok, result} -> {:ok, result}
+      {:error, _op, reason, _changes} -> raise reason
+    end
+  end
+
+  defp oldest_active_human_membership do
+    from(membership in Membership,
+      join: user in User,
+      on: user.id == membership.user_id,
+      where: is_nil(user.deleted_at) and user.bot == false and is_nil(membership.deactivated_at),
+      order_by: [asc: membership.joined_at],
+      limit: 1
+    )
+    |> Repo.one()
   end
 
   defp current_membership(user_id), do: Repo.get_by(Membership, user_id: user_id)

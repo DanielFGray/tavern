@@ -28,7 +28,20 @@ defmodule Tavern.ChatFixtures do
       })
 
     {:ok, user} = Accounts.register_user(attrs)
-    user
+
+    # The first registration owns the server; fixtures are plain members unless an
+    # owner_fixture makes one. Demote here so test order never decides ownership.
+    unless user.membership.is_owner do
+      user
+    else
+      {:ok, demoted} =
+        Repo.transaction(fn ->
+          Tavern.Chat.Membership.ownership_changeset(user.membership, false)
+          |> Repo.update!()
+        end)
+
+      %{user | membership: demoted}
+    end
   end
 
   def owner_fixture(attrs \\ %{}) do

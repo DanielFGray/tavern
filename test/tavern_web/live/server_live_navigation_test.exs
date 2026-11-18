@@ -311,10 +311,11 @@ defmodule TavernWeb.ServerLiveNavigationTest do
     conn = log_in_member_user(conn)
     {:ok, view, _html} = live_hydrated(conn, ~p"/")
 
-    assert has_element?(view, "#open-settings-link")
+    view |> element("#user-menu-button") |> render_click()
+    assert has_element?(view, "#user-menu-settings")
 
     assert {:error, {:live_redirect, %{to: "/settings"}}} =
-             view |> element("#open-settings-link") |> render_click()
+             view |> element("#user-menu-settings") |> render_click()
 
     {:ok, settings_view, _html} = live(conn, ~p"/settings")
     assert has_element?(settings_view, "#settings-panel-title")

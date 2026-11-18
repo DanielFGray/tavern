@@ -7,11 +7,12 @@ defmodule TavernWeb.ServerComponents.Navigation do
 
   attr :section, :map, required: true
   attr :server, :map, required: true
+  attr :show_label, :boolean, default: true
 
   def channel_nav_section(assigns) do
     ~H"""
     <section id={section_dom_id(@section.category)}>
-      <div class="mb-1 flex items-center gap-2 px-2">
+      <div :if={@show_label} class="mb-1 flex items-center gap-2 px-2">
         <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-base-content/50">
           {section_label(@section.category)}
         </p>

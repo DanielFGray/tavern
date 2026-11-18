@@ -32,4 +32,12 @@ defmodule TavernWeb.ServerLive.Events.Mobile do
   def handle_event("close_mobile_members", _params, socket) do
     {:noreply, assign(socket, :mobile_members_open?, false)}
   end
+
+  def handle_event("toggle_user_menu", _params, socket) do
+    {:noreply, assign(socket, :user_menu_open?, !socket.assigns.user_menu_open?)}
+  end
+
+  def handle_event("close_user_menu", _params, socket) do
+    {:noreply, assign(socket, :user_menu_open?, false)}
+  end
 end

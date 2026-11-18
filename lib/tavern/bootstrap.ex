@@ -3,6 +3,7 @@ defmodule Tavern.Bootstrap do
   Bootstrap helpers for provisioning a fresh single-server tavern instance.
   """
 
+  alias Tavern.Accounts
   alias Tavern.Chat.Channel
   alias Tavern.Chat.Message
   alias Tavern.Chat.PermissionBits
@@ -47,6 +48,7 @@ defmodule Tavern.Bootstrap do
 
       ensure_welcome_message!(general_channel, user)
       ensure_server_settings!()
+      Accounts.ensure_first_owner!()
 
       %{system_user: user, default_role: default_role, channels: channels}
     end)

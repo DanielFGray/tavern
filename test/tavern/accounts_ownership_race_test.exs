@@ -29,9 +29,16 @@ defmodule Tavern.AccountsOwnershipRaceTest do
     end)
   end
 
+  # register_user/1 makes its first caller the owner; these tests race the explicit
+  # promotion and transfer functions, which start from plain members.
+  defp demote_all_members do
+    Repo.update_all(Membership, set: [is_owner: false])
+  end
+
   test "concurrent first promotions leave exactly one owner" do
     {:ok, first_user} = Accounts.register_user(user_attrs())
     {:ok, second_user} = Accounts.register_user(user_attrs())
+    demote_all_members()
     first = hold_open(fn -> Accounts.promote_first_owner(first_user.email) end)
 
     second =
@@ -49,6 +56,7 @@ defmodule Tavern.AccountsOwnershipRaceTest do
   test "two owners demoting each other at once leave one owner" do
     {:ok, alice} = Accounts.register_user(user_attrs())
     {:ok, bob} = Accounts.register_user(user_attrs())
+    demote_all_members()
     {:ok, alice} = Accounts.promote_first_owner(alice.email)
     {:ok, _} = Accounts.promote_to_owner(%Tavern.Accounts.Scope{user_id: alice.id}, bob.id)
 

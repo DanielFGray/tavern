@@ -44,6 +44,7 @@ defmodule TavernWeb.ServerLive do
       |> assign(:channel_request_token, nil)
       |> assign(:mobile_sidebar_open?, false)
       |> assign(:mobile_members_open?, false)
+      |> assign(:user_menu_open?, false)
       |> assign(:reaction_picker_message_id, nil)
       |> assign(:active_message_controls_id, nil)
       |> assign(:message_action_menu_id, nil)

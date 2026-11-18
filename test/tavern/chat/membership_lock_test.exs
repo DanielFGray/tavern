@@ -190,6 +190,10 @@ defmodule Tavern.Chat.MembershipLockTest do
         password: "supersecurepass"
       })
 
+    # register_user/1 makes the first account the owner; these lock tests start from
+    # plain members and promote explicitly.
+    Tavern.Repo.update_all(Membership, set: [is_owner: false])
+
     user
   end
 end

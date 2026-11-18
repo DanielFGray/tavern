@@ -27,6 +27,7 @@ async function loginViaTestSupport(page, { email = 'e2e@example.com', username =
   url.searchParams.set('command', 'login')
   url.searchParams.set('payload', JSON.stringify({ email, username, password, display_name, next }))
   await page.goto(url.toString())
+  await page.locator('#user-menu-button').click()
   await expect(page.locator('#logout-link')).toBeVisible()
   // ServerLive loads channels, members and unread state after the socket connects; act only once it has.
   await expect(page.locator('#server-shell[data-hydrated="true"]')).toBeVisible()
@@ -129,9 +130,9 @@ test('mobile user can open drawers and reaction bottom sheet', async ({ page }, 
 test('settings trigger is visible and navigates to authenticated settings route', async ({ page }) => {
   await loginViaTestSupport(page)
 
-  await expect(page.locator('#open-settings-link')).toBeVisible()
-
-  await page.locator('#open-settings-link').click()
+  await page.locator('#user-menu-button').click()
+  await expect(page.locator('#user-menu-settings')).toBeVisible()
+  await page.locator('#user-menu-settings').click()
   await expect(page).toHaveURL(/\/settings$/)
   await expect(page.locator('#settings-panel-title')).toBeVisible()
 

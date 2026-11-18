@@ -56,7 +56,6 @@ defmodule TavernWeb.ServerComponents.Shell do
           >
             Close
           </button>
-          <Layouts.theme_toggle />
         </div>
       </div>
 
@@ -65,19 +64,9 @@ defmodule TavernWeb.ServerComponents.Shell do
           <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-base-content/50">
             Channels
           </p>
-          <div class="flex items-center gap-2">
-            <span class="rounded bg-base-300 px-1.5 py-0.5 text-[10px] font-semibold text-base-content/60">
-              {length(@server.channels)}
-            </span>
-
-            <.link
-              navigate={~p"/settings"}
-              id="open-settings-link"
-              class="rounded-md px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-base-content/70 transition hover:bg-base-100 hover:text-base-content"
-            >
-              Settings
-            </.link>
-          </div>
+          <span class="rounded bg-base-300 px-1.5 py-0.5 text-[10px] font-semibold text-base-content/60">
+            {length(@server.channels)}
+          </span>
         </div>
 
         <%= if @server.navigation_ready? do %>
@@ -91,6 +80,7 @@ defmodule TavernWeb.ServerComponents.Shell do
                 :for={section <- @server.channel_sections}
                 section={section}
                 server={@server}
+                show_label={length(@server.channel_sections) > 1}
               />
             </nav>
           <% end %>
@@ -103,41 +93,61 @@ defmodule TavernWeb.ServerComponents.Shell do
       </div>
 
       <div class="border-t border-base-300 bg-base-100 px-3 py-2">
-        <div class="flex items-center justify-between gap-3 rounded-md px-1 py-1">
-          <div class="flex min-w-0 items-center gap-2">
-            <div class="relative">
-              <div class="flex size-9 items-center justify-center rounded-full bg-base-300 text-xs font-semibold text-base-content">
-                {@server.current_user.display_name |> String.first()}
-              </div>
-              <span class="absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-base-100 bg-emerald-400" />
-            </div>
-            <div class="min-w-0">
-              <p class="truncate text-[13px] font-semibold leading-4 text-base-content">
-                {@server.current_user.display_name}
-              </p>
-              <p class="truncate text-[11px] text-base-content/65">
-                @{@server.current_user.username}
-              </p>
-            </div>
+        <div class="relative" phx-click-away="close_user_menu">
+          <div
+            :if={@server.user_menu_open?}
+            id="user-menu"
+            role="menu"
+            aria-label="User menu"
+            class="absolute bottom-full left-0 right-0 z-20 mb-2 rounded-lg border border-base-300 bg-base-100 p-1 shadow-lg"
+          >
+            <.link
+              navigate={~p"/settings"}
+              id="user-menu-settings"
+              role="menuitem"
+              class="block rounded-md px-3 py-2 text-[13px] font-medium text-base-content/80 transition hover:bg-base-200 hover:text-base-content"
+            >
+              Settings
+            </.link>
+            <.link
+              href={~p"/logout"}
+              method="delete"
+              id="logout-link"
+              role="menuitem"
+              class="block rounded-md px-3 py-2 text-[13px] font-medium text-base-content/80 transition hover:bg-base-200 hover:text-base-content"
+            >
+              Log out
+            </.link>
           </div>
 
-          <.link
-            href={~p"/logout"}
-            method="delete"
-            id="logout-link"
-            class="rounded-md px-2 py-1 text-[11px] font-semibold text-base-content/70 transition hover:bg-base-200 hover:text-base-content"
-          >
-            Log out
-          </.link>
-        </div>
+          <div class="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              id="user-menu-button"
+              phx-click="toggle_user_menu"
+              aria-haspopup="menu"
+              aria-expanded={to_string(@server.user_menu_open?)}
+              class="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left transition hover:bg-base-200"
+            >
+              <div class="relative shrink-0">
+                <div class="flex size-9 items-center justify-center rounded-full bg-base-300 text-xs font-semibold text-base-content">
+                  {@server.current_user.display_name |> String.first()}
+                </div>
+                <span class="absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-base-100 bg-emerald-400" />
+              </div>
+              <div class="min-w-0">
+                <p class="truncate text-[13px] font-semibold leading-4 text-base-content">
+                  {@server.current_user.display_name}
+                </p>
+                <p class="truncate text-[11px] text-base-content/65">
+                  @{@server.current_user.username}
+                </p>
+              </div>
+            </button>
 
-        <.link
-          navigate={~p"/settings"}
-          id="open-settings-link-footer"
-          class="mt-2 block rounded-md border border-base-300 bg-base-200 px-2 py-2 text-[11px] font-semibold text-base-content/80 transition hover:bg-base-300 hover:text-base-content"
-        >
-          Open settings panel
-        </.link>
+            <Layouts.theme_toggle />
+          </div>
+        </div>
       </div>
     </aside>
     """
