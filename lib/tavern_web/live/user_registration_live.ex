@@ -47,30 +47,25 @@ defmodule TavernWeb.UserRegistrationLive do
   def handle_event("save", %{"user" => user_params}, socket) do
     invite_code = invite_code_param(user_params)
 
-    cond do
-      socket.assigns.invite_required? and invite_code == "" ->
-        {:noreply, put_flash(socket, :error, "An invite code is required to register.")}
+    opts = if invite_code == "", do: [], else: [invite_code: invite_code]
 
-      invite_code == "" ->
-        case Accounts.register_user(user_params) do
-          {:ok, user} ->
-            signed_in(socket, user, user_params)
+    # `invite_required?` only decides whether the form shows the code field; the registration
+    # mode is decided in `Accounts.register_user/2`, from the database.
+    case Accounts.register_user(user_params, opts) do
+      {:ok, user} ->
+        signed_in(socket, user, user_params)
 
-          {:error, %Changeset{} = changeset} ->
-            {:noreply, assign(socket, :form, to_form(changeset))}
-        end
+      {:error, :invite_required} ->
+        {:noreply,
+         socket
+         |> assign(:invite_required?, true)
+         |> put_flash(:error, "An invite code is required to register.")}
 
-      true ->
-        case Accounts.register_user(user_params, invite_code: invite_code) do
-          {:ok, user} ->
-            signed_in(socket, user, user_params)
+      {:error, :invalid_invite} ->
+        {:noreply, put_flash(socket, :error, "That invite code is not valid.")}
 
-          {:error, :invalid_invite} ->
-            {:noreply, put_flash(socket, :error, "That invite code is not valid.")}
-
-          {:error, %Changeset{} = changeset} ->
-            {:noreply, assign(socket, :form, to_form(changeset))}
-        end
+      {:error, %Changeset{} = changeset} ->
+        {:noreply, assign(socket, :form, to_form(changeset))}
     end
   end
 

@@ -264,4 +264,54 @@ defmodule TavernWeb.ServerLiveSettingsTest do
     refute Enum.any?(Chat.list_custom_emojis(), &(&1.id == emoji.id))
     assert build_conn() |> get(Chat.asset_url(emoji.asset)) |> response(404)
   end
+
+  test "an emoji delete from a page opened before the role was taken away is refused", %{
+    conn: conn
+  } do
+    Bootstrap.ensure_seed_data!()
+
+    manager_role =
+      role_fixture(%{
+        name: "Emoji Manager",
+        permissions: PermissionBits.combine([:manage_emojis_and_stickers])
+      })
+
+    user =
+      user_fixture(%{
+        email: "stale-manager@example.com",
+        username: "stale_manager",
+        display_name: "Stale Manager"
+      })
+
+    member_role = member_role_fixture(user, manager_role)
+    emoji = emoji_fixture(user)
+    token = Tavern.Accounts.generate_user_session_token(user)
+
+    conn =
+      conn
+      |> Phoenix.ConnTest.init_test_session(%{})
+      |> Plug.Conn.put_session(:user_token, token)
+      |> Plug.Conn.put_session(:live_socket_id, "users_sessions:stale-manager")
+
+    {:ok, view, _html} = live(conn, ~p"/settings?tab=server")
+    view |> element("#open-emoji-manager") |> render_click()
+    assert has_element?(view, "#delete-emoji-#{emoji.id}")
+
+    Tavern.Repo.delete!(member_role)
+
+    view |> element("#delete-emoji-#{emoji.id}") |> render_click()
+
+    assert Enum.any?(Chat.list_custom_emojis(), &(&1.id == emoji.id))
+    assert render(view) =~ "You do not have permission to manage emojis."
+  end
+
+  test "delete_custom_emoji/2 answers not_found for a missing emoji" do
+    owner = owner_fixture()
+
+    assert {:error, :not_found} =
+             Chat.delete_custom_emoji(
+               %Tavern.Accounts.Scope{user_id: owner.id},
+               Ecto.UUID.generate()
+             )
+  end
 end

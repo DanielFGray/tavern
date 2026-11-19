@@ -10,6 +10,8 @@ defmodule Tavern.AccountsTest do
   alias Tavern.Chat.UserSession
   alias Tavern.Repo
 
+  import Ecto.Query, only: [from: 2]
+
   import Tavern.ChatFixtures
 
   setup do
@@ -39,6 +41,51 @@ defmodule Tavern.AccountsTest do
              })
 
     refute member.membership.is_owner
+  end
+
+  describe "register_user/2 on an invite-only server" do
+    @attrs %{
+      email: "gate@example.com",
+      username: "gate_user",
+      display_name: "Gate",
+      password: "supersecurepass"
+    }
+
+    test "refuses a registration without a code once an owner exists" do
+      owner = owner_fixture()
+
+      assert {:ok, _} =
+               Chat.update_server_settings(%{"registration_mode" => "invite_only"}, owner)
+
+      assert {:error, :invite_required} = Accounts.register_user(@attrs)
+      refute Repo.exists?(from u in User, where: u.email == "gate@example.com")
+    end
+
+    test "accepts a registration that carries a valid code" do
+      owner = owner_fixture()
+      channel = channel_fixture()
+
+      assert {:ok, _} =
+               Chat.update_server_settings(%{"registration_mode" => "invite_only"}, owner)
+
+      {:ok, invite} = Chat.create_invite(%{"channel_id" => channel.id}, owner)
+
+      assert {:ok, _user} = Accounts.register_user(@attrs, invite_code: invite.code)
+    end
+
+    test "lets the first registration through, and it becomes the owner" do
+      Repo.insert!(%Tavern.Chat.ServerSettings{
+        name: "Fresh",
+        singleton: true,
+        registration_mode: :invite_only
+      })
+
+      assert {:ok, first} = Accounts.register_user(@attrs)
+      assert first.membership.is_owner
+
+      assert {:error, :invite_required} =
+               Accounts.register_user(%{@attrs | email: "two@example.com", username: "two_user"})
+    end
   end
 
   describe "promote_first_owner/1" do

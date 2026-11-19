@@ -138,7 +138,7 @@ defmodule Tavern.Chat do
   defdelegate get_emoji!(id), to: Emojis
   defdelegate change_emoji(emoji, attrs \\ %{}), to: Emojis
   defdelegate create_custom_emoji_from_upload(attrs, creator, upload), to: Emojis
-  defdelegate delete_custom_emoji(emoji), to: Emojis
+  defdelegate delete_custom_emoji(scope, emoji_id), to: Emojis
 
   defdelegate build_channel_tree(channels), to: Channels
   defdelegate ensure_channel_memberships(scope, channels), to: Channels

@@ -67,25 +67,35 @@ defmodule Tavern.Chat.Emojis do
     end
   end
 
-  def delete_custom_emoji(%Emoji{} = emoji) do
-    emoji = Repo.preload(emoji, [:asset])
-
+  @doc """
+  Deletes a custom emoji and its asset. Needs `manage_emojis_and_stickers` now, in the database.
+  Returns `{:error, :forbidden}` without it and `{:error, :not_found}` for a missing emoji.
+  """
+  def delete_custom_emoji(%Scope{} = scope, emoji_id) do
     Repo.transaction(fn ->
-      {:ok, deleted_emoji} = Repo.delete(emoji)
+      with :ok <- Visibility.authorize_write(scope, :manage_emojis_and_stickers, :server),
+           {:ok, emoji} <- lock_emoji(emoji_id) do
+        {:ok, deleted_emoji} = Repo.delete(emoji)
 
-      case deleted_emoji.asset do
-        %MediaAsset{} = asset ->
-          MediaAssets.delete_media_asset(asset)
+        case deleted_emoji.asset do
+          %MediaAsset{} = asset -> MediaAssets.delete_media_asset(asset)
+          _ -> {:ok, nil}
+        end
 
-        _ ->
-          {:ok, nil}
+        deleted_emoji
+      else
+        {:error, reason} -> Repo.rollback(reason)
       end
-
-      deleted_emoji
     end)
-    |> case do
-      {:ok, deleted_emoji} -> {:ok, deleted_emoji}
-      {:error, reason} -> {:error, reason}
+  end
+
+  defp lock_emoji(emoji_id) do
+    with {:ok, emoji_id} <- Ecto.UUID.cast(emoji_id),
+         %Emoji{} = emoji <-
+           Emoji |> where(id: ^emoji_id) |> lock("FOR UPDATE") |> preload(:asset) |> Repo.one() do
+      {:ok, emoji}
+    else
+      _ -> {:error, :not_found}
     end
   end
 

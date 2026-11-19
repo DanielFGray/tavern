@@ -10,6 +10,7 @@ defmodule Tavern.Accounts do
   alias Tavern.Chat.BotToken
   alias Tavern.Chat.Membership
   alias Tavern.Chat.Invites
+  alias Tavern.Chat.ServerSettings
   alias Tavern.Chat.User
   alias Tavern.Chat.UserSession
   alias Tavern.Chat.Visibility
@@ -106,6 +107,7 @@ defmodule Tavern.Accounts do
       # first registration and a concurrent ownership transfer never lock each other out.
       lock_ownership!()
       now = DateTime.utc_now()
+      authorize_registration!(invite_code)
 
       user =
         %User{}
@@ -133,6 +135,7 @@ defmodule Tavern.Accounts do
     |> case do
       {:ok, user} -> {:ok, user}
       {:error, {:refused, :invalid_invite}} -> {:error, :invalid_invite}
+      {:error, :invite_required} -> {:error, :invite_required}
       {:error, _op, %Changeset{} = changeset, _changes} -> {:error, changeset}
       {:error, _op, reason, _changes} -> raise reason
     end
@@ -467,6 +470,23 @@ defmodule Tavern.Accounts do
   # A transaction-scoped Postgres advisory lock: it is released at commit or rollback.
   defp lock_ownership! do
     Repo.query!("SELECT pg_advisory_xact_lock($1)", [@ownership_lock_key])
+  end
+
+  # The registration mode is decided here, from the settings row locked `FOR SHARE`, so a mode
+  # change (which takes the row `FOR UPDATE`) and a registration serialize. A server with no owner
+  # lets its first registration through, so a fresh invite-only server can still get an owner.
+  defp authorize_registration!(invite_code) do
+    mode =
+      ServerSettings
+      |> lock("FOR SHARE")
+      |> select([settings], settings.registration_mode)
+      |> Repo.one()
+
+    if mode == :invite_only and is_nil(invite_code) and owner_exists?() do
+      Repo.rollback(:invite_required)
+    end
+
+    :ok
   end
 
   defp create_membership!(%User{} = user, now) do

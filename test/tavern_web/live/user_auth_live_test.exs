@@ -102,6 +102,31 @@ defmodule TavernWeb.UserAuthLiveTest do
     assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Account created"
   end
 
+  test "a registration page opened before the switch to invite-only is refused", %{conn: conn} do
+    Bootstrap.ensure_seed_data!()
+    owner = owner_fixture(%{email: "stale-owner@example.com", username: "stale_owner"})
+
+    {:ok, view, _html} = live(conn, ~p"/register")
+    refute has_element?(view, "input[name='user[invite_code]']")
+
+    assert {:ok, _settings} =
+             Chat.update_server_settings(%{"registration_mode" => "invite_only"}, owner)
+
+    view
+    |> form("#registration-form", %{
+      user: %{
+        email: "stale@example.com",
+        username: "stale_user",
+        display_name: "Stale",
+        password: "supersecurepass"
+      }
+    })
+    |> render_submit()
+
+    assert render(view) =~ "An invite code is required to register."
+    refute Repo.exists?(from u in Chat.User, where: u.email == "stale@example.com")
+  end
+
   test "invite-only registration asks for a valid invite code", %{conn: conn} do
     Bootstrap.ensure_seed_data!()
     owner = owner_fixture(%{email: "invite-owner@example.com", username: "invite_owner"})

@@ -498,21 +498,18 @@ defmodule TavernWeb.SettingsLive do
 
   @impl true
   def handle_event("delete_emoji", %{"id" => emoji_id}, socket) do
-    if socket.assigns.can_manage_emojis? do
-      emoji = Chat.get_emoji!(emoji_id)
+    case Chat.delete_custom_emoji(socket.assigns.current_scope, emoji_id) do
+      {:ok, _emoji} ->
+        {:noreply,
+         socket
+         |> State.refresh_custom_emojis()
+         |> put_flash(:info, "Emoji deleted.")}
 
-      case Chat.delete_custom_emoji(emoji) do
-        {:ok, _emoji} ->
-          {:noreply,
-           socket
-           |> State.refresh_custom_emojis()
-           |> put_flash(:info, "Emoji deleted.")}
+      {:error, :forbidden} ->
+        {:noreply, put_flash(socket, :error, "You do not have permission to manage emojis.")}
 
-        {:error, _reason} ->
-          {:noreply, put_flash(socket, :error, "Could not delete that emoji.")}
-      end
-    else
-      {:noreply, put_flash(socket, :error, "You do not have permission to manage emojis.")}
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not delete that emoji.")}
     end
   end
 
