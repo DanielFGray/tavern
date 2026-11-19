@@ -85,6 +85,13 @@ defmodule Tavern.Chat.MediaAssets do
     end
   end
 
+  @doc "The file extension for one of the accepted image content types, with its dot."
+  def extension("image/png"), do: ".png"
+  def extension("image/jpeg"), do: ".jpg"
+  def extension("image/gif"), do: ".gif"
+  def extension("image/webp"), do: ".webp"
+  def extension(_), do: ".bin"
+
   defp validate_upload_type(content_type, allowed_types) do
     if content_type in allowed_types, do: :ok, else: {:error, :invalid_upload_type}
   end
@@ -94,12 +101,6 @@ defmodule Tavern.Chat.MediaAssets do
 
     if ext in ~w(.png .jpg .jpeg .gif .webp),
       do: ext,
-      else: extension_for_content_type(content_type)
+      else: extension(content_type)
   end
-
-  defp extension_for_content_type("image/png"), do: ".png"
-  defp extension_for_content_type("image/jpeg"), do: ".jpg"
-  defp extension_for_content_type("image/gif"), do: ".gif"
-  defp extension_for_content_type("image/webp"), do: ".webp"
-  defp extension_for_content_type(_), do: ".bin"
 end

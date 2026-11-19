@@ -330,7 +330,6 @@ const MessageListHook = {
 
       node.innerHTML = rendered
       node.dataset.renderedSource = source
-      enhanceEmbeds(node)
     })
   },
 
@@ -753,35 +752,6 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;")
-}
-
-function enhanceEmbeds(container) {
-  container.querySelectorAll("p").forEach(paragraph => {
-    if(paragraph.childElementCount !== 1) return
-    const link = paragraph.querySelector("a")
-    if(!link) return
-    const text = paragraph.textContent.trim()
-    if(text !== link.href && text !== link.textContent.trim()) return
-
-    const embed = document.createElement("a")
-    embed.href = link.href
-    embed.target = "_blank"
-    embed.rel = "noopener noreferrer nofollow"
-    embed.className = "flex flex-col gap-1 rounded-[0.85rem] border border-blue-400/20 bg-slate-800/55 px-[0.9rem] py-3 text-left no-underline"
-
-    let url
-    try {
-      url = new URL(link.href)
-    } catch (_error) {
-      return
-    }
-    embed.innerHTML = `
-      <span class="text-[11px] font-extrabold uppercase tracking-[0.18em] text-slate-400">${escapeHtml(url.hostname)}</span>
-      <span class="break-all text-[13px] text-blue-200">${escapeHtml(link.href)}</span>
-    `
-
-    paragraph.replaceWith(embed)
-  })
 }
 
 export { MessageListHook, ReactionPickerHook, RichComposerHook }

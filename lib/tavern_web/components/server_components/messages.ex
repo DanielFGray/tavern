@@ -211,6 +211,11 @@ defmodule TavernWeb.ServerComponents.Messages do
             </div>
           <% end %>
 
+          <TavernWeb.ServerComponents.Embeds.message_embeds
+            message={@message}
+            removable?={embeds_removable?(@message, @server)}
+          />
+
           <div class="mt-1 flex items-center gap-2 text-[11px] text-base-content/50">
             <span :if={edited_message?(@message)}>(edited)</span>
             <span :if={deleted_message?(@message)} class="text-amber-300">deleted</span>

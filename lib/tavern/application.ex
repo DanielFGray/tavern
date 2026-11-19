@@ -14,6 +14,9 @@ defmodule Tavern.Application do
       Tavern.Accounts.LoginRateLimiter,
       {DNSCluster, query: Application.get_env(:tavern, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Tavern.PubSub},
+      # Link preview fetches (`Tavern.Chat.Embeds`). The cap bounds the outbound requests one
+      # burst of messages can start; a write over it gets no embed.
+      {Task.Supervisor, name: Tavern.Embeds.TaskSupervisor, max_children: 50},
       # Start a worker by calling: Tavern.Worker.start_link(arg)
       # {Tavern.Worker, arg},
       # Start to serve requests, typically the last entry

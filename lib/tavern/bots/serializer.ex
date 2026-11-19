@@ -3,7 +3,10 @@ defmodule Tavern.Bots.Serializer do
 
   alias Ecto.Association.NotLoaded
   alias Tavern.Chat.Channel
+  alias Tavern.Chat.MediaAsset
+  alias Tavern.Chat.MediaAssets
   alias Tavern.Chat.Message
+  alias Tavern.Chat.MessageEmbed
   alias Tavern.Chat.User
 
   def serialize_bot_user(%User{} = bot_user) do
@@ -42,7 +45,8 @@ defmodule Tavern.Bots.Serializer do
       deleted_at: message.deleted_at,
       author: serialize_loaded_user(message.author),
       channel: serialize_channel_summary(message.channel),
-      reply_to: serialize_message_reference(message.reply_to)
+      reply_to: serialize_message_reference(message.reply_to),
+      embeds: serialize_embeds(message.embeds)
     }
   end
 
@@ -98,6 +102,28 @@ defmodule Tavern.Bots.Serializer do
 
   defp serialize_message_reference(%NotLoaded{}), do: nil
   defp serialize_message_reference(nil), do: nil
+
+  # An embed's image is served by the app at `image_url`; the linked site is never contacted by a
+  # client that only reads the message.
+  defp serialize_embeds(embeds) when is_list(embeds) do
+    Enum.map(embeds, fn %MessageEmbed{} = embed ->
+      %{
+        url: embed.url,
+        kind: to_string(embed.kind),
+        provider: embed.provider,
+        title: embed.title,
+        description: embed.description,
+        site_name: embed.site_name,
+        video_id: embed.video_id,
+        image_url: serialize_image_url(embed.image_asset)
+      }
+    end)
+  end
+
+  defp serialize_embeds(%NotLoaded{}), do: nil
+
+  defp serialize_image_url(%MediaAsset{} = asset), do: MediaAssets.asset_url(asset)
+  defp serialize_image_url(_asset), do: nil
 
   defp serialize_loaded_user(%User{} = user), do: serialize_user(user)
   defp serialize_loaded_user(%NotLoaded{}), do: nil

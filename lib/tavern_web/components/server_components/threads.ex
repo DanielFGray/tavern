@@ -180,6 +180,11 @@ defmodule TavernWeb.ServerComponents.Threads do
             {@thread_message.body}
           </div>
 
+          <TavernWeb.ServerComponents.Embeds.message_embeds
+            message={@thread_message}
+            removable?={embeds_removable?(@thread_message, @server)}
+          />
+
           <div class="mt-2 flex items-center gap-2 text-[11px] text-base-content/50">
             <span :if={edited_message?(@thread_message)}>(edited)</span>
             <span :if={deleted_message?(@thread_message)} class="text-amber-300">deleted</span>

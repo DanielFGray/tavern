@@ -366,6 +366,23 @@ defmodule TavernWeb.ServerLive.Events.Messages do
     end
   end
 
+  def handle_event("suppress_embeds", %{"id" => message_id}, socket) do
+    with {:ok, message} <- State.fetch_open_message(socket, message_id),
+         {:ok, updated_message} <- Chat.suppress_embeds(socket.assigns.current_scope, message.id) do
+      {:noreply,
+       socket
+       |> State.maybe_stream_update_message(updated_message)
+       |> State.maybe_stream_update_thread_message(updated_message)}
+    else
+      {:error, :forbidden} ->
+        {:noreply,
+         put_flash(socket, :error, "You do not have permission to remove those embeds.")}
+
+      _missing ->
+        {:noreply, socket}
+    end
+  end
+
   defp update_unread_state(socket, message) do
     socket
     |> maybe_increment_unread_count(message)

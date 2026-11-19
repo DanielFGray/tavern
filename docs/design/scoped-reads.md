@@ -20,7 +20,7 @@ The web layer (`lib/tavern_web`) calls only domain operations, authentication an
 
 Terms:
 
-- **Scope**: the struct that names who acts. It is built once per request or LiveView mount, by authentication.
+- **Scope**: the struct that names who acts. A request or LiveView mount gets its scope once, from authentication. Server work that acts for a member without a request of theirs (a bot token's request, a link-embed fetch) builds `%Scope{user_id: member_id}`, which sees no more than that member does.
 - **Visible channel set**: the ids of the channels and threads the scope may view now.
 - **Decision**: one answer to "may this scope do this action on this target now".
 

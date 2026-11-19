@@ -10,6 +10,7 @@ defmodule Tavern.Chat do
   alias Tavern.Chat.Channel
   alias Tavern.Chat.ChannelOverwrites
   alias Tavern.Chat.Channels
+  alias Tavern.Chat.Embeds
   alias Tavern.Chat.Emojis
   alias Tavern.Chat.MediaAssets
   alias Tavern.Chat.InviteRequests
@@ -38,7 +39,7 @@ defmodule Tavern.Chat do
 
   # What a message read needs to render and serialize. The channel is not here: a read sets it from
   # the decision that allowed the read, so it costs no query.
-  @read_preloads [:author, reactions: [emoji: :asset], reply_to: :author]
+  @read_preloads [:author, reactions: [emoji: :asset], reply_to: :author, embeds: :image_asset]
 
   # What a write returns and broadcasts. The mention lists are here because the receiver's
   # notification check reads them from the broadcast; reads do not need them.
@@ -48,7 +49,8 @@ defmodule Tavern.Chat do
     :user_mentions,
     role_mentions: :mentioned_role,
     reactions: [emoji: :asset],
-    reply_to: :author
+    reply_to: :author,
+    embeds: :image_asset
   ]
 
   def default_reaction_emojis, do: @default_reaction_emojis
@@ -312,6 +314,7 @@ defmodule Tavern.Chat do
           {:error, reason}
       end
       |> broadcast_written(:message_created)
+      |> schedule_embeds([])
     end
   end
 
@@ -665,7 +668,8 @@ defmodule Tavern.Chat do
   defp banned_membership?(%Membership{flags: flags}), do: Map.get(flags || %{}, "banned") == true
 
   @doc """
-  Edits a message the scope authored, and broadcasts it. A message the scope may not view is
+  Edits a message the scope authored, and broadcasts it. The edit drops the embeds of links it
+  removed and fetches previews only for links it added. A message the scope may not view is
   `{:error, :not_found}`. A visible message it may not edit (another author, or a timeout) is
   `{:error, :forbidden}`.
   """
@@ -681,11 +685,33 @@ defmodule Tavern.Chat do
                |> Ecto.Changeset.put_change(:edited_at, DateTime.utc_now())
                |> Repo.update(),
              :ok <- sync_message_mentions(updated_message) do
-          {:ok, reload_message(updated_message.id)}
+          {embedded_urls, image_keys} = Embeds.prune(updated_message)
+          {:ok, {reload_message(updated_message.id), embedded_urls, image_keys}}
         end
       end)
-      |> broadcast_written(:message_updated)
+      |> case do
+        {:ok, {message, embedded_urls, image_keys}} ->
+          Embeds.delete_objects(image_keys)
+
+          {:ok, message}
+          |> broadcast_written(:message_updated)
+          |> schedule_embeds(embedded_urls)
+
+        {:error, reason} ->
+          {:error, reason}
+      end
     end
+  end
+
+  @doc """
+  Removes a message's embeds and keeps them off: a later edit fetches none. The author may remove
+  them; `manage_messages` lets anyone else with view remove them. Refusals follow
+  `update_message/3`.
+  """
+  def suppress_embeds(%Scope{} = scope, message_id) do
+    write_and_prune_embeds(scope, :suppress_embeds, message_id, :message_updated, fn message ->
+      message |> Ecto.Changeset.change(suppress_embeds: true) |> Repo.update()
+    end)
   end
 
   @doc """
@@ -694,24 +720,17 @@ defmodule Tavern.Chat do
   follow `update_message/3`.
   """
   def delete_message(%Scope{} = scope, message_id) do
-    with {:ok, message_id} <- cast_id(message_id) do
-      Repo.transact(fn ->
-        with {:ok, message} <- authorize_message_write(scope, :delete_message, message_id),
-             now = DateTime.utc_now(),
-             {:ok, deleted_message} <-
-               message
-               |> Ecto.Changeset.change(
-                 body: "[message deleted]",
-                 deleted_at: now,
-                 edited_at: now
-               )
-               |> Repo.update(),
-             :ok <- clear_message_mentions(deleted_message.id) do
-          {:ok, reload_message(deleted_message.id)}
-        end
-      end)
-      |> broadcast_written(:message_deleted)
-    end
+    write_and_prune_embeds(scope, :delete_message, message_id, :message_deleted, fn message ->
+      now = DateTime.utc_now()
+
+      with {:ok, deleted_message} <-
+             message
+             |> Ecto.Changeset.change(body: "[message deleted]", deleted_at: now, edited_at: now)
+             |> Repo.update(),
+           :ok <- clear_message_mentions(deleted_message.id) do
+        {:ok, deleted_message}
+      end
+    end)
   end
 
   @doc """
@@ -1138,7 +1157,40 @@ defmodule Tavern.Chat do
 
   defp broadcast_written({:error, reason}, _event), do: {:error, reason}
 
-  defp reload_message(message_id) do
+  # Runs after the broadcast, so the fetch's own broadcast follows the write's.
+  defp schedule_embeds({:ok, %Message{} = message}, embedded_urls) do
+    :ok = Embeds.schedule(message, embedded_urls)
+    {:ok, message}
+  end
+
+  defp schedule_embeds({:error, reason}, _embedded_urls), do: {:error, reason}
+
+  # Decides `action`, applies `change` to the locked message and drops the embeds the changed
+  # message no longer wants, in one transaction. Object-store deletes run after the commit, when
+  # the rows that named the objects are already gone.
+  defp write_and_prune_embeds(scope, action, message_id, event, change) do
+    with {:ok, message_id} <- cast_id(message_id) do
+      Repo.transact(fn ->
+        with {:ok, message} <- authorize_message_write(scope, action, message_id),
+             {:ok, changed} <- change.(message) do
+          {_kept, image_keys} = Embeds.prune(changed)
+          {:ok, {reload_message(changed.id), image_keys}}
+        end
+      end)
+      |> delete_dropped_images()
+      |> broadcast_written(event)
+    end
+  end
+
+  defp delete_dropped_images({:ok, {message, image_keys}}) do
+    Embeds.delete_objects(image_keys)
+    {:ok, message}
+  end
+
+  defp delete_dropped_images({:error, reason}), do: {:error, reason}
+
+  @doc false
+  def reload_message(message_id) do
     Message
     |> preload(^@message_preloads)
     |> Repo.get!(message_id)

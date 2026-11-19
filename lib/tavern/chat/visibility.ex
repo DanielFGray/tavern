@@ -57,9 +57,9 @@ defmodule Tavern.Chat.Visibility do
 
   Channel bits take a `%Channel{}` target. Server-wide bits take `:server`. `:send_messages`,
   `:send_messages_in_threads` and the rest of the timed actions check the member's timeout
-  first. `:edit_message`, `:delete_message` and `:add_reactions` take a `%Message{}` and read
-  only its id: the message and its channel load in the decision's own statement. `{:moderate,
-  bit}` takes the subject's user id. So does `:assign_roles` (giving or taking a member role).
+  first. `:edit_message`, `:delete_message`, `:suppress_embeds` and `:add_reactions` take a
+  `%Message{}` and read only its id: the message and its channel load in the decision's own
+  statement. `{:moderate, bit}` takes the subject's user id. So does `:assign_roles` (giving or taking a member role).
   `:manage_permissions` (reading a channel's overwrites) takes a `%Channel{}`; so does
   `{:manage_permissions, target}`, which decides a write of the overwrite for `target`
   (`{:role, role_id}` or `{:user, user_id}`) on that channel.
@@ -478,10 +478,12 @@ defmodule Tavern.Chat.Visibility do
       ctx.member.id == author_id and not acting_timed_out?(ctx) and view?(ctx, channel) and
         not thread_closed?(ctx, channel)
 
-  defp message_decision(:delete_message, ctx, author_id, channel),
-    do:
-      view?(ctx, channel) and not thread_closed?(ctx, channel) and
-        (ctx.member.id == author_id or bit?(ctx, channel, :manage_messages))
+  # Removing a message's embeds follows deleting it: the author, or `manage_messages`.
+  defp message_decision(action, ctx, author_id, channel)
+       when action in [:delete_message, :suppress_embeds],
+       do:
+         view?(ctx, channel) and not thread_closed?(ctx, channel) and
+           (ctx.member.id == author_id or bit?(ctx, channel, :manage_messages))
 
   defp message_decision(:add_reactions, ctx, _author_id, channel),
     do: channel_decision(:add_reactions, ctx, channel) and not thread_closed?(ctx, channel)
@@ -505,6 +507,11 @@ defmodule Tavern.Chat.Visibility do
 
   defp channel_decision(:manage_messages, ctx, channel),
     do: view?(ctx, channel) and bit?(ctx, channel, :manage_messages)
+
+  # Whether the server shows previews of the member's links here. It is decided when a fetch
+  # completes, not when the message is sent, so a role change in between applies.
+  defp channel_decision(:embed_links, ctx, channel),
+    do: view?(ctx, channel) and bit?(ctx, channel, :embed_links)
 
   # Archiving and unarchiving: the thread's creator or a manager. A locked thread takes them from a
   # manager only. Locking and unlocking are the manager's alone.

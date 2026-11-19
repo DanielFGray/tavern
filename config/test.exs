@@ -44,6 +44,12 @@ config :tavern, Tavern.ObjectStore,
   secret_access_key: "test",
   req_options: [plug: Tavern.TestObjectStore, retry: false]
 
+# Link previews reach no network: requests go to `Req.Test` stubs, and host names resolve
+# from a fixed table.
+config :tavern, Tavern.Embeds.SafeHTTP,
+  resolver: Tavern.TestDNS,
+  req_options: [plug: {Req.Test, Tavern.Embeds.SafeHTTP}]
+
 # Mail goes to the capture provider: the sending process and its callers receive
 # `{:mail_captured, email}`.
 config :tavern, Tavern.Mailer, provider: :capture, from: "tavern@example.test"

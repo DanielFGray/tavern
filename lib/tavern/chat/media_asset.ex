@@ -16,6 +16,7 @@ defmodule Tavern.Chat.MediaAsset do
         :role_icon,
         :server_avatar,
         :server_icon,
+        :embed,
         :other
       ]
     )

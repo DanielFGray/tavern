@@ -1,13 +1,18 @@
 defmodule TavernWeb.Router do
   use TavernWeb, :router
 
+  # Phoenix's default policy plus `frame-src`: frames come from this origin (the dev live-reload
+  # frame) and from YouTube's no-cookie player, which a video embed loads after a click.
+  @content_security_policy "base-uri 'self'; frame-ancestors 'self'; " <>
+                             "frame-src 'self' https://www.youtube-nocookie.com;"
+
   pipeline :browser do
     plug(:accepts, ["html"])
     plug(:fetch_session)
     plug(:fetch_live_flash)
     plug(:put_root_layout, html: {TavernWeb.Layouts, :root})
     plug(:protect_from_forgery)
-    plug(:put_secure_browser_headers)
+    plug(:put_secure_browser_headers, %{"content-security-policy" => @content_security_policy})
     plug(TavernWeb.UserAuth, :fetch_current_scope_for_user)
   end
 

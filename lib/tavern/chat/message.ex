@@ -18,6 +18,7 @@ defmodule Tavern.Chat.Message do
     field(:pinned_at, :utc_datetime_usec)
     field(:nonce, :string)
     field(:metadata, :map, default: %{})
+    field(:suppress_embeds, :boolean, default: false)
 
     belongs_to(:channel, Tavern.Chat.Channel)
     belongs_to(:author, Tavern.Chat.User)
@@ -28,14 +29,15 @@ defmodule Tavern.Chat.Message do
     has_many(:reports, Tavern.Chat.MessageReport)
     has_many(:user_mentions, Tavern.Chat.MessageUserMention)
     has_many(:role_mentions, Tavern.Chat.MessageRoleMention)
+    has_many(:embeds, Tavern.Chat.MessageEmbed, preload_order: [asc: :position])
 
     timestamps(type: :utc_datetime_usec, updated_at: false)
   end
 
   @doc """
   A changeset for what an author writes: the body and the composer's metadata. The server sets
-  every other field itself (`kind`, `nonce`, `edited_at`, `deleted_at`, `pinned_at`), so a client
-  cannot forge a system message, a pin or a deletion.
+  every other field itself (`kind`, `nonce`, `edited_at`, `deleted_at`, `pinned_at`,
+  `suppress_embeds`), so a client cannot forge a system message, a pin or a deletion.
   """
   def changeset(message, attrs) do
     message

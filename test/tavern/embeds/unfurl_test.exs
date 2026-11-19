@@ -1,0 +1,163 @@
+defmodule Tavern.Embeds.UnfurlTest do
+  use ExUnit.Case, async: true
+
+  alias Tavern.Embeds.SafeHTTP
+  alias Tavern.Embeds.Unfurl
+
+  @png <<0x89, "PNG\r\n", 0x1A, "\n", 0::size(64)>>
+  @jpeg <<0xFF, 0xD8, 0xFF, 0xE0, 0::size(64)>>
+
+  defp stub(routes) do
+    Req.Test.stub(SafeHTTP, fn conn ->
+      case Map.fetch(routes, {conn.host, conn.request_path}) do
+        {:ok, {content_type, body}} ->
+          conn
+          |> Plug.Conn.put_resp_content_type(content_type, nil)
+          |> Plug.Conn.send_resp(200, body)
+
+        :error ->
+          Plug.Conn.send_resp(conn, 404, "")
+      end
+    end)
+  end
+
+  describe "pages" do
+    test "reads the Open Graph card and downloads its image" do
+      stub(%{
+        {"site.test", "/post"} =>
+          {"text/html; charset=utf-8",
+           """
+           <html><head>
+             <title>Fallback title</title>
+             <meta property="og:title" content="The &amp; Story">
+             <meta property="og:description" content="What happened next.">
+             <meta property="og:site_name" content="Example News">
+             <meta property="og:image" content="//images.site.test/cover.png">
+           </head><body></body></html>
+           """},
+        {"images.site.test", "/cover.png"} => {"image/png", @png}
+      })
+
+      assert {:ok, preview} = Unfurl.preview("https://site.test/post")
+      assert preview.kind == :link
+      assert preview.title == "The & Story"
+      assert preview.description == "What happened next."
+      assert preview.site_name == "Example News"
+      assert preview.image == %{body: @png, content_type: "image/png"}
+    end
+
+    test "falls back to Twitter tags, then <title> and the meta description" do
+      stub(%{
+        {"site.test", "/twitter"} =>
+          {"text/html",
+           ~s(<meta name="twitter:title" content="Tweeted"><meta name="twitter:description" content="Short.">)},
+        {"site.test", "/plain"} =>
+          {"text/html",
+           "<head><title>\n  Plain   page\n</title><meta name=\"description\" content=\"About it.\"></head>"}
+      })
+
+      assert {:ok, %{title: "Tweeted", description: "Short."}} =
+               Unfurl.preview("https://site.test/twitter")
+
+      assert {:ok, %{title: "Plain page", description: "About it.", site_name: "site.test"}} =
+               Unfurl.preview("https://site.test/plain")
+    end
+
+    test "a page with nothing to show, or that is not HTML, has no preview" do
+      stub(%{
+        {"site.test", "/empty"} => {"text/html", "<html><body>hi</body></html>"},
+        {"site.test", "/data.json"} => {"application/json", ~s({"title": "nope"})}
+      })
+
+      assert Unfurl.preview("https://site.test/empty") == :error
+      assert Unfurl.preview("https://site.test/data.json") == :error
+      assert Unfurl.preview("https://site.test/gone") == :error
+    end
+
+    test "an image that fails its checks is left out, and the card keeps its text" do
+      page = fn image ->
+        {"text/html",
+         ~s(<meta property="og:title" content="T"><meta property="og:image" content="#{image}">)}
+      end
+
+      stub(%{
+        {"site.test", "/html-as-image"} => page.("https://images.site.test/fake.png"),
+        {"site.test", "/huge"} => page.("https://images.site.test/huge.jpg"),
+        {"site.test", "/private"} => page.("http://10.0.0.1/cover.png"),
+        {"images.site.test", "/fake.png"} => {"image/png", "<svg onload=alert(1)>"},
+        {"images.site.test", "/huge.jpg"} =>
+          {"image/jpeg", @jpeg <> :binary.copy(<<0>>, 5_000_001)}
+      })
+
+      for path <- ["/html-as-image", "/huge", "/private"] do
+        assert {:ok, %{title: "T", image: nil}} = Unfurl.preview("https://site.test" <> path),
+               path
+      end
+    end
+
+    test "page text is cleaned and capped" do
+      long = String.duplicate("word ", 200)
+
+      stub(%{
+        {"site.test", "/messy"} =>
+          {"text/html",
+           "<meta property=\"og:title\" content=\"bad\x00\x07 text \xFF\"><meta property=\"og:description\" content=\"#{long}\">"}
+      })
+
+      assert {:ok, preview} = Unfurl.preview("https://site.test/messy")
+      assert String.valid?(preview.title)
+      refute preview.title =~ <<0>>
+      assert String.length(preview.description) <= 350
+    end
+  end
+
+  describe "YouTube" do
+    test "takes the title from oEmbed and the thumbnail from i.ytimg.com" do
+      test_pid = self()
+
+      Req.Test.stub(SafeHTTP, fn conn ->
+        send(test_pid, {:requested, conn.host, conn.request_path, conn.query_string})
+
+        case {conn.host, conn.request_path} do
+          {"www.youtube.com", "/oembed"} ->
+            Req.Test.json(conn, %{"title" => "A video", "author_name" => "A channel"})
+
+          {"i.ytimg.com", "/vi/dQw4w9WgXcQ/hqdefault.jpg"} ->
+            conn
+            |> Plug.Conn.put_resp_content_type("image/jpeg")
+            |> Plug.Conn.send_resp(200, @jpeg)
+        end
+      end)
+
+      assert {:ok, preview} = Unfurl.preview("https://youtu.be/dQw4w9WgXcQ")
+
+      assert %{
+               kind: :video,
+               provider: "youtube",
+               video_id: "dQw4w9WgXcQ",
+               title: "A video",
+               description: "A channel",
+               site_name: "YouTube",
+               image: %{content_type: "image/jpeg"}
+             } = preview
+
+      assert_received {:requested, "www.youtube.com", "/oembed", query}
+
+      assert URI.decode_query(query)["url"] == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    end
+
+    test "a video oEmbed does not know has no preview" do
+      Req.Test.stub(SafeHTTP, &Plug.Conn.send_resp(&1, 404, "Not Found"))
+      assert Unfurl.preview("https://www.youtube.com/watch?v=dQw4w9WgXcQ") == :error
+    end
+  end
+
+  test "image_type/1 reads magic bytes" do
+    assert Unfurl.image_type(@png) == {:ok, "image/png"}
+    assert Unfurl.image_type(@jpeg) == {:ok, "image/jpeg"}
+    assert Unfurl.image_type("GIF89a....") == {:ok, "image/gif"}
+    assert Unfurl.image_type("RIFF\0\0\0\0WEBPVP8 ") == {:ok, "image/webp"}
+    assert Unfurl.image_type("<svg></svg>") == :error
+    assert Unfurl.image_type("") == :error
+  end
+end

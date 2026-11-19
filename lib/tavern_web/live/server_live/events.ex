@@ -70,7 +70,8 @@ defmodule TavernWeb.ServerLive.Events do
              "edit_message",
              "cancel_edit",
              "save_edit",
-             "delete_message"
+             "delete_message",
+             "suppress_embeds"
            ] do
     Messages.handle_event(event, params, socket)
   end

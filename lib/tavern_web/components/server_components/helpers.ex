@@ -112,8 +112,7 @@ defmodule TavernWeb.ServerComponents.Helpers do
       "mt-0.5 break-words text-[15px] leading-6 text-base-content",
       "[&>p]:m-0 [&>ul]:m-0 [&>ul]:pl-5 [&>ol]:m-0 [&>ol]:pl-5",
       "[&_li+li]:mt-0.5 [&>p+p]:mt-[0.55rem] [&>p+ul]:mt-[0.55rem] [&>p+ol]:mt-[0.55rem]",
-      "[&>ul+p]:mt-[0.55rem] [&>ol+p]:mt-[0.55rem] [&_.message-code-block]:mt-[0.55rem]",
-      "[&_.message-link-embed]:mt-[0.55rem]"
+      "[&>ul+p]:mt-[0.55rem] [&>ol+p]:mt-[0.55rem] [&_.message-code-block]:mt-[0.55rem]"
     ]
     |> Enum.join(" ")
   end
@@ -173,6 +172,11 @@ defmodule TavernWeb.ServerComponents.Helpers do
   def own_message?(message, current_user), do: message.author_id == current_user.id
 
   defdelegate deleted_message?(message), to: Tavern.Chat.Message, as: :deleted?
+
+  # Whether to show the remove button on a message's embeds. `Tavern.Chat.suppress_embeds/2`
+  # decides the removal itself.
+  def embeds_removable?(message, server),
+    do: message.author_id == server.current_user.id or server.can_manage_messages?
 
   def edited_message?(message),
     do: not is_nil(message.edited_at) and not deleted_message?(message)
