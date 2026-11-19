@@ -598,7 +598,7 @@ defmodule Tavern.ChatTest do
       author = user_fixture()
       _starter = message_fixture(channel, author, %{body: "restricted thread"})
 
-      assert Chat.can_create_public_threads?(channel, author)
+      assert Chat.channel_abilities(scope_for(author), channel.id).create_public_threads
     end
 
     test "thread reads hide hidden threads and thread creation honors permission and timeout" do
@@ -852,7 +852,7 @@ defmodule Tavern.ChatTest do
       })
 
       assert {:error, :forbidden} = Chat.toggle_reaction(scope_for(user), message.id, "👍")
-      refute Chat.can_add_reactions?(channel, user)
+      refute Chat.channel_abilities(scope_for(user), channel.id).add_reactions
     end
 
     test "toggle_reaction/3 supports custom emoji reactions" do
@@ -1072,7 +1072,9 @@ defmodule Tavern.ChatTest do
       assert general.slug in visible_slugs
       refute hidden_channel.slug in visible_slugs
       refute Tavern.Chat.Visibility.can?(scope_for(user), :view_channel, hidden_channel)
-      refute Chat.can_send_messages?(hidden_channel, user)
+
+      assert Chat.channel_abilities(scope_for(user), hidden_channel.id) ==
+               Chat.no_channel_abilities()
     end
   end
 end

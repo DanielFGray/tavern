@@ -105,7 +105,7 @@ defmodule TavernWeb.ServerLive.Events.Threads do
       is_nil(socket.assigns.active_thread) ->
         {:noreply, put_flash(socket, :error, "Open a thread before replying.")}
 
-      not socket.assigns.can_send_thread_messages? ->
+      not socket.assigns.thread_abilities.send_messages_in_threads ->
         {:noreply,
          put_flash(socket, :error, "You do not have permission to send messages in this thread.")}
 

@@ -164,7 +164,7 @@ defmodule TavernWeb.ServerLive.Events.Messages do
          |> put_flash(:error, "Choose a channel before sending a message.")
          |> State.assign_message_form()}
 
-      not socket.assigns.can_send_messages? ->
+      not socket.assigns.channel_abilities.send_messages ->
         {:noreply,
          socket
          |> put_flash(:error, "You do not have permission to send messages in that channel.")

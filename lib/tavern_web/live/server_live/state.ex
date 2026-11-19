@@ -151,24 +151,8 @@ defmodule TavernWeb.ServerLive.State do
       Chat.list_typing_users(socket.assigns.current_scope, refreshed_active_channel.id)
     )
     |> assign(
-      :can_send_messages?,
-      Chat.can_send_messages?(refreshed_active_channel, socket.assigns.current_user)
-    )
-    |> assign(
-      :can_add_reactions?,
-      Chat.can_add_reactions?(refreshed_active_channel, socket.assigns.current_user)
-    )
-    |> assign(
-      :can_manage_messages?,
-      Chat.can_manage_messages?(refreshed_active_channel, socket.assigns.current_user)
-    )
-    |> assign(
-      :can_mention_everyone?,
-      Chat.can_mention_everyone?(refreshed_active_channel, socket.assigns.current_user)
-    )
-    |> assign(
-      :can_create_public_threads?,
-      Chat.can_create_public_threads?(refreshed_active_channel, socket.assigns.current_user)
+      :channel_abilities,
+      Chat.channel_abilities(socket.assigns.current_scope, refreshed_active_channel.id)
     )
     |> assign(
       :message_count,
@@ -191,7 +175,6 @@ defmodule TavernWeb.ServerLive.State do
   end
 
   def refresh_channels(socket) do
-    current_user = socket.assigns.current_user
     visible_channels = Chat.list_channels(socket.assigns.current_scope)
     channels = Enum.filter(visible_channels, &visible_text_channel?/1)
 
@@ -207,32 +190,7 @@ defmodule TavernWeb.ServerLive.State do
     |> assign(:navigation_ready?, true)
     |> assign(:active_channel, active_channel)
     |> close_message_ui()
-    |> assign(
-      :can_send_messages?,
-      if(active_channel, do: Chat.can_send_messages?(active_channel, current_user), else: false)
-    )
-    |> assign(
-      :can_add_reactions?,
-      if(active_channel, do: Chat.can_add_reactions?(active_channel, current_user), else: false)
-    )
-    |> assign(
-      :can_manage_messages?,
-      if(active_channel, do: Chat.can_manage_messages?(active_channel, current_user), else: false)
-    )
-    |> assign(
-      :can_mention_everyone?,
-      if(active_channel,
-        do: Chat.can_mention_everyone?(active_channel, current_user),
-        else: false
-      )
-    )
-    |> assign(
-      :can_create_public_threads?,
-      if(active_channel,
-        do: Chat.can_create_public_threads?(active_channel, current_user),
-        else: false
-      )
-    )
+    |> assign(:channel_abilities, active_channel_abilities(socket, active_channel))
     |> sync_channel_subscriptions()
     |> ThreadNav.reload()
     |> ForumNav.reload()
@@ -534,17 +492,15 @@ defmodule TavernWeb.ServerLive.State do
   manage messages, archive or unarchive, lock or unlock. A lock or archive by anyone changes them.
   """
   def assign_thread_controls(socket, thread) do
-    user = socket.assigns.current_user
-
     socket
     |> assign(:active_thread, thread)
-    |> assign(:can_send_thread_messages?, Chat.can_send_messages_in_threads?(thread, user))
-    |> assign(:can_archive_thread?, Chat.can_archive_thread?(thread, user))
-    |> assign(:can_lock_thread?, Chat.can_lock_thread?(thread, user))
-    |> assign(:can_delete_thread?, Chat.can_delete_thread?(thread, user))
-    |> assign(:can_react_in_thread?, Chat.can_add_reactions?(thread, user))
-    |> assign(:can_manage_thread_messages?, Chat.can_manage_messages?(thread, user))
+    |> assign(:thread_abilities, Chat.channel_abilities(socket.assigns.current_scope, thread.id))
   end
+
+  defp active_channel_abilities(_socket, nil), do: Chat.no_channel_abilities()
+
+  defp active_channel_abilities(socket, channel),
+    do: Chat.channel_abilities(socket.assigns.current_scope, channel.id)
 
   @doc "Reloads the open thread when `channel_id` is it, so its header and controls follow."
   def refresh_active_thread(socket, channel_id) do
@@ -575,12 +531,7 @@ defmodule TavernWeb.ServerLive.State do
     |> assign(:thread_typing_users, [])
     |> keep_reply_in(socket.assigns.active_channel && socket.assigns.active_channel.id)
     |> assign(:poll_form, nil)
-    |> assign(:can_send_thread_messages?, false)
-    |> assign(:can_archive_thread?, false)
-    |> assign(:can_lock_thread?, false)
-    |> assign(:can_delete_thread?, false)
-    |> assign(:can_react_in_thread?, false)
-    |> assign(:can_manage_thread_messages?, false)
+    |> assign(:thread_abilities, Chat.no_channel_abilities())
     |> assign(:thread_following?, false)
     |> assign(:thread_message_count, 0)
     |> assign(:thread_messages_empty?, true)

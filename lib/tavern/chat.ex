@@ -1085,40 +1085,20 @@ defmodule Tavern.Chat do
 
   defdelegate mark_channel_read(user, channel, message \\ nil), to: Notifications
 
-  def can_send_messages?(channel, user),
-    do: Visibility.can?(user_scope(user), :send_messages, channel)
-
-  def can_create_public_threads?(channel, user),
-    do: Visibility.can?(user_scope(user), :create_public_threads, channel)
-
-  def can_send_messages_in_threads?(channel, user),
-    do: Visibility.can?(user_scope(user), :send_messages_in_threads, channel)
-
-  # The thread control the viewer would use now: archive when open, unarchive when archived.
-  def can_archive_thread?(thread, user) do
-    action = if thread.archived_at, do: :unarchive_thread, else: :archive_thread
-    Visibility.can?(user_scope(user), action, thread)
+  @doc """
+  What the scope may do in channel or thread `channel_id`, decided from one permission load: a
+  map from action (`:send_messages`, `:add_reactions`, `:archive_thread`, ...) to boolean. See
+  `Tavern.Chat.Visibility.abilities/2`. A channel the scope cannot view, or an id that names no
+  channel, answers `no_channel_abilities/0`.
+  """
+  def channel_abilities(%Scope{} = scope, channel_id) do
+    case cast_id(channel_id) do
+      {:ok, channel_id} -> Visibility.abilities(scope, channel_id)
+      {:error, _reason} -> no_channel_abilities()
+    end
   end
 
-  def can_lock_thread?(thread, user) do
-    action = if thread.locked_at, do: :unlock_thread, else: :lock_thread
-    Visibility.can?(user_scope(user), action, thread)
-  end
-
-  def can_delete_thread?(thread, user),
-    do: Visibility.can?(user_scope(user), :delete_thread, thread)
-
-  def can_add_reactions?(channel, user),
-    do: Visibility.can?(user_scope(user), :add_reactions, channel)
-
-  def can_manage_messages?(channel, user),
-    do: Visibility.can?(user_scope(user), :manage_messages, channel)
-
-  def can_mention_everyone?(channel, user),
-    do: Visibility.can?(user_scope(user), :mention_everyone, channel)
-
-  def can_manage_emojis_and_stickers?(user),
-    do: Visibility.can?(user_scope(user), :manage_emojis_and_stickers, :server)
+  defdelegate no_channel_abilities, to: Visibility, as: :no_abilities
 
   defdelegate thread_channel?(channel), to: Channel, as: :thread?
 
@@ -1140,8 +1120,6 @@ defmodule Tavern.Chat do
   end
 
   def default_role, do: Repo.get_by(Role, is_default: true)
-
-  defp user_scope(%User{id: user_id}), do: %Scope{user_id: user_id}
 
   defp normalize_message_attrs(attrs) do
     attrs =

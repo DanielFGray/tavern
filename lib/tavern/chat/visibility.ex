@@ -249,6 +249,50 @@ defmodule Tavern.Chat.Visibility do
     end
   end
 
+  # What a channel or thread view needs to know about the viewer. Each key is the action the
+  # control would run; `abilities/2` decides them all from one load.
+  @abilities [
+    :send_messages,
+    :send_messages_in_threads,
+    :create_public_threads,
+    :add_reactions,
+    :manage_messages,
+    :mention_everyone,
+    :archive_thread,
+    :lock_thread,
+    :delete_thread
+  ]
+
+  @doc "The abilities of a scope that may do nothing: every key of `abilities/2`, false."
+  def no_abilities, do: Map.new(@abilities, &{&1, false})
+
+  @doc """
+  What the scope may do in channel or thread `channel_id` now, as a map from action to boolean,
+  decided from one load. A channel the scope cannot view answers all false.
+
+  `:archive_thread` and `:lock_thread` answer for the control the viewer would use now: archive
+  when the thread is open, unarchive when archived; lock when unlocked, unlock when locked. The
+  thread's state comes from the same load, so it is never stale. The thread keys are false for a
+  channel that is not a thread.
+  """
+  def abilities(%Scope{} = scope, channel_id) do
+    ctx = load(scope, [channel_id])
+
+    with false <- is_nil(ctx.member),
+         {:ok, channel} <- Map.fetch(ctx.channels, channel_id),
+         true <- view?(ctx, channel) do
+      Map.new(@abilities, &{&1, channel_decision(thread_toggle(&1, channel), ctx, channel)})
+    else
+      _ -> no_abilities()
+    end
+  end
+
+  defp thread_toggle(:archive_thread, %Channel{archived_at: nil}), do: :archive_thread
+  defp thread_toggle(:archive_thread, _channel), do: :unarchive_thread
+  defp thread_toggle(:lock_thread, %Channel{locked_at: nil}), do: :lock_thread
+  defp thread_toggle(:lock_thread, _channel), do: :unlock_thread
+  defp thread_toggle(action, _channel), do: action
+
   @doc """
   The message `message_id` with its `channel` set, when the scope may view its channel now, or nil.
   The message and its channel come from the decision's own statement, so a read that returns the

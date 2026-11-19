@@ -226,17 +226,17 @@ defmodule TavernWeb.ServerComponents.Helpers do
       %{id: ^channel_id} ->
         %{
           thread?: true,
-          send?: server.can_send_thread_messages?,
-          react?: server.can_react_in_thread?,
-          manage?: server.can_manage_thread_messages?
+          send?: server.thread_abilities.send_messages_in_threads,
+          react?: server.thread_abilities.add_reactions,
+          manage?: server.thread_abilities.manage_messages
         }
 
       _other ->
         %{
           thread?: false,
-          send?: server.can_send_messages?,
-          react?: server.can_add_reactions?,
-          manage?: server.can_manage_messages?
+          send?: server.channel_abilities.send_messages,
+          react?: server.channel_abilities.add_reactions,
+          manage?: server.channel_abilities.manage_messages
         }
     end
   end

@@ -12,7 +12,7 @@ defmodule TavernWeb.ServerComponents.Composer do
     ~H"""
     <div class="border-t border-base-300 bg-base-200 px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
       <%= cond do %>
-        <% @server.can_send_messages? -> %>
+        <% @server.channel_abilities.send_messages -> %>
           <.composer server={@server} target={:channel} />
         <% true -> %>
           <TavernWeb.ServerComponents.Verification.send_notice
@@ -101,7 +101,10 @@ defmodule TavernWeb.ServerComponents.Composer do
                 </.composer_button>
               </div>
 
-              <p :if={!@server.can_mention_everyone?} class="m-0 text-[11px] text-amber-200">
+              <p
+                :if={!@server.channel_abilities.mention_everyone}
+                class="m-0 text-[11px] text-amber-200"
+              >
                 @everyone and locked roles need extra permission
               </p>
             </div>

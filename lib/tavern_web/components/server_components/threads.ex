@@ -22,8 +22,9 @@ defmodule TavernWeb.ServerComponents.Threads do
       assign(assigns,
         menu_id: "thread-actions-menu-#{assigns.message.id}",
         menu?:
-          assigns.server.can_archive_thread? or assigns.server.can_lock_thread? or
-            assigns.server.can_delete_thread?
+          assigns.server.thread_abilities.archive_thread or
+            assigns.server.thread_abilities.lock_thread or
+            assigns.server.thread_abilities.delete_thread
       )
 
     ~H"""
@@ -98,7 +99,7 @@ defmodule TavernWeb.ServerComponents.Threads do
               class="absolute right-0 top-full z-20 mt-1 hidden min-w-36 rounded-xl border border-base-300 bg-base-100 p-1.5 shadow-xl"
             >
               <button
-                :if={@server.can_archive_thread?}
+                :if={@server.thread_abilities.archive_thread}
                 type="button"
                 role="menuitem"
                 phx-click={
@@ -112,7 +113,7 @@ defmodule TavernWeb.ServerComponents.Threads do
                 {if @thread.archived_at, do: "Unarchive", else: "Archive"}
               </button>
               <button
-                :if={@server.can_lock_thread?}
+                :if={@server.thread_abilities.lock_thread}
                 type="button"
                 role="menuitem"
                 phx-click={
@@ -129,7 +130,7 @@ defmodule TavernWeb.ServerComponents.Threads do
                 {if @thread.locked_at, do: "Unlock", else: "Lock"}
               </button>
               <%!-- The confirm step is client-side: the prompt button swaps for the confirm row. --%>
-              <div :if={@server.can_delete_thread?}>
+              <div :if={@server.thread_abilities.delete_thread}>
                 <button
                   type="button"
                   role="menuitem"
@@ -211,7 +212,7 @@ defmodule TavernWeb.ServerComponents.Threads do
       </div>
 
       <div class="pl-3 pr-1 pb-1">
-        <%= if @server.can_send_thread_messages? do %>
+        <%= if @server.thread_abilities.send_messages_in_threads do %>
           <Messages.typing_indicator
             users={@server.thread_typing_users}
             id={"thread-typing-indicator-#{@message.id}"}

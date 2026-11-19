@@ -100,7 +100,7 @@ defmodule Tavern.Chat.ForumsTest do
     assert {:error, :forbidden} =
              Chat.create_message(scope_for(ctx.owner), ctx.forum.id, %{body: "hello"})
 
-    refute Chat.can_send_messages?(ctx.forum, ctx.author)
+    refute Chat.channel_abilities(scope_for(ctx.author), ctx.forum.id).send_messages
   end
 
   test "replies count without the first message, and replies are allowed", ctx do

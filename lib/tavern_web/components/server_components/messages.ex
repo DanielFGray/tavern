@@ -518,7 +518,9 @@ defmodule TavernWeb.ServerComponents.Messages do
       </button>
 
       <button
-        :if={not @rights.thread? and is_nil(@thread) and @server.can_create_public_threads?}
+        :if={
+          not @rights.thread? and is_nil(@thread) and @server.channel_abilities.create_public_threads
+        }
         type="button"
         phx-click="create_thread"
         phx-value-id={@message.id}
@@ -574,7 +576,7 @@ defmodule TavernWeb.ServerComponents.Messages do
           </button>
         <% else %>
           <button
-            :if={not @rights.thread? and @server.can_create_public_threads?}
+            :if={not @rights.thread? and @server.channel_abilities.create_public_threads}
             type="button"
             phx-click="create_thread"
             phx-value-id={@message.id}

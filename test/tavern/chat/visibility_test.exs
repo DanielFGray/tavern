@@ -211,6 +211,98 @@ defmodule Tavern.Chat.VisibilityTest do
     end
   end
 
+  describe "abilities/2" do
+    setup do
+      owner = owner_fixture(%{email: "abl-owner@example.com", username: "abl_owner"})
+      member = user_fixture(%{email: "abl-member@example.com", username: "abl_member"})
+
+      role =
+        role_fixture(%{
+          name: "Talker",
+          permissions:
+            bits([
+              :view_channel,
+              :send_messages,
+              :send_messages_in_threads,
+              :add_reactions,
+              :create_public_threads
+            ])
+        })
+
+      _member_role = member_role_fixture(member, role)
+      parent = channel_fixture(%{name: "Talk", slug: unique_slug()})
+      starter = message_fixture(parent, owner, %{body: "thread starter"})
+      thread = thread_fixture(parent, starter, member)
+
+      %{owner: owner, member: member, role: role, parent: parent, thread: thread}
+    end
+
+    test "one load answers what can?/3 answers, for a channel and for a thread",
+         %{member: member, parent: parent, thread: thread} do
+      scope = %Scope{user_id: member.id}
+
+      for target <- [parent, thread],
+          {action, allowed?} <- Visibility.abilities(scope, target.id),
+          action not in [:archive_thread, :lock_thread, :delete_thread] do
+        assert allowed? == Visibility.can?(scope, action, target), "#{action} on #{target.slug}"
+      end
+
+      assert %{send_messages: true, create_public_threads: true, mention_everyone: false} =
+               Visibility.abilities(scope, parent.id)
+    end
+
+    test "the thread keys follow the thread's state and are false for a channel",
+         %{owner: owner, member: member, parent: parent, thread: thread} do
+      member_scope = %Scope{user_id: member.id}
+      owner_scope = %Scope{user_id: owner.id}
+
+      assert %{archive_thread: true, lock_thread: false, delete_thread: false} =
+               Visibility.abilities(member_scope, thread.id)
+
+      assert %{archive_thread: true, lock_thread: true, delete_thread: true} =
+               Visibility.abilities(owner_scope, thread.id)
+
+      assert %{archive_thread: false, lock_thread: false, delete_thread: false} =
+               Visibility.abilities(owner_scope, parent.id)
+
+      {:ok, _} = Chat.lock_thread(owner_scope, thread.id)
+
+      # A locked thread takes archive controls from a manager only, and its lock control is now
+      # unlock, which the owner still holds.
+      assert %{archive_thread: false} = Visibility.abilities(member_scope, thread.id)
+      assert %{lock_thread: true} = Visibility.abilities(owner_scope, thread.id)
+      assert can?(owner, :unlock_thread, Repo.get!(Channel, thread.id))
+    end
+
+    test "a channel the scope cannot view answers no abilities, in one query",
+         %{member: member, role: role, parent: parent} do
+      overwrite_role(parent, role, %{deny_permissions: bits([:view_channel])})
+      scope = %Scope{user_id: member.id}
+
+      handler = "abilities-query-#{System.unique_integer([:positive])}"
+      test_pid = self()
+
+      :ok =
+        :telemetry.attach(
+          handler,
+          [:tavern, :repo, :query],
+          fn _event, _measurements, _metadata, _config -> send(test_pid, :repo_query) end,
+          nil
+        )
+
+      abilities =
+        try do
+          Visibility.abilities(scope, parent.id)
+        after
+          :telemetry.detach(handler)
+        end
+
+      assert abilities == Visibility.no_abilities()
+      assert_received :repo_query
+      refute_received :repo_query
+    end
+  end
+
   describe "moderation" do
     setup do
       actor = user_fixture(%{email: "mod-actor@example.com", username: "mod_actor"})
