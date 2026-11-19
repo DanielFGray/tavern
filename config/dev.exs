@@ -72,6 +72,9 @@ config :tavern, Tavern.ObjectStore,
   access_key_id: "dev",
   secret_access_key: "dev"
 
+# Mail is captured, not sent: the server log shows each message and its links.
+config :tavern, Tavern.Mailer, provider: :capture, from: "tavern@localhost"
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 

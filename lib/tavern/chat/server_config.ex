@@ -158,7 +158,7 @@ defmodule Tavern.Chat.ServerConfig do
 
   defp name_attrs(attrs) do
     attrs
-    |> Map.take(["name", "registration_mode"])
+    |> Map.take(["name", "registration_mode", "accept_invite_requests"])
     |> Map.put_new("name", default_server_name())
   end
 

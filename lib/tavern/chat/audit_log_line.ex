@@ -16,7 +16,8 @@ defmodule Tavern.Chat.AuditLogLine do
                    role_created role_updated role_moved role_deleted
                    member_role_added member_role_removed
                    channel_overwrite_updated channel_overwrite_deleted
-                   bot_created bot_updated bot_revoked bot_token_created bot_token_revoked)
+                   bot_created bot_updated bot_revoked bot_token_created bot_token_revoked
+                   invite_request_approved invite_request_denied invite_requests_denied_by_ip)
 
   @doc "Action types with their own line, for the page's filter."
   def action_types, do: @action_types
@@ -84,6 +85,15 @@ defmodule Tavern.Chat.AuditLogLine do
 
   defp line("bot_token_revoked", actor, subject, _meta, _entry),
     do: "#{actor} revoked a token of bot #{subject}"
+
+  defp line("invite_request_approved", actor, _subject, meta, _entry),
+    do: "#{actor} approved the invite request from #{meta["email"]}"
+
+  defp line("invite_request_denied", actor, _subject, meta, _entry),
+    do: "#{actor} denied the invite request from #{meta["email"]}"
+
+  defp line("invite_requests_denied_by_ip", actor, _subject, meta, _entry),
+    do: "#{actor} denied #{meta["count"]} invite requests from #{meta["ip_address"]}"
 
   defp line(action_type, actor, subject, _meta, _entry) do
     "#{actor} did #{label(action_type)}" <>

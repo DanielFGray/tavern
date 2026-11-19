@@ -36,6 +36,10 @@ defmodule TavernWeb.SettingsComponents.Shell do
             <TavernWeb.SettingsComponents.Roles.roles_tab {assigns} />
           <% end %>
 
+          <%= if @active_tab == "invites_tree" do %>
+            <TavernWeb.SettingsComponents.InviteTree.invite_tree_tab {assigns} />
+          <% end %>
+
           <%= if @active_tab == "audit" and @can_view_audit_log? do %>
             <TavernWeb.SettingsComponents.Audit.audit_tab {assigns} />
           <% end %>
@@ -104,6 +108,12 @@ defmodule TavernWeb.SettingsComponents.Shell do
           tab="audit"
           id="settings-tab-audit"
           label="Audit log"
+        />
+        <.tab_button
+          active_tab={@active_tab}
+          tab="invites_tree"
+          id="settings-tab-invites-tree"
+          label="Invite tree"
         />
       </nav>
 

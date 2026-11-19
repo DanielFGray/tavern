@@ -101,6 +101,14 @@ if config_env() == :prod do
 
   config :tavern, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
+  # Invite mail. With MAIL_PROVIDER unset no provider is configured, so Settings cannot turn
+  # on invite requests; there is no fallback provider.
+  config :tavern, Tavern.Mailer,
+    provider: if(System.get_env("MAIL_PROVIDER") == "cloudflare", do: :cloudflare),
+    from: System.get_env("EMAIL_FROM"),
+    account_id: System.get_env("CLOUDFLARE_ACCOUNT_ID"),
+    api_token: System.get_env("CLOUDFLARE_EMAIL_API_TOKEN")
+
   # Phoenix's default `check_origin: true` accepts a socket only from a page on this url's host.
   config :tavern, TavernWeb.Endpoint,
     url: [host: public_url.host, port: public_url.port, scheme: public_url.scheme],

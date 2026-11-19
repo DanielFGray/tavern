@@ -12,6 +12,7 @@ defmodule Tavern.Chat.Invites do
 
   alias Ecto.Changeset
   alias Tavern.Accounts.Scope
+  alias Tavern.Chat.Channel
   alias Tavern.Chat.Invite
   alias Tavern.Chat.InviteUse
   alias Tavern.Chat.User
@@ -43,6 +44,37 @@ defmodule Tavern.Chat.Invites do
         {:error, reason} -> Repo.rollback({:refused, reason})
       end
     end)
+  end
+
+  @doc """
+  Inserts a one-use invite with a random code, expiring `expires_at`, inside the caller's
+  transaction. The caller has already authorised the write: an approved invite request uses
+  this under `manage_applications`, not `manage_server`. The new member starts in `#general`,
+  or else the first text channel.
+  """
+  def insert_single_use!(inviter_id, %DateTime{} = expires_at) do
+    unless Repo.in_transaction?() do
+      raise ArgumentError, "insert_single_use!/2 must run inside a transaction"
+    end
+
+    %Invite{inviter_id: inviter_id}
+    |> Invite.changeset(%{
+      code: generate_code(),
+      channel_id: starting_channel_id(),
+      max_uses: 1,
+      expires_at: expires_at
+    })
+    |> Repo.insert!()
+  end
+
+  defp starting_channel_id do
+    from(channel in Channel,
+      where: channel.kind == :text and is_nil(channel.archived_at),
+      order_by: [desc: channel.slug == "general", asc: channel.position, asc: channel.inserted_at],
+      limit: 1,
+      select: channel.id
+    )
+    |> Repo.one()
   end
 
   defp with_generated_code(attrs) do

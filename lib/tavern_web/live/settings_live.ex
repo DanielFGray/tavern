@@ -13,19 +13,32 @@ defmodule TavernWeb.SettingsLive do
   alias Tavern.Chat.Topics
   alias TavernWeb.SettingsLive.Audit
   alias TavernWeb.SettingsLive.ChannelPermissions
+  alias TavernWeb.SettingsLive.InviteRequests
+  alias TavernWeb.SettingsLive.InviteTree
   alias TavernWeb.SettingsLive.Roles
   alias TavernWeb.SettingsLive.State
 
-  @tabs ["profile", "notifications", "channel_notifications", "theme", "server", "roles", "audit"]
+  @tabs [
+    "profile",
+    "notifications",
+    "channel_notifications",
+    "theme",
+    "server",
+    "roles",
+    "audit",
+    "invites_tree"
+  ]
   @role_events Roles.events()
   @channel_permission_events ChannelPermissions.events()
   @audit_events Audit.events()
+  @invite_request_events InviteRequests.events()
+  @invite_tree_events InviteTree.events()
 
   @impl true
   def mount(_params, _session, socket) do
     socket =
       socket
-      |> assign(:client_ip, socket_client_ip(socket))
+      |> assign(:client_ip, ClientIp.socket_client_ip(socket))
       |> allow_upload(:server_icon,
         accept: ~w(.png .jpg .jpeg .gif .webp),
         max_entries: 1,
@@ -40,6 +53,8 @@ defmodule TavernWeb.SettingsLive do
       |> Roles.init()
       |> Audit.init()
       |> ChannelPermissions.init()
+      |> InviteRequests.init()
+      |> InviteTree.init()
 
     if connected?(socket), do: Topics.subscribe_server()
 
@@ -50,7 +65,7 @@ defmodule TavernWeb.SettingsLive do
   def handle_params(%{"tab" => tab}, _uri, socket) do
     if tab_allowed?(socket, tab) do
       socket = assign(socket, :active_tab, tab)
-      {:noreply, if(tab == "audit", do: Audit.load(socket), else: socket)}
+      {:noreply, load_tab(socket, tab)}
     else
       {:noreply, socket}
     end
@@ -79,6 +94,14 @@ defmodule TavernWeb.SettingsLive do
 
   def handle_event(event, params, socket) when event in @channel_permission_events do
     ChannelPermissions.handle_event(event, params, socket)
+  end
+
+  def handle_event(event, params, socket) when event in @invite_tree_events do
+    InviteTree.handle_event(event, params, socket)
+  end
+
+  def handle_event(event, params, socket) when event in @invite_request_events do
+    InviteRequests.handle_event(event, params, socket)
   end
 
   @impl true
@@ -712,17 +735,15 @@ defmodule TavernWeb.SettingsLive do
 
   defp tab_allowed?(_socket, tab), do: tab in @tabs
 
+  defp load_tab(socket, "audit"), do: Audit.load(socket)
+  defp load_tab(socket, "invites_tree"), do: InviteTree.load(socket)
+  defp load_tab(socket, _tab), do: socket
+
   # A scope without `view_audit_log` reads no cases, and so does a malformed id.
   defp moderation_cases(scope, user_id) do
     case Chat.list_moderation_cases(scope, user_id) do
       {:ok, moderation_cases} -> moderation_cases
       {:error, _reason} -> []
     end
-  end
-
-  defp socket_client_ip(socket) do
-    peer_data = Phoenix.LiveView.get_connect_info(socket, :peer_data)
-    headers = Phoenix.LiveView.get_connect_info(socket, :x_headers) || []
-    ClientIp.client_ip(peer_data && peer_data.address, headers)
   end
 end

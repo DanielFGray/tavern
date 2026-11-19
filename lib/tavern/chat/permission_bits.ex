@@ -27,7 +27,8 @@ defmodule Tavern.Chat.PermissionBits do
     administrator: 1 <<< 20,
     manage_bots: 1 <<< 21,
     manage_server: 1 <<< 22,
-    view_audit_log: 1 <<< 23
+    view_audit_log: 1 <<< 23,
+    manage_applications: 1 <<< 24
   }
 
   def flags, do: @flags

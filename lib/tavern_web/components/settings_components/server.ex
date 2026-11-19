@@ -5,6 +5,7 @@ defmodule TavernWeb.SettingsComponents.Server do
 
   alias Tavern.Accounts
   alias Tavern.Chat
+  alias TavernWeb.SettingsComponents.InviteRequests
 
   import TavernWeb.SettingsComponents.Helpers
 
@@ -59,6 +60,11 @@ defmodule TavernWeb.SettingsComponents.Server do
               {"Open to everyone", "open"},
               {"Invite only", "invite_only"}
             ]}
+          />
+
+          <InviteRequests.accept_requests_setting
+            form={@server_settings_form}
+            mail_missing_settings={@mail_missing_settings}
           />
 
           <div>
@@ -116,6 +122,7 @@ defmodule TavernWeb.SettingsComponents.Server do
 
       <.bot_registry :if={@can_manage_bots?} {assigns} />
       <.invites_panel :if={@can_manage_server?} {assigns} />
+      <InviteRequests.queue_panel :if={@can_manage_applications?} streams={@streams} />
       <.members_panel {assigns} />
       <.bans_panel :if={@bans} {assigns} />
     </div>

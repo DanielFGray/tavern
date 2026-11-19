@@ -5,6 +5,7 @@ defmodule TavernWeb.UserRegistrationLive do
   alias Tavern.Accounts
   alias Tavern.Chat
   alias Tavern.Chat.User
+  alias TavernWeb.Plugs.ClientIp
 
   @impl true
   def mount(%{"code" => code}, _session, socket) when is_binary(code) do
@@ -28,7 +29,35 @@ defmodule TavernWeb.UserRegistrationLive do
      |> assign(:form, form)
      |> assign(:invite_required?, server_settings.registration_mode == :invite_only)
      |> assign(:invite_code, String.trim(invite_code))
-     |> assign(:trigger_submit, false)}
+     |> assign(:trigger_submit, false)
+     |> assign(:client_ip, client_ip_string(socket))
+     |> assign(:accepting_invite_requests?, Chat.accepting_invite_requests?())
+     |> assign(:invite_request_form, to_form(Chat.change_invite_request(), as: :invite_request))
+     |> assign(:invite_request_received?, false)}
+  end
+
+  defp client_ip_string(socket) do
+    case ClientIp.socket_client_ip(socket) do
+      nil -> "unknown"
+      ip_address -> ip_address |> :inet.ntoa() |> to_string()
+    end
+  end
+
+  @impl true
+  def handle_event("request_invite", %{"invite_request" => params}, socket) do
+    case Chat.request_invite(params, socket.assigns.client_ip) do
+      {:ok, :received} ->
+        {:noreply, assign(socket, :invite_request_received?, true)}
+
+      {:error, %Changeset{} = changeset} ->
+        {:noreply, assign(socket, :invite_request_form, to_form(changeset, as: :invite_request))}
+
+      {:error, :not_accepting} ->
+        {:noreply,
+         socket
+         |> assign(:accepting_invite_requests?, false)
+         |> put_flash(:error, "This server is not taking invite requests.")}
+    end
   end
 
   @impl true
@@ -177,6 +206,52 @@ defmodule TavernWeb.UserRegistrationLive do
                 </p>
               </div>
             </.form>
+
+            <div
+              :if={@invite_required? and @accepting_invite_requests?}
+              id="invite-request"
+              class="mt-6 border-t border-base-content/10 pt-6"
+            >
+              <%= if @invite_request_received? do %>
+                <div
+                  id="invite-request-received"
+                  class="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-base-content"
+                >
+                  <p class="font-semibold">Request received</p>
+                  <p class="mt-1 text-base-content/70">
+                    If a moderator approves it, an invite link arrives at that address.
+                  </p>
+                </div>
+              <% else %>
+                <.form
+                  for={@invite_request_form}
+                  id="invite-request-form"
+                  phx-submit="request_invite"
+                  class="space-y-3"
+                >
+                  <p class="text-sm font-semibold text-base-content">No invite code?</p>
+                  <p class="text-sm text-base-content/70">
+                    Ask for one. A moderator reviews each request.
+                  </p>
+                  <.input
+                    field={@invite_request_form[:email]}
+                    id="invite-request-email"
+                    type="email"
+                    label="Email"
+                    required
+                    class="w-full rounded-2xl border border-base-300 bg-base-200 px-4 py-3 text-base-content"
+                  />
+                  <button
+                    id="invite-request-submit"
+                    type="submit"
+                    phx-disable-with="Sending…"
+                    class="inline-flex w-full items-center justify-center rounded-2xl border border-base-content/15 px-4 py-3 text-sm font-semibold text-base-content transition hover:border-emerald-500/50 hover:bg-emerald-500/10"
+                  >
+                    Request an invite
+                  </button>
+                </.form>
+              <% end %>
+            </div>
           </section>
         </div>
       </div>

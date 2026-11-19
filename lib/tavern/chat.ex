@@ -12,6 +12,8 @@ defmodule Tavern.Chat do
   alias Tavern.Chat.Channels
   alias Tavern.Chat.Emojis
   alias Tavern.Chat.MediaAssets
+  alias Tavern.Chat.InviteRequests
+  alias Tavern.Chat.InviteTree
   alias Tavern.Chat.Invites
   alias Tavern.Chat.Notifications
   alias Tavern.Chat.Roles
@@ -159,7 +161,19 @@ defmodule Tavern.Chat do
   defdelegate create_invite(attrs, actor), to: Invites
   defdelegate list_invites(actor), to: Invites
   defdelegate revoke_invite(invite_id, actor), to: Invites
+  defdelegate invite_tree_children(scope, parent), to: InviteTree, as: :children
+  defdelegate invite_tree_path_to(scope, user_id), to: InviteTree, as: :path_to
+  defdelegate invite_tree_search(scope, query), to: InviteTree, as: :search
   defdelegate change_invite(), to: Invites, as: :new_invite_changeset
+
+  defdelegate accepting_invite_requests?(), to: InviteRequests, as: :accepting_requests?
+  defdelegate change_invite_request(attrs \\ %{}), to: InviteRequests
+  defdelegate request_invite(attrs, ip_address), to: InviteRequests
+  defdelegate list_invite_requests(scope, status), to: InviteRequests
+  defdelegate approve_invite_request(scope, request_id), to: InviteRequests
+  defdelegate deny_invite_request(scope, request_id), to: InviteRequests
+  defdelegate deny_invite_requests_from_ip(scope, ip_address), to: InviteRequests
+  defdelegate resend_invite(scope, request_id), to: InviteRequests
 
   @doc "True when registration requires an invite code."
   def registration_invite_only?, do: get_server_settings().registration_mode == :invite_only

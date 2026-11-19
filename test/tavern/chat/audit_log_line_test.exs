@@ -107,6 +107,29 @@ defmodule Tavern.Chat.AuditLogLineTest do
              "@alice revoked a token of bot @bob"
   end
 
+  test "invite request decisions name the email or the address" do
+    assert AuditLogLine.format(
+             entry("invite_request_approved", %{
+               subject_user: nil,
+               metadata: %{"email" => "a@x.test"}
+             })
+           ) == "@alice approved the invite request from a@x.test"
+
+    assert AuditLogLine.format(
+             entry("invite_request_denied", %{
+               subject_user: nil,
+               metadata: %{"email" => "a@x.test"}
+             })
+           ) == "@alice denied the invite request from a@x.test"
+
+    assert AuditLogLine.format(
+             entry("invite_requests_denied_by_ip", %{
+               subject_user: nil,
+               metadata: %{"ip_address" => "10.0.0.1", "count" => 3}
+             })
+           ) == "@alice denied 3 invite requests from 10.0.0.1"
+  end
+
   test "an unknown type gets a generic line, and a missing user is someone" do
     assert AuditLogLine.format(entry("emoji_purged")) == "@alice did emoji purged to @bob"
 

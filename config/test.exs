@@ -43,3 +43,7 @@ config :tavern, Tavern.ObjectStore,
   access_key_id: "test",
   secret_access_key: "test",
   req_options: [plug: Tavern.TestObjectStore, retry: false]
+
+# Mail goes to the capture provider: the sending process and its callers receive
+# `{:mail_captured, email}`.
+config :tavern, Tavern.Mailer, provider: :capture, from: "tavern@example.test"

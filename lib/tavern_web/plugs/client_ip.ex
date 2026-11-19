@@ -23,6 +23,16 @@ defmodule TavernWeb.Plugs.ClientIp do
     end
   end
 
+  @doc """
+  The client address of a LiveView socket, by the same rule as `client_ip/2`. Call it from
+  `mount/3`: connect info is readable only there. Returns nil when the socket has no peer.
+  """
+  def socket_client_ip(socket) do
+    peer_data = Phoenix.LiveView.get_connect_info(socket, :peer_data)
+    headers = Phoenix.LiveView.get_connect_info(socket, :x_headers) || []
+    client_ip(peer_data && peer_data.address, headers)
+  end
+
   defp forwarded_ip(peer_ip, headers, trusted_header) do
     case List.keyfind(headers, trusted_header, 0) do
       {_name, value} ->

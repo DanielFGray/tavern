@@ -73,6 +73,11 @@ defmodule Tavern.Ephemeral do
     end
   end
 
+  @doc """
+  Counts one hit in the fixed window `key`, and returns the count and when the window ends.
+  The window starts at the first hit: `EXPIRE ... NX` sets the expiry only on a key that has
+  none, so later hits never extend it.
+  """
   def increment_rate_limit(key, window_seconds, now \\ System.system_time(:second))
       when is_binary(key) and is_integer(window_seconds) do
     expires_at = now + window_seconds
@@ -80,7 +85,7 @@ defmodule Tavern.Ephemeral do
 
     case Redis.pipeline([
            ["INCR", key],
-           ["EXPIRE", key, Integer.to_string(window_seconds)],
+           ["EXPIRE", key, Integer.to_string(window_seconds), "NX"],
            ["TTL", key]
          ]) do
       {:ok, [count, _expire, ttl]} when is_integer(count) and is_integer(ttl) ->
@@ -91,6 +96,24 @@ defmodule Tavern.Ephemeral do
 
       {:error, _reason} ->
         {:error, :unavailable}
+    end
+  end
+
+  @doc """
+  Takes back one hit counted by `increment_rate_limit/3`, for an action that did not happen.
+  When the window ended in between, the DECR makes a new key; the `EXPIRE ... NX` keeps it
+  from living forever.
+  """
+  def release_rate_limit(key, window_seconds)
+      when is_binary(key) and is_integer(window_seconds) do
+    key = namespaced(key)
+
+    case Redis.pipeline([
+           ["DECR", key],
+           ["EXPIRE", key, Integer.to_string(window_seconds), "NX"]
+         ]) do
+      {:ok, _results} -> :ok
+      {:error, _reason} -> :error
     end
   end
 

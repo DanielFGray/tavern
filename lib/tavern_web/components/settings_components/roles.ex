@@ -19,7 +19,8 @@ defmodule TavernWeb.SettingsComponents.Roles do
        :manage_events,
        :manage_bots,
        :manage_server,
-       :view_audit_log
+       :view_audit_log,
+       :manage_applications
      ]},
     {"Text",
      [

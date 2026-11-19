@@ -12,6 +12,20 @@ config :tavern,
   ecto_repos: [Tavern.Repo],
   generators: [timestamp_type: :utc_datetime, binary_id: true]
 
+# Abuse limits for invite requests and the invite mail they lead to; every number lives here.
+# Intake limits count requests per client IP and new pending requests server-wide: over one,
+# the form still answers "Request received" and stores nothing. Send limits count invite mail
+# per address and server-wide: over one, the approval stands and the queue offers Resend later.
+config :tavern, Tavern.Chat.InviteRequests,
+  invite_expiry_days: 7,
+  limits: [
+    requests_per_ip_hour: 3,
+    requests_per_ip_day: 10,
+    pending_requests_per_day: 50,
+    mails_per_address_day: 1,
+    mails_per_day: 100
+  ]
+
 # Configure the endpoint
 config :tavern, TavernWeb.Endpoint,
   url: [host: "localhost"],
