@@ -38,6 +38,7 @@ defmodule Tavern.Chat.Invite do
     |> validate_required([:code, :channel_id])
     |> validate_length(:code, min: 4, max: 32)
     |> validate_number(:uses, greater_than_or_equal_to: 0)
+    |> validate_number(:max_uses, greater_than_or_equal_to: 1)
     |> unique_constraint(:code)
   end
 end

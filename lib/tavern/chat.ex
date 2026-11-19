@@ -12,6 +12,7 @@ defmodule Tavern.Chat do
   alias Tavern.Chat.Channels
   alias Tavern.Chat.Emojis
   alias Tavern.Chat.MediaAssets
+  alias Tavern.Chat.Invites
   alias Tavern.Chat.Notifications
   alias Tavern.Chat.Roles
   alias Tavern.Chat.ServerConfig
@@ -51,6 +52,7 @@ defmodule Tavern.Chat do
   defdelegate create_server_icon_from_upload(creator, upload), to: MediaAssets
   defdelegate asset_url(asset), to: MediaAssets
   defdelegate get_server_settings(), to: ServerConfig
+  defdelegate reset_server_settings_cache(), to: ServerConfig
   defdelegate change_server_settings(server_settings, attrs \\ %{}), to: ServerConfig
   defdelegate update_server_settings(attrs, actor), to: ServerConfig
   defdelegate remove_server_icon(actor), to: ServerConfig
@@ -152,6 +154,14 @@ defmodule Tavern.Chat do
   defdelegate update_channel_membership_notification(user, channel_id, attrs), to: Notifications
   defdelegate unread_counts_for_user(user, channels), to: Notifications
   defdelegate unread_mentions_for_user(user, channels), to: Notifications
+
+  defdelegate create_invite(attrs, actor), to: Invites
+  defdelegate list_invites(actor), to: Invites
+  defdelegate revoke_invite(invite_id, actor), to: Invites
+  defdelegate change_invite(), to: Invites, as: :new_invite_changeset
+
+  @doc "True when registration requires an invite code."
+  def registration_invite_only?, do: get_server_settings().registration_mode == :invite_only
 
   @doc """
   Records that the scope's member is typing in a channel or thread. Typing is ephemeral, so

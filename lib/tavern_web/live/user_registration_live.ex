@@ -7,7 +7,15 @@ defmodule TavernWeb.UserRegistrationLive do
   alias Tavern.Chat.User
 
   @impl true
+  def mount(%{"code" => code}, _session, socket) when is_binary(code) do
+    mount_from_params(code, socket)
+  end
+
   def mount(_params, _session, socket) do
+    mount_from_params("", socket)
+  end
+
+  defp mount_from_params(invite_code, socket) do
     form = %User{} |> Accounts.change_registration_user() |> to_form()
 
     server_settings = Chat.get_server_settings()
@@ -18,6 +26,8 @@ defmodule TavernWeb.UserRegistrationLive do
      |> assign(:server_settings, server_settings)
      |> assign(:current_server, server_settings)
      |> assign(:form, form)
+     |> assign(:invite_required?, server_settings.registration_mode == :invite_only)
+     |> assign(:invite_code, String.trim(invite_code))
      |> assign(:trigger_submit, false)}
   end
 
@@ -28,31 +38,61 @@ defmodule TavernWeb.UserRegistrationLive do
       |> Accounts.change_registration_user(user_params)
       |> Map.put(:action, :validate)
 
-    {:noreply, assign(socket, :form, to_form(changeset))}
+    {:noreply,
+     socket
+     |> assign(:form, to_form(changeset))
+     |> assign(:invite_code, invite_code_param(user_params))}
   end
 
   def handle_event("save", %{"user" => user_params}, socket) do
-    case Accounts.register_user(user_params) do
-      {:ok, user} ->
-        {:noreply,
-         socket
-         |> assign(:trigger_submit, true)
-         |> assign(
-           :form,
-           to_form(
-             %{
-               "email" => user.email,
-               "password" => Map.get(user_params, "password", ""),
-               "remember_me" => "true"
-             },
-             as: :user
-           )
-         )}
+    invite_code = invite_code_param(user_params)
 
-      {:error, %Changeset{} = changeset} ->
-        {:noreply, assign(socket, :form, to_form(changeset))}
+    cond do
+      socket.assigns.invite_required? and invite_code == "" ->
+        {:noreply, put_flash(socket, :error, "An invite code is required to register.")}
+
+      invite_code == "" ->
+        case Accounts.register_user(user_params) do
+          {:ok, user} ->
+            signed_in(socket, user, user_params)
+
+          {:error, %Changeset{} = changeset} ->
+            {:noreply, assign(socket, :form, to_form(changeset))}
+        end
+
+      true ->
+        case Accounts.register_user(user_params, invite_code: invite_code) do
+          {:ok, user} ->
+            signed_in(socket, user, user_params)
+
+          {:error, :invalid_invite} ->
+            {:noreply, put_flash(socket, :error, "That invite code is not valid.")}
+
+          {:error, %Changeset{} = changeset} ->
+            {:noreply, assign(socket, :form, to_form(changeset))}
+        end
     end
   end
+
+  defp signed_in(socket, user, user_params) do
+    {:noreply,
+     socket
+     |> assign(:trigger_submit, true)
+     |> assign(
+       :form,
+       to_form(
+         %{
+           "email" => user.email,
+           "password" => Map.get(user_params, "password", ""),
+           "remember_me" => "true"
+         },
+         as: :user
+       )
+     )}
+  end
+
+  defp invite_code_param(user_params),
+    do: user_params["invite_code"] |> to_string() |> String.trim()
 
   @impl true
   def render(assigns) do
@@ -110,6 +150,15 @@ defmodule TavernWeb.UserRegistrationLive do
                   field={@form[:password]}
                   type="password"
                   label="Password"
+                  required
+                  class="w-full rounded-2xl border border-base-300 bg-base-200 px-4 py-3 text-base-content"
+                />
+                <.input
+                  :if={@invite_required?}
+                  name="user[invite_code]"
+                  value={@invite_code}
+                  type="text"
+                  label="Invite code"
                   required
                   class="w-full rounded-2xl border border-base-300 bg-base-200 px-4 py-3 text-base-content"
                 />

@@ -38,6 +38,11 @@ defmodule Tavern.DataCase do
   def setup_sandbox(tags) do
     pid = Ecto.Adapters.SQL.Sandbox.start_owner!(Tavern.Repo, shared: not tags[:async])
     on_exit(fn -> Ecto.Adapters.SQL.Sandbox.stop_owner(pid) end)
+
+    # Server settings are cached in :persistent_term, which lives across tests while the
+    # database rolls back. Drop the cache, so each test reads its own sandbox's row.
+    Tavern.Chat.reset_server_settings_cache()
+    :ok
   end
 
   @doc """

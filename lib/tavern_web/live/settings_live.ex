@@ -252,6 +252,38 @@ defmodule TavernWeb.SettingsLive do
   end
 
   @impl true
+  def handle_event("create_invite", %{"invite" => attrs}, socket) do
+    case Chat.create_invite(State.invite_attrs(socket, attrs), socket.assigns.current_user) do
+      {:ok, _invite} ->
+        {:noreply,
+         socket
+         |> State.maybe_load_invites()
+         |> assign(:invite_form, to_form(Chat.change_invite(), as: :invite))
+         |> put_flash(:info, "Invite created.")}
+
+      {:error, {:refused, _reason}} ->
+        {:noreply, put_flash(socket, :error, "You cannot manage invites.")}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, :invite_form, to_form(changeset, as: :invite))}
+    end
+  end
+
+  @impl true
+  def handle_event("revoke_invite", %{"id" => invite_id}, socket) do
+    case Chat.revoke_invite(invite_id, socket.assigns.current_user) do
+      {:ok, _invite} ->
+        {:noreply, socket |> State.maybe_load_invites() |> put_flash(:info, "Invite revoked.")}
+
+      {:error, :not_found} ->
+        {:noreply, socket |> State.maybe_load_invites() |> put_flash(:error, "Invite not found.")}
+
+      {:error, {:refused, _reason}} ->
+        {:noreply, put_flash(socket, :error, "You cannot manage invites.")}
+    end
+  end
+
+  @impl true
   def handle_event("toggle_manage_channels", _params, socket) do
     if socket.assigns.can_manage_channels? do
       {:noreply, assign(socket, :manage_channels_open?, !socket.assigns.manage_channels_open?)}

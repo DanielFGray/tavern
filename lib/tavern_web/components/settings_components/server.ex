@@ -51,6 +51,16 @@ defmodule TavernWeb.SettingsComponents.Server do
         >
           <.input field={@server_settings_form[:name]} type="text" label="Server name" />
 
+          <.input
+            field={@server_settings_form[:registration_mode]}
+            type="select"
+            label="Registration (invite only asks every new registrant for a valid code)"
+            options={[
+              {"Open to everyone", "open"},
+              {"Invite only", "invite_only"}
+            ]}
+          />
+
           <div>
             <label class="mb-2 block text-sm font-medium text-base-content/85">Server icon</label>
             <div class="rounded-xl border border-dashed border-base-300 bg-base-100 p-4">
@@ -105,7 +115,99 @@ defmodule TavernWeb.SettingsComponents.Server do
       </div>
 
       <.bot_registry :if={@can_manage_bots?} {assigns} />
+      <.invites_panel :if={@can_manage_server?} {assigns} />
       <.members_panel {assigns} />
+    </div>
+    """
+  end
+
+  def invites_panel(assigns) do
+    ~H"""
+    <div class="mt-5 rounded-xl border border-base-300 bg-base-200 p-4">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-base-content/50">
+            Invites
+          </p>
+          <h3 class="mt-1 text-base font-semibold text-base-content">Invite links</h3>
+        </div>
+
+        <span class="rounded bg-base-300 px-2 py-1 text-[10px] font-semibold text-base-content/60">
+          {if @server_settings.registration_mode == :invite_only,
+            do: "registration requires an invite",
+            else: "registration is open"}
+        </span>
+      </div>
+
+      <.form
+        for={@invite_form}
+        id="invite-form"
+        phx-submit="create_invite"
+        class="mt-4 grid gap-3 md:grid-cols-3"
+      >
+        <.input field={@invite_form[:code]} type="text" label="Code" placeholder="Blank for random" />
+        <.input
+          field={@invite_form[:max_uses]}
+          type="number"
+          label="Max uses"
+          placeholder="Blank for unlimited"
+          min="1"
+        />
+        <.input
+          field={@invite_form[:expires_in_days]}
+          type="number"
+          label="Expires in days"
+          placeholder="Blank for never"
+          min="1"
+        />
+
+        <div class="md:col-span-3">
+          <.button class="rounded-md bg-violet-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-400">
+            Create invite
+          </.button>
+        </div>
+      </.form>
+
+      <div id="invite-list" class="mt-4 space-y-2">
+        <div
+          :for={invite <- @invites}
+          id={"invite-#{invite.id}"}
+          class="rounded-lg border border-base-300 bg-base-100 px-3 py-2"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <div class="min-w-0">
+              <p class="truncate font-mono text-sm text-base-content">
+                {invite.code}
+                <span :if={invite.revoked_at} class="ml-2 text-[11px] font-sans text-base-content/50">
+                  revoked
+                </span>
+              </p>
+              <p class="text-[11px] text-base-content/50">
+                {invite.uses} uses{if invite.max_uses, do: " of #{invite.max_uses}"} · by {invite.inviter &&
+                  invite.inviter.display_name}
+                <span :if={invite.expires_at}>
+                  · expires {Calendar.strftime(invite.expires_at, "%b %-d")}
+                </span>
+              </p>
+            </div>
+
+            <button
+              :if={is_nil(invite.revoked_at)}
+              type="button"
+              phx-click="revoke_invite"
+              phx-value-id={invite.id}
+              id={"revoke-invite-#{invite.id}"}
+              class="rounded-md px-2.5 py-1 text-[11px] font-semibold text-rose-300 transition hover:bg-rose-500/10 hover:text-rose-100"
+            >
+              Revoke
+            </button>
+          </div>
+        </div>
+
+        <p :if={@invites == []} class="text-xs text-base-content/50">
+          No invites yet.
+        </p>
+      </div>
     </div>
     """
   end

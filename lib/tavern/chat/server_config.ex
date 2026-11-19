@@ -61,6 +61,9 @@ defmodule Tavern.Chat.ServerConfig do
     Application.get_env(:tavern, :server_name, "Tavern")
   end
 
+  @doc "Drops the cached server settings, so the next read loads from the database."
+  def reset_server_settings_cache, do: :persistent_term.erase(@cache_key)
+
   defp persist_server_settings(attrs, actor) do
     name_attrs = name_attrs(attrs)
 
@@ -155,7 +158,7 @@ defmodule Tavern.Chat.ServerConfig do
 
   defp name_attrs(attrs) do
     attrs
-    |> Map.take(["name"])
+    |> Map.take(["name", "registration_mode"])
     |> Map.put_new("name", default_server_name())
   end
 

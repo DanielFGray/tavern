@@ -2,9 +2,13 @@ defmodule TavernWeb.UserAuthLiveTest do
   use TavernWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
+  import Ecto.Query
 
   alias Tavern.Accounts.LoginRateLimiter
   alias Tavern.Bootstrap
+  alias Tavern.Chat
+  alias Tavern.Chat.Invite
+  alias Tavern.Repo
   import Tavern.ChatFixtures
   import TavernWeb.ServerLiveFixtures
 
@@ -86,7 +90,6 @@ defmodule TavernWeb.UserAuthLiveTest do
       })
 
     render_submit(registration_form)
-
     conn = follow_trigger_action(registration_form, conn)
 
     assert redirected_to(conn) == ~p"/"
@@ -97,6 +100,76 @@ defmodule TavernWeb.UserAuthLiveTest do
 
     assert member.membership.is_owner
     assert Phoenix.Flash.get(conn.assigns.flash, :info) == "Account created"
+  end
+
+  test "invite-only registration asks for a valid invite code", %{conn: conn} do
+    Bootstrap.ensure_seed_data!()
+    owner = owner_fixture(%{email: "invite-owner@example.com", username: "invite_owner"})
+    channel = channel_fixture()
+
+    assert {:ok, _settings} =
+             Chat.update_server_settings(%{"registration_mode" => "invite_only"}, owner)
+
+    assert {:ok, invite} = Chat.create_invite(%{"channel_id" => channel.id}, owner)
+
+    {:ok, view, _html} = live(conn, ~p"/register")
+    assert has_element?(view, "input[name='user[invite_code]']")
+
+    # Without a code the registration refuses before it creates an account.
+    view
+    |> form("#registration-form", %{
+      user: %{
+        email: "noinvite@example.com",
+        username: "noinvite_user",
+        display_name: "No Invite",
+        password: "supersecurepass"
+      }
+    })
+    |> render_submit()
+
+    assert render(view) =~ "An invite code is required to register."
+    refute Repo.exists?(from u in Chat.User, where: u.email == "noinvite@example.com")
+
+    # A bad code is refused the same way.
+    view
+    |> form("#registration-form", %{
+      user: %{
+        email: "badcode@example.com",
+        username: "badcode_user",
+        display_name: "Bad Code",
+        password: "supersecurepass",
+        invite_code: "notacode"
+      }
+    })
+    |> render_submit()
+
+    assert render(view) =~ "That invite code is not valid."
+    refute Repo.exists?(from u in Chat.User, where: u.email == "badcode@example.com")
+
+    # A valid code registers the account and consumes one use.
+    registration_form =
+      form(view, "#registration-form", %{
+        user: %{
+          email: "invited@example.com",
+          username: "invited_user",
+          display_name: "Invited",
+          password: "supersecurepass",
+          invite_code: invite.code
+        }
+      })
+
+    render_submit(registration_form)
+    conn = follow_trigger_action(registration_form, conn)
+
+    assert redirected_to(conn) == ~p"/"
+
+    member =
+      Tavern.Accounts.get_user_by_email("invited@example.com")
+      |> Tavern.Repo.preload(:membership)
+
+    assert member.membership.user_id == member.id
+    refute member.membership.is_owner
+    assert Repo.reload!(Repo.get!(Invite, invite.id)).uses == 1
   end
 
   test "login redirects authenticated user into server shell", %{conn: conn} do

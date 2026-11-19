@@ -8,6 +8,7 @@ defmodule Tavern.Chat.ServerSettings do
   schema "server_settings" do
     field(:singleton, :boolean, default: true)
     field(:name, :string)
+    field(:registration_mode, Ecto.Enum, values: [:open, :invite_only], default: :open)
 
     belongs_to(:icon_asset, Tavern.Chat.MediaAsset)
 
@@ -16,7 +17,7 @@ defmodule Tavern.Chat.ServerSettings do
 
   def changeset(server_settings, attrs) do
     server_settings
-    |> cast(attrs, [:name])
+    |> cast(attrs, [:name, :registration_mode])
     |> validate_required([:singleton, :name])
     |> validate_length(:name, min: 1, max: 100)
     |> unique_constraint(:singleton)

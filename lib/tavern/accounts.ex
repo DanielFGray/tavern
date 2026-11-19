@@ -9,6 +9,7 @@ defmodule Tavern.Accounts do
   alias Tavern.Accounts.Scope
   alias Tavern.Chat.BotToken
   alias Tavern.Chat.Membership
+  alias Tavern.Chat.Invites
   alias Tavern.Chat.User
   alias Tavern.Chat.UserSession
   alias Tavern.Chat.Visibility
@@ -95,7 +96,11 @@ defmodule Tavern.Accounts do
     user
   end
 
-  def register_user(attrs) do
+  def register_user(attrs, opts \\ [])
+
+  def register_user(attrs, opts) when is_map(attrs) and is_list(opts) do
+    invite_code = Keyword.get(opts, :invite_code)
+
     Repo.transaction(fn ->
       # The ownership lock comes first, in the same order `change_ownership/3` takes it, so a
       # first registration and a concurrent ownership transfer never lock each other out.
@@ -117,12 +122,17 @@ defmodule Tavern.Accounts do
           membership |> Membership.ownership_changeset(true) |> Repo.update!()
         end
 
+      if invite_code do
+        Invites.redeem(invite_code, user)
+      end
+
       user
       |> Repo.preload([:membership, member_roles: :role])
       |> Map.put(:membership, membership)
     end)
     |> case do
       {:ok, user} -> {:ok, user}
+      {:error, {:refused, :invalid_invite}} -> {:error, :invalid_invite}
       {:error, _op, %Changeset{} = changeset, _changes} -> {:error, changeset}
       {:error, _op, reason, _changes} -> raise reason
     end

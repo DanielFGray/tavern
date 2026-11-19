@@ -51,6 +51,9 @@ defmodule TavernWeb.SettingsLive.State do
     |> assign(:bot_token_forms, %{})
     |> refresh_bot_assigns()
     |> assign(:revealed_bot_tokens, %{})
+    |> assign(:invites, [])
+    |> assign(:invite_form, to_form(Chat.change_invite(), as: :invite))
+    |> maybe_load_invites()
     |> assign(:manage_channels_open?, false)
     |> assign(:manage_emojis_open?, false)
     |> assign(:member_presence, Accounts.list_members(socket.assigns.current_scope))
@@ -79,8 +82,38 @@ defmodule TavernWeb.SettingsLive.State do
 
   def server_settings_form(%ServerSettings{} = server_settings) do
     server_settings
-    |> Chat.change_server_settings(%{name: server_settings.name || Chat.default_server_name()})
+    |> Chat.change_server_settings(%{
+      "name" => server_settings.name || Chat.default_server_name(),
+      "registration_mode" => Atom.to_string(server_settings.registration_mode)
+    })
     |> to_form(as: :server_settings)
+  end
+
+  def maybe_load_invites(socket) do
+    case Chat.list_invites(socket.assigns.current_user) do
+      {:error, :forbidden} -> assign(socket, :invites, [])
+      invites -> assign(socket, :invites, invites)
+    end
+  end
+
+  def invite_attrs(socket, attrs) do
+    attrs = Map.put(attrs, "channel_id", default_invite_channel_id(socket.assigns.channels))
+
+    case Integer.parse(attrs["expires_in_days"] || "") do
+      {days, ""} when days > 0 ->
+        Map.put(attrs, "expires_at", DateTime.add(DateTime.utc_now(), days * 86_400, :second))
+
+      _ ->
+        Map.delete(attrs, "expires_at")
+    end
+    |> Map.delete("expires_in_days")
+  end
+
+  defp default_invite_channel_id(channels) do
+    case Enum.find(channels, &(&1.slug == "general")) || List.first(channels) do
+      nil -> nil
+      channel -> channel.id
+    end
   end
 
   def maybe_attach_server_icon_upload(socket, attrs) do
