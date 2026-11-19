@@ -1,7 +1,6 @@
 defmodule TavernWeb.ServerLive.Events.Navigation do
   @moduledoc false
 
-  import Phoenix.Component, only: [assign: 3]
   import Phoenix.LiveView, only: [put_flash: 3]
 
   alias Tavern.Chat
@@ -17,11 +16,11 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
         case params do
           %{"channel" => slug} ->
             case resolve_channel_for_socket(socket, slug) do
-              {:ok, channel} ->
+              {:ok, %{id: id}} when id == socket.assigns.active_channel.id ->
                 socket
-                |> assign(:active_thread, nil)
-                |> State.set_channel_loading(channel)
-                |> State.queue_channel_hydration()
+
+              {:ok, channel} ->
+                State.switch_channel(socket, channel)
 
               _ ->
                 socket
@@ -52,9 +51,7 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
           else
             {:noreply,
              socket
-             |> assign(:active_thread, nil)
-             |> State.set_channel_loading(channel)
-             |> State.queue_channel_hydration()}
+             |> State.switch_channel(channel)}
           end
 
         {:error, :not_found} ->
@@ -71,8 +68,7 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
       {nil, %{} = channel} ->
         {:noreply,
          socket
-         |> State.set_channel_loading(channel)
-         |> State.queue_channel_hydration()}
+         |> State.switch_channel(channel)}
 
       _ ->
         {:noreply, socket}

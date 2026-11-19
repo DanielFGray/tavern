@@ -50,6 +50,33 @@ defmodule TavernWeb.ServerLiveNavigationTest do
     assert render(view) =~ "technical chatter"
   end
 
+  test "a channel switch renders the new messages in the same step, with no loading state", %{
+    conn: conn
+  } do
+    Bootstrap.ensure_seed_data!()
+    conn = log_in_member_user(conn)
+    {:ok, view, _html} = live_hydrated(conn, ~p"/")
+
+    html = view |> element("#channel-link-engineering") |> render_click()
+
+    assert html =~ "technical chatter"
+    refute html =~ "animate-pulse"
+    refute html =~ "Loading channel"
+  end
+
+  test "rapid channel switches end on the last channel", %{conn: conn} do
+    Bootstrap.ensure_seed_data!()
+    conn = log_in_member_user(conn)
+    {:ok, view, _html} = live_hydrated(conn, ~p"/")
+
+    render_patch(view, ~p"/?channel=engineering")
+    render_patch(view, ~p"/?channel=random")
+    html = render_patch(view, ~p"/?channel=general")
+
+    assert html =~ "Welcome to Tavern"
+    refute html =~ "technical chatter"
+  end
+
   test "hides channels denied to the default role", %{conn: conn} do
     Bootstrap.ensure_seed_data!()
     hidden_channel = channel_fixture(%{name: "Ops", slug: unique_slug(), position: 20})

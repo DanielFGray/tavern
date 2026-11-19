@@ -12,10 +12,6 @@ defmodule TavernWeb.ServerComponents.Composer do
     ~H"""
     <div class="border-t border-base-300 bg-base-200 px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
       <%= cond do %>
-        <% not @server.channel_ready? -> %>
-          <div class="rounded-lg border border-base-300 bg-base-100 px-4 py-3 text-sm text-base-content/65">
-            Loading channel...
-          </div>
         <% @server.can_send_messages? -> %>
           <.composer server={@server} target={:channel} />
         <% true -> %>

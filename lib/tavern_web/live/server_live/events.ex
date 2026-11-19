@@ -31,9 +31,7 @@ defmodule TavernWeb.ServerLive.Events do
   end
 
   def handle_info(message, socket)
-      when message in [:hydrate_navigation, :hydrate_members, :hydrate_unread_state] or
-             (is_tuple(message) and tuple_size(message) == 3 and
-                elem(message, 0) == :hydrate_channel) do
+      when message in [:hydrate_navigation, :hydrate_members, :hydrate_unread_state] do
     Hydration.handle_info(message, socket)
   end
 

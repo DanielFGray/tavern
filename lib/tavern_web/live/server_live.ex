@@ -41,8 +41,6 @@ defmodule TavernWeb.ServerLive do
       |> assign(:unread_mentions, %{})
       |> assign(:navigation_ready?, false)
       |> assign(:members_ready?, false)
-      |> assign(:channel_ready?, false)
-      |> assign(:channel_request_token, nil)
       |> assign(:mobile_sidebar_open?, false)
       |> assign(:mobile_members_open?, false)
       |> assign(:user_menu_open?, false)

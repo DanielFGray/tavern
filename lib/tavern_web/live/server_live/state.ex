@@ -33,18 +33,6 @@ defmodule TavernWeb.ServerLive.State do
     end
   end
 
-  def queue_channel_hydration(socket) do
-    case socket.assigns.active_channel do
-      %{} = channel ->
-        channel_request_token = System.unique_integer([:positive])
-        send(self(), {:hydrate_channel, channel.id, channel_request_token})
-        assign(socket, :channel_request_token, channel_request_token)
-
-      nil ->
-        socket
-    end
-  end
-
   def hydrate_navigation(socket) do
     visible_channels = Chat.list_channels(socket.assigns.current_scope)
     channels = Enum.filter(visible_channels, &visible_text_channel?/1)
@@ -162,7 +150,6 @@ defmodule TavernWeb.ServerLive.State do
       :typing_users,
       Chat.list_typing_users(socket.assigns.current_scope, refreshed_active_channel.id)
     )
-    |> assign(:channel_ready?, true)
     |> assign(
       :can_send_messages?,
       Chat.can_send_messages?(refreshed_active_channel, socket.assigns.current_user)
@@ -262,9 +249,6 @@ defmodule TavernWeb.ServerLive.State do
       active_channel.id != message.channel_id ->
         socket
 
-      not socket.assigns.channel_ready? ->
-        socket
-
       true ->
         socket
         |> assign(:messages_empty?, false)
@@ -281,9 +265,6 @@ defmodule TavernWeb.ServerLive.State do
         socket
 
       active_thread.id != message.channel_id ->
-        socket
-
-      not socket.assigns.channel_ready? ->
         socket
 
       true ->
@@ -633,33 +614,20 @@ defmodule TavernWeb.ServerLive.State do
     end
   end
 
-  def hydrate_channel_stale?(socket, channel_id, channel_request_token) do
-    socket.assigns.channel_request_token != channel_request_token or
-      is_nil(socket.assigns.active_channel) or socket.assigns.active_channel.id != channel_id
-  end
-
-  def set_channel_loading(socket, channel) do
+  @doc """
+  Makes `channel` the active channel and loads it in the same step, so the next render shows its
+  messages and the previous content stays until then. State scoped to the previous channel (open
+  thread, reply target, poll draft, edit) is dropped first.
+  """
+  def switch_channel(socket, channel) do
     socket
-    |> close_message_ui()
     |> assign(:active_channel, channel)
-    |> assign(:channel_ready?, false)
-    |> assign(:can_send_messages?, false)
-    |> assign(:can_add_reactions?, false)
-    |> assign(:can_manage_messages?, false)
-    |> assign(:can_mention_everyone?, false)
-    |> assign(:can_create_public_threads?, false)
     |> assign(:reply_to_message, nil)
     |> assign(:poll_form, nil)
     |> assign(:editing_message_id, nil)
     |> assign(:editing_form, nil)
-    |> assign(:message_count, 0)
-    |> assign(:messages_empty?, true)
-    |> assign(:thread_summaries, %{})
-    |> assign(:typing_users, [])
-    |> assign(:forum, nil)
     |> close_thread()
-    |> stream(:messages, [], reset: true)
-    |> sync_channel_subscriptions()
+    |> load_channel(channel)
   end
 
   def refresh_typing_users(socket) do

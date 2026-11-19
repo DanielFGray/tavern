@@ -53,12 +53,4 @@ defmodule TavernWeb.ServerLive.Events.Hydration do
   def handle_info(:hydrate_members, socket) do
     {:noreply, State.hydrate_members(socket)}
   end
-
-  def handle_info({:hydrate_channel, channel_id, channel_request_token}, socket) do
-    if State.hydrate_channel_stale?(socket, channel_id, channel_request_token) do
-      {:noreply, socket}
-    else
-      {:noreply, State.load_channel(socket, socket.assigns.active_channel)}
-    end
-  end
 end
