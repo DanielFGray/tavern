@@ -37,6 +37,12 @@ defmodule TavernWeb.Router do
     plug(TavernWeb.Plugs.RequireBotAuth)
   end
 
+  # The event stream answers `text/event-stream`, which every standard SSE client puts in Accept, so
+  # it skips the JSON-only `:accepts` check. Its errors are still JSON bodies.
+  pipeline :bot_stream do
+    plug(TavernWeb.Plugs.RequireBotAuth)
+  end
+
   pipeline :test_support do
     plug(:accepts, ["json", "html"])
     plug(:fetch_session)
@@ -123,6 +129,11 @@ defmodule TavernWeb.Router do
     post("/messages/:message_id/threads", MessageController, :create_thread)
     post("/commands/execute", CommandController, :execute)
     get("/members/:user_id", MemberController, :show)
+  end
+
+  scope "/api/v1", TavernWeb.API, as: :bot_api do
+    pipe_through :bot_stream
+
     get("/events", BotController, :events)
   end
 
