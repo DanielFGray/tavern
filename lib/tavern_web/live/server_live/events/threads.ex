@@ -119,6 +119,9 @@ defmodule TavernWeb.ServerLive.Events.Threads do
                "You do not have permission to send messages in this thread."
              )}
 
+          {:error, :not_found} ->
+            {:noreply, put_flash(socket, :error, "That thread is no longer available.")}
+
           {:error, changeset} ->
             {:noreply,
              socket
