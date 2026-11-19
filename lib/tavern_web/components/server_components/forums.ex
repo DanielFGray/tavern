@@ -16,7 +16,7 @@ defmodule TavernWeb.ServerComponents.Forums do
     ~H"""
     <div id="forum-view" class={["flex-1 overflow-y-auto", scrollbar_classes()]}>
       <%= if @server.active_thread && @server.active_thread.starter_message do %>
-        <div class="mx-auto w-full max-w-4xl px-3 py-4 sm:px-5">
+        <div class="mx-auto w-full max-w-4xl py-4 pr-3 pl-1 sm:pr-5 sm:pl-3">
           <TavernWeb.ServerComponents.Threads.thread_panel
             server={@server}
             message={@server.active_thread.starter_message}
@@ -249,7 +249,7 @@ defmodule TavernWeb.ServerComponents.Forums do
               {entry.starter.author.display_name}
             </span>
             <span id={"forum-post-replies-#{entry.thread.id}"}>
-              {entry.reply_count} {if entry.reply_count == 1, do: "reply", else: "replies"}
+              {reply_count_label(entry.reply_count)}
             </span>
             <span>{message_timestamp(entry.last_activity_at)}</span>
             <span

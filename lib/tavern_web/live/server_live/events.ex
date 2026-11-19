@@ -89,7 +89,6 @@ defmodule TavernWeb.ServerLive.Events do
       when event in [
              "create_thread",
              "open_thread",
-             "open_thread_focus",
              "close_thread",
              "archive_thread",
              "unarchive_thread",
@@ -103,8 +102,6 @@ defmodule TavernWeb.ServerLive.Events do
              "thread_browser_search",
              "thread_browser_more",
              "open_browsed_thread",
-             "reply_in_thread",
-             "cancel_thread_reply",
              "send_thread_message",
              "typing_ping_thread",
              "typing_stop_thread"

@@ -2,10 +2,11 @@ defmodule TavernWeb.ServerLive.Events.Messages do
   @moduledoc false
 
   import Phoenix.Component, only: [assign: 3, to_form: 1, to_form: 2]
-  import Phoenix.LiveView, only: [put_flash: 3, push_event: 3, stream_insert: 3]
+  import Phoenix.LiveView, only: [put_flash: 3, push_event: 3]
 
   alias Tavern.Accounts
   alias Tavern.Chat
+  alias TavernWeb.ServerComponents.Helpers, as: RowHelpers
   alias TavernWeb.ServerLive.Events.Helpers
   alias TavernWeb.ServerLive.State
 
@@ -33,28 +34,20 @@ defmodule TavernWeb.ServerLive.Events.Messages do
   def handle_info({:message_updated, message}, socket) do
     {:noreply,
      socket
-     |> State.maybe_stream_update_message(message)
-     |> State.maybe_stream_update_thread_message(message)}
+     |> State.stream_update_message(message)}
   end
 
   def handle_info({:message_deleted, message}, socket) do
     {:noreply,
      socket
-     |> State.maybe_stream_update_message(message)
-     |> State.maybe_stream_update_thread_message(message)}
+     |> State.stream_update_message(message)}
   end
 
   def handle_event("toggle_message_controls", %{"id" => message_id}, socket) do
     message_id = Helpers.normalize_message_id(message_id)
 
     with {:ok, message} <- State.fetch_open_message(socket, message_id),
-         true <-
-           Helpers.can_open_message_controls?(
-             message,
-             socket.assigns.current_user,
-             socket.assigns.can_send_messages?,
-             socket.assigns.can_manage_messages?
-           ) do
+         true <- RowHelpers.can_open_message_controls?(socket.assigns, message) do
       previous_controls_id = socket.assigns.active_message_controls_id
       previous_menu_id = socket.assigns.message_action_menu_id
       previous_delete_id = socket.assigns.delete_confirmation_message_id
@@ -254,6 +247,14 @@ defmodule TavernWeb.ServerLive.Events.Messages do
 
     case State.fetch_open_message(socket, message_id) do
       {:ok, message} ->
+        # The reply goes through the one composer on screen. A channel message's reply needs the
+        # channel composer, which an open thread hides, so the thread closes first.
+        socket =
+          if RowHelpers.message_rights(socket.assigns, message).thread? or
+               is_nil(socket.assigns.active_thread),
+             do: socket,
+             else: State.leave_thread(socket)
+
         {:noreply,
          socket
          |> assign(:reply_to_message, message)
@@ -271,7 +272,7 @@ defmodule TavernWeb.ServerLive.Events.Messages do
   end
 
   def handle_event("cancel_reply", _params, socket) do
-    {:noreply, State.clear_reply_to_message(socket)}
+    {:noreply, socket |> State.clear_reply_to_message() |> State.rerender_active_thread_panel()}
   end
 
   def handle_event("edit_message", %{"id" => message_id}, socket) do
@@ -294,8 +295,7 @@ defmodule TavernWeb.ServerLive.Events.Messages do
          previous_controls_id,
          previous_menu_id,
          previous_delete_id
-       ])
-       |> stream_insert(:messages, message)}
+       ])}
     else
       :error -> {:noreply, socket}
       false -> {:noreply, put_flash(socket, :error, "You can only edit your own messages.")}
@@ -306,7 +306,8 @@ defmodule TavernWeb.ServerLive.Events.Messages do
     {:noreply,
      socket
      |> assign(:editing_message_id, nil)
-     |> assign(:editing_form, nil)}
+     |> assign(:editing_form, nil)
+     |> State.rerender_messages([socket.assigns.editing_message_id])}
   end
 
   def handle_event("save_edit", %{"message" => %{"id" => message_id, "body" => body}}, socket) do
@@ -317,7 +318,7 @@ defmodule TavernWeb.ServerLive.Events.Messages do
        socket
        |> assign(:editing_message_id, nil)
        |> assign(:editing_form, nil)
-       |> stream_insert(:messages, updated_message)}
+       |> State.stream_update_message(updated_message)}
     else
       :error ->
         {:noreply, socket}
@@ -352,7 +353,7 @@ defmodule TavernWeb.ServerLive.Events.Messages do
          previous_menu_id,
          previous_delete_id
        ])
-       |> stream_insert(:messages, deleted_message)}
+       |> State.stream_update_message(deleted_message)}
     else
       :error ->
         {:noreply, socket}
@@ -371,8 +372,7 @@ defmodule TavernWeb.ServerLive.Events.Messages do
          {:ok, updated_message} <- Chat.suppress_embeds(socket.assigns.current_scope, message.id) do
       {:noreply,
        socket
-       |> State.maybe_stream_update_message(updated_message)
-       |> State.maybe_stream_update_thread_message(updated_message)}
+       |> State.stream_update_message(updated_message)}
     else
       {:error, :forbidden} ->
         {:noreply,

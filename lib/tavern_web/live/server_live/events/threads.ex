@@ -45,16 +45,13 @@ defmodule TavernWeb.ServerLive.Events.Threads do
   end
 
   def handle_event("open_thread", %{"id" => thread_id}, socket) do
-    open_thread(thread_id, socket, focus?: false)
+    case Chat.get_thread(socket.assigns.current_scope, thread_id) do
+      %{} = thread -> {:noreply, State.open_thread(socket, thread)}
+      nil -> {:noreply, put_flash(socket, :error, "That thread no longer exists.")}
+    end
   end
 
-  def handle_event("open_thread_focus", %{"id" => thread_id}, socket) do
-    open_thread(thread_id, socket, focus?: true)
-  end
-
-  def handle_event("close_thread", _params, socket) do
-    {:noreply, State.close_thread(socket)}
-  end
+  def handle_event("close_thread", _params, socket), do: {:noreply, State.leave_thread(socket)}
 
   def handle_event(event, _params, socket)
       when event in ["archive_thread", "unarchive_thread", "lock_thread", "unlock_thread"] do
@@ -70,26 +67,6 @@ defmodule TavernWeb.ServerLive.Events.Threads do
     end
   end
 
-  def handle_event("reply_in_thread", %{"id" => message_id}, socket) do
-    case State.fetch_open_message(socket, message_id) do
-      {:ok, message} ->
-        {:noreply,
-         socket
-         |> assign(:thread_reply_to_message, message)
-         |> State.rerender_active_thread_panel()}
-
-      :error ->
-        {:noreply, socket}
-    end
-  end
-
-  def handle_event("cancel_thread_reply", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:thread_reply_to_message, nil)
-     |> State.rerender_active_thread_panel()}
-  end
-
   def handle_event("send_thread_message", %{"message" => message_params}, socket) do
     cond do
       is_nil(socket.assigns.active_thread) ->
@@ -103,7 +80,7 @@ defmodule TavernWeb.ServerLive.Events.Threads do
         case Chat.create_message(
                socket.assigns.current_scope,
                socket.assigns.active_thread.id,
-               State.maybe_put_thread_reply(socket, message_params)
+               State.maybe_put_reply(socket, message_params)
              ) do
           {:ok, message} ->
             Chat.clear_typing(socket.assigns.current_scope, socket.assigns.active_thread.id)
@@ -112,7 +89,7 @@ defmodule TavernWeb.ServerLive.Events.Threads do
             {:noreply,
              socket
              |> State.assign_thread_message_form()
-             |> assign(:thread_reply_to_message, nil)
+             |> State.clear_reply_to_message()
              |> State.refresh_thread_typing_users()
              |> State.maybe_insert_thread_message(message)
              |> State.refresh_thread_summaries_for_active_channel()
@@ -194,14 +171,4 @@ defmodule TavernWeb.ServerLive.Events.Threads do
   defp change_thread("unarchive_thread", scope, id), do: Chat.unarchive_thread(scope, id)
   defp change_thread("lock_thread", scope, id), do: Chat.lock_thread(scope, id)
   defp change_thread("unlock_thread", scope, id), do: Chat.unlock_thread(scope, id)
-
-  defp open_thread(thread_id, socket, opts) do
-    case Chat.get_thread(socket.assigns.current_scope, thread_id) do
-      %{} = thread ->
-        {:noreply, State.open_thread(socket, thread, opts)}
-
-      nil ->
-        {:noreply, put_flash(socket, :error, "That thread no longer exists.")}
-    end
-  end
 end

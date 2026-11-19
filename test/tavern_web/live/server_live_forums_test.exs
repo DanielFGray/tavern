@@ -114,8 +114,10 @@ defmodule TavernWeb.ServerLiveForumsTest do
     post = new_post(ctx, ctx.other, "React to me")
     {:ok, view, _html} = live_hydrated(ctx.conn, ~p"/?channel=help&thread=#{post.id}")
 
-    add = "#add-reaction-#{post.starter_message_id}-#{Base.url_encode64("👍", padding: false)}"
-    view |> element(add) |> render_click()
+    id = post.starter_message_id
+    view |> element("#open-reaction-picker-#{id}") |> render_click()
+    thumbs = Base.url_encode64("👍", padding: false)
+    view |> element("#reaction-picker-default-#{id}-#{thumbs}") |> render_click()
 
     assert [%{emoji_unicode: "👍"}] =
              Chat.get_message(scope_for(ctx.me), post.starter_message_id).reactions

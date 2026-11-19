@@ -35,7 +35,7 @@ test('a member posts in a forum and filters the posts by a tag', async ({ page, 
 
     // Posting opens the new post's thread, with its first message inside.
     await expect(page.locator('[id^="thread-message-list-"]', { hasText: body })).toBeVisible()
-    await page.locator('[id^="thread-back-to-channel-"]').click()
+    await page.locator('[id^="close-thread-"]').click()
     await expect(page.locator('#forum-posts')).toBeVisible()
   }
 

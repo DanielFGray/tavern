@@ -20,7 +20,6 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
               {:ok, channel} ->
                 socket
                 |> assign(:active_thread, nil)
-                |> assign(:thread_focus?, false)
                 |> State.set_channel_loading(channel)
                 |> State.queue_channel_hydration()
 
@@ -34,7 +33,7 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
 
       case Chat.get_thread(socket.assigns.current_scope, thread_id) do
         %{} = thread ->
-          {:noreply, State.open_thread(socket, thread, focus?: true)}
+          {:noreply, State.open_thread(socket, thread)}
 
         nil ->
           {:noreply, put_flash(socket, :error, "That thread does not exist.")}
@@ -54,7 +53,6 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
             {:noreply,
              socket
              |> assign(:active_thread, nil)
-             |> assign(:thread_focus?, false)
              |> State.set_channel_loading(channel)
              |> State.queue_channel_hydration()}
           end

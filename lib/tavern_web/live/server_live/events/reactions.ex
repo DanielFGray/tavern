@@ -16,8 +16,7 @@ defmodule TavernWeb.ServerLive.Events.Reactions do
        socket
        |> assign(:reaction_picker_message_id, nil)
        |> State.rerender_messages([message.id])
-       |> State.maybe_stream_update_message(updated_message)
-       |> State.maybe_stream_update_thread_message(updated_message)}
+       |> State.stream_update_message(updated_message)}
     else
       :error ->
         {:noreply, socket}
@@ -47,8 +46,7 @@ defmodule TavernWeb.ServerLive.Events.Reactions do
        socket
        |> assign(:reaction_picker_message_id, nil)
        |> State.rerender_messages([message.id])
-       |> State.maybe_stream_update_message(updated_message)
-       |> State.maybe_stream_update_thread_message(updated_message)}
+       |> State.stream_update_message(updated_message)}
     else
       :error ->
         {:noreply, socket}

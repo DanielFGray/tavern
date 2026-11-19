@@ -290,22 +290,29 @@ defmodule TavernWeb.ServerLive.State do
     end
   end
 
-  def maybe_stream_update_message(socket, message) do
-    if socket.assigns.active_channel && socket.assigns.active_channel.id == message.channel_id do
-      stream_insert(socket, :messages, message)
-    else
-      socket
-    end
-  end
+  @doc """
+  Shows a changed message in the stream that lists it: the open thread's or the open channel's.
+  A change to a thread message can change the reply count (a delete), so the count and the
+  channel's thread summaries are read again, and the starter's row, which holds the thread,
+  renders again.
+  """
+  def stream_update_message(socket, %Message{channel_id: channel_id} = message) do
+    case socket.assigns do
+      %{active_thread: %{id: ^channel_id} = thread} ->
+        socket
+        |> stream_insert(:thread_messages, message)
+        |> assign(
+          :thread_message_count,
+          Chat.thread_reply_count(socket.assigns.current_scope, thread.id)
+        )
+        |> refresh_thread_summaries_for_active_channel()
+        |> rerender_active_thread_panel()
 
-  def maybe_stream_update_thread_message(socket, message) do
-    if socket.assigns.active_thread && socket.assigns.active_thread.id == message.channel_id do
-      socket
-      |> stream_insert(:thread_messages, message)
-      |> refresh_thread_summaries_for_active_channel()
-      |> rerender_messages([socket.assigns.active_thread.starter_message_id])
-    else
-      socket
+      %{active_channel: %{id: ^channel_id}} ->
+        stream_insert(socket, :messages, message)
+
+      _other ->
+        socket
     end
   end
 
@@ -375,17 +382,35 @@ defmodule TavernWeb.ServerLive.State do
     end
   end
 
-  # The :messages stream lists the open channel, so only its messages are inserted.
+  @doc """
+  Inserts the messages again into the stream that lists them, so their rows render with the
+  current UI assigns (controls, menu, picker, edit form). A stream renders a row only when it is
+  inserted. In a text channel the thread's rows render inside its starter's row, so a thread row
+  takes the starter with it. Ids of messages in neither the open channel nor the open thread are
+  skipped.
+  """
   def rerender_messages(socket, message_ids) do
-    channel_ids =
-      if socket.assigns.active_channel, do: [socket.assigns.active_channel.id], else: []
+    %{current_scope: scope, active_channel: channel, active_thread: thread} = socket.assigns
+    thread_id = thread && thread.id
+    channel_id = channel && channel.id
 
-    socket.assigns.current_scope
-    |> Chat.get_messages(message_ids)
-    |> Enum.reduce(socket, fn %Message{channel_id: channel_id} = message, acc ->
-      if channel_id in channel_ids, do: stream_insert(acc, :messages, message), else: acc
-    end)
+    {thread_rows, other_rows} =
+      scope
+      |> Chat.get_messages(message_ids)
+      |> Enum.split_with(&(&1.channel_id == thread_id))
+
+    starter_rows =
+      if thread_rows == [], do: [], else: Chat.get_messages(scope, [thread.starter_message_id])
+
+    channel_rows = Enum.filter(other_rows ++ starter_rows, &(&1.channel_id == channel_id))
+
+    socket
+    |> stream_insert_all(:thread_messages, thread_rows)
+    |> stream_insert_all(:messages, channel_rows)
   end
+
+  defp stream_insert_all(socket, name, messages),
+    do: Enum.reduce(messages, socket, &stream_insert(&2, name, &1))
 
   def rerender_active_thread_panel(socket) do
     case current_thread_starter_id(socket) do
@@ -442,11 +467,13 @@ defmodule TavernWeb.ServerLive.State do
 
   def maybe_restore_thread(socket, nil), do: close_thread(socket)
 
-  def maybe_restore_thread(socket, thread) do
-    open_thread(socket, thread, focus?: socket.assigns.thread_focus?)
-  end
+  def maybe_restore_thread(socket, thread), do: open_thread(socket, thread)
 
-  def open_thread(socket, thread, opts \\ []) do
+  @doc """
+  Opens `thread` under its starter: subscribes to it, streams its messages and marks it read.
+  The thread's composer replaces the channel's, so a reply target in the channel is dropped.
+  """
+  def open_thread(socket, thread) do
     previous_starter_message_id = current_thread_starter_id(socket)
 
     # Subscribe before listing, so a message posted between the two is not lost.
@@ -465,15 +492,12 @@ defmodule TavernWeb.ServerLive.State do
     Chat.ensure_channel_memberships(socket.assigns.current_scope, [thread])
     Chat.mark_channel_read(socket.assigns.current_user, thread, last_message)
 
-    focus? = Keyword.get(opts, :focus?, false)
-
     socket
-    |> assign(:thread_focus?, focus?)
     |> assign(
       :thread_typing_users,
       Chat.list_typing_users(socket.assigns.current_scope, thread.id)
     )
-    |> assign(:thread_reply_to_message, nil)
+    |> keep_reply_in(thread.id)
     |> assign_thread_controls(thread)
     |> assign(
       :thread_message_count,
@@ -488,8 +512,8 @@ defmodule TavernWeb.ServerLive.State do
   end
 
   @doc """
-  Sets the open thread to `thread` and decides again what the viewer may do in it: reply, archive
-  or unarchive, lock or unlock. A lock or archive by anyone changes all three.
+  Sets the open thread to `thread` and decides again what the viewer may do in it: reply, react,
+  manage messages, archive or unarchive, lock or unlock. A lock or archive by anyone changes them.
   """
   def assign_thread_controls(socket, thread) do
     user = socket.assigns.current_user
@@ -500,6 +524,7 @@ defmodule TavernWeb.ServerLive.State do
     |> assign(:can_archive_thread?, Chat.can_archive_thread?(thread, user))
     |> assign(:can_lock_thread?, Chat.can_lock_thread?(thread, user))
     |> assign(:can_react_in_thread?, Chat.can_add_reactions?(thread, user))
+    |> assign(:can_manage_thread_messages?, Chat.can_manage_messages?(thread, user))
   end
 
   @doc "Reloads the open thread when `channel_id` is it, so its header and controls follow."
@@ -528,13 +553,13 @@ defmodule TavernWeb.ServerLive.State do
 
     socket
     |> assign(:active_thread, nil)
-    |> assign(:thread_focus?, false)
     |> assign(:thread_typing_users, [])
-    |> assign(:thread_reply_to_message, nil)
+    |> keep_reply_in(socket.assigns.active_channel && socket.assigns.active_channel.id)
     |> assign(:can_send_thread_messages?, false)
     |> assign(:can_archive_thread?, false)
     |> assign(:can_lock_thread?, false)
     |> assign(:can_react_in_thread?, false)
+    |> assign(:can_manage_thread_messages?, false)
     |> assign(:thread_following?, false)
     |> assign(:thread_message_count, 0)
     |> assign(:thread_messages_empty?, true)
@@ -543,6 +568,17 @@ defmodule TavernWeb.ServerLive.State do
     |> rerender_messages([previous_starter_message_id])
     |> sync_channel_subscriptions()
     |> ForumNav.reload()
+  end
+
+  @doc """
+  Closes the open thread and returns the URL to its channel, since a thread URL reopens its thread
+  on load.
+  """
+  def leave_thread(socket) do
+    case socket.assigns.active_channel do
+      %{} = channel -> socket |> close_thread() |> push_patch(to: channel_path(channel))
+      nil -> close_thread(socket)
+    end
   end
 
   def current_thread_starter_id(socket) do
@@ -559,14 +595,16 @@ defmodule TavernWeb.ServerLive.State do
     end
   end
 
-  def maybe_put_thread_reply(socket, message_params) do
-    case socket.assigns.thread_reply_to_message do
-      nil -> message_params
-      reply_to_message -> Map.put(message_params, "reply_to_id", reply_to_message.id)
+  def clear_reply_to_message(socket), do: assign(socket, :reply_to_message, nil)
+
+  # One composer shows at a time and `:reply_to_message` is its target, so a target outside the
+  # conversation that composer writes to is dropped.
+  defp keep_reply_in(socket, conversation_id) do
+    case socket.assigns.reply_to_message do
+      %{channel_id: ^conversation_id} -> socket
+      _other -> assign(socket, :reply_to_message, nil)
     end
   end
-
-  def clear_reply_to_message(socket), do: assign(socket, :reply_to_message, nil)
 
   def hydrate_channel_stale?(socket, channel_id, channel_request_token) do
     socket.assigns.channel_request_token != channel_request_token or

@@ -47,6 +47,16 @@ Both tabs load 25 at a time, paged by keyset on `(last_activity, id)`, or `(inse
 
 The cursor stays on the server, in the LiveView's `:thread_browser` assign; the client sends only "load more".
 
+## The thread pane
+
+An open thread renders under its starter message as a flat region (`Threads.thread_panel`, `#thread-panel-<starter id>`): a left rule and indentation, no card. A forum post shows the same region in place of the post list.
+
+- **Header**: title, reply count, a bell that follows or unfollows (`#toggle-follow-thread-*`), and a close button (`#close-thread-*`). Archive or Unarchive and Lock or Unlock sit in a ⋯ menu (`#thread-actions-*`), shown only when the member may do one of them. Locked and Archived show as text badges.
+- **Rows**: the thread's messages render with the channel's row, `Messages.message_item`. A row takes the rights of the conversation that holds it (`Helpers.message_rights/2`): the open thread's for a thread message, the channel's for any other. A thread row has no thread chip and no Start thread action. In a text channel the thread's rows are inside the starter's stream item, so re-rendering a thread row re-inserts the starter too (`State.rerender_messages/2`, `State.stream_update_message/2`).
+- **No inner scroll box**: the region grows inside the channel's message list, because a row's reaction picker and action menu are popovers that a clipping box would cut.
+- **One composer**: while a thread is open the channel composer and its typing indicator are hidden, and the thread's composer (`Composer.composer`, target `:thread`) is the only one. Both targets share `:reply_to_message`. Reply on a channel message while a thread is open closes the thread first.
+- **URL**: `?channel=<slug>&thread=<id>` opens the thread inline, and the region scrolls into view when it mounts. Closing the thread patches the URL back to the channel, so a reload does not reopen it.
+
 ## Live updates
 
 A session subscribes to the topics of the channels it lists, plus its open channel and open thread (`State.sync_channel_subscriptions/1`). It does not subscribe to every thread. Thread activity reaches it on the parent channel's topic instead:

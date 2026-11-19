@@ -5,306 +5,193 @@ defmodule TavernWeb.ServerComponents.Threads do
 
   import TavernWeb.ServerComponents.Helpers
 
+  alias TavernWeb.ServerComponents.Composer
+  alias TavernWeb.ServerComponents.Messages
+
   attr :server, :map, required: true
   attr :message, :map, required: true
   attr :thread, :map, required: true
 
+  @doc """
+  The open thread, under its starter: a flat region marked by a left rule, with a header, all the
+  thread's messages as channel message rows, and the thread composer, which is the only composer
+  on screen while the thread is open. `message` is the starter.
+  """
   def thread_panel(assigns) do
-    ~H"""
-    <div
-      id={"thread-panel-#{@message.id}"}
-      class={[
-        "mt-4 overflow-hidden rounded-2xl border border-base-300 bg-base-100 shadow-sm",
-        @server.thread_focus? && "ring-1 ring-primary/25"
-      ]}
-    >
-      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-base-300 bg-base-200/80 px-4 py-3">
-        <div class="min-w-0">
-          <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-base-content/45">
-            Thread
-          </p>
-          <div class="mt-1 flex items-center gap-2">
-            <h3 class="truncate text-sm font-semibold text-base-content">
-              {thread_title(@thread)}
-            </h3>
-            <span
-              id={"thread-reply-count-#{@message.id}"}
-              class="rounded-full bg-base-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-base-content/60"
-            >
-              {@server.thread_message_count} {if @server.thread_message_count == 1,
-                do: "reply",
-                else: "replies"}
-            </span>
-          </div>
-          <p class="mt-1 truncate text-xs text-base-content/55">
-            Started by {@message.author.display_name}
-          </p>
-        </div>
+    assigns =
+      assign(assigns,
+        menu_id: "thread-actions-menu-#{assigns.message.id}",
+        menu?: assigns.server.can_archive_thread? or assigns.server.can_lock_thread?
+      )
 
-        <div class="flex items-center gap-2">
-          <span
-            :if={@thread.locked_at}
-            id={"thread-locked-badge-#{@message.id}"}
-            class="rounded-full bg-warning/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-warning-content"
-          >
-            Locked
-          </span>
-          <span
-            :if={@thread.archived_at}
-            id={"thread-archived-badge-#{@message.id}"}
-            class="rounded-full bg-base-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-base-content/60"
-          >
-            Archived
-          </span>
+    ~H"""
+    <section
+      id={"thread-panel-#{@message.id}"}
+      phx-hook=".ThreadRegion"
+      aria-label={"Thread: #{thread_title(@thread)}"}
+      class="border-l-2 border-base-300 pl-1 sm:pl-2"
+    >
+      <header class="flex min-w-0 items-center gap-2 py-1 pl-3 pr-1">
+        <.icon name="hero-chat-bubble-left-right" class="size-4 shrink-0 text-base-content/45" />
+        <h3 class="min-w-0 truncate text-sm font-semibold text-base-content">
+          {thread_title(@thread)}
+        </h3>
+        <span
+          id={"thread-reply-count-#{@message.id}"}
+          class="shrink-0 text-xs text-base-content/55"
+        >
+          {reply_count_label(@server.thread_message_count)}
+        </span>
+        <span
+          :if={@thread.locked_at}
+          id={"thread-locked-badge-#{@message.id}"}
+          class="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-warning"
+        >
+          Locked
+        </span>
+        <span
+          :if={@thread.archived_at}
+          id={"thread-archived-badge-#{@message.id}"}
+          class="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-base-content/50"
+        >
+          Archived
+        </span>
+
+        <div class="ml-auto flex shrink-0 items-center gap-0.5">
           <button
             type="button"
             phx-click={if @server.thread_following?, do: "unfollow_thread", else: "follow_thread"}
             phx-value-id={@thread.id}
             id={"toggle-follow-thread-#{@message.id}"}
             aria-pressed={to_string(@server.thread_following?)}
+            aria-label={if @server.thread_following?, do: "Unfollow thread", else: "Follow thread"}
+            title={if @server.thread_following?, do: "Unfollow thread", else: "Follow thread"}
             class={[
-              "inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition",
-              @server.thread_following? &&
-                "bg-primary/10 text-primary hover:bg-primary/15",
-              !@server.thread_following? &&
-                "text-base-content/75 hover:bg-base-100 hover:text-base-content"
+              thread_icon_button_classes(),
+              @server.thread_following? && "text-primary hover:bg-primary/10",
+              !@server.thread_following? && "text-base-content/60"
             ]}
           >
             <.icon
-              name={if @server.thread_following?, do: "hero-bell-alert", else: "hero-bell"}
-              class="size-3.5"
+              name={if @server.thread_following?, do: "hero-bell-alert-solid", else: "hero-bell"}
+              class="size-4"
             />
-            {if @server.thread_following?, do: "Following", else: "Follow"}
           </button>
-          <button
-            :if={@server.can_archive_thread?}
-            type="button"
-            phx-click={if @thread.archived_at, do: "unarchive_thread", else: "archive_thread"}
-            id={"toggle-archive-thread-#{@message.id}"}
-            class="rounded-md px-2.5 py-1.5 text-[11px] font-semibold text-base-content/75 transition hover:bg-base-100 hover:text-base-content"
-          >
-            {if @thread.archived_at, do: "Unarchive", else: "Archive"}
-          </button>
-          <button
-            :if={@server.can_lock_thread?}
-            type="button"
-            phx-click={if @thread.locked_at, do: "unlock_thread", else: "lock_thread"}
-            id={"toggle-lock-thread-#{@message.id}"}
-            class="rounded-md px-2.5 py-1.5 text-[11px] font-semibold text-base-content/75 transition hover:bg-base-100 hover:text-base-content"
-          >
-            {if @thread.locked_at, do: "Unlock", else: "Lock"}
-          </button>
-          <.link
-            patch={thread_path(@server.active_channel, @thread)}
-            id={"thread-view-focus-#{@message.id}"}
-            class="rounded-md px-2.5 py-1.5 text-[11px] font-semibold text-base-content/75 transition hover:bg-base-100 hover:text-base-content"
-          >
-            {if @server.thread_focus?, do: "Focused", else: "Focus"}
-          </.link>
-          <.link
-            :if={@server.thread_focus?}
-            patch={channel_path(@server.active_channel)}
-            id={"thread-back-to-channel-#{@message.id}"}
-            class="rounded-md px-2.5 py-1.5 text-[11px] font-semibold text-base-content/75 transition hover:bg-base-100 hover:text-base-content"
-          >
-            Back to channel
-          </.link>
+
+          <div :if={@menu?} class="relative" phx-click-away={JS.hide(to: "##{@menu_id}")}>
+            <button
+              type="button"
+              id={"thread-actions-#{@message.id}"}
+              phx-click={JS.toggle(to: "##{@menu_id}")}
+              aria-haspopup="menu"
+              aria-controls={@menu_id}
+              aria-label="Thread actions"
+              title="Thread actions"
+              class={[thread_icon_button_classes(), "text-base-content/60"]}
+            >
+              <.icon name="hero-ellipsis-horizontal" class="size-4" />
+            </button>
+            <div
+              id={@menu_id}
+              role="menu"
+              class="absolute right-0 top-full z-20 mt-1 hidden min-w-36 rounded-xl border border-base-300 bg-base-100 p-1.5 shadow-xl"
+            >
+              <button
+                :if={@server.can_archive_thread?}
+                type="button"
+                role="menuitem"
+                phx-click={
+                  JS.hide(to: "##{@menu_id}")
+                  |> JS.push(if @thread.archived_at, do: "unarchive_thread", else: "archive_thread")
+                }
+                id={"toggle-archive-thread-#{@message.id}"}
+                class={thread_menu_item_classes()}
+              >
+                <.icon name="hero-archive-box" class="size-4 text-base-content/50" />
+                {if @thread.archived_at, do: "Unarchive", else: "Archive"}
+              </button>
+              <button
+                :if={@server.can_lock_thread?}
+                type="button"
+                role="menuitem"
+                phx-click={
+                  JS.hide(to: "##{@menu_id}")
+                  |> JS.push(if @thread.locked_at, do: "unlock_thread", else: "lock_thread")
+                }
+                id={"toggle-lock-thread-#{@message.id}"}
+                class={thread_menu_item_classes()}
+              >
+                <.icon
+                  name={if @thread.locked_at, do: "hero-lock-open", else: "hero-lock-closed"}
+                  class="size-4 text-base-content/50"
+                />
+                {if @thread.locked_at, do: "Unlock", else: "Lock"}
+              </button>
+            </div>
+          </div>
+
           <button
             type="button"
             phx-click="close_thread"
             id={"close-thread-#{@message.id}"}
-            class="rounded-md px-2.5 py-1.5 text-[11px] font-semibold text-base-content/75 transition hover:bg-base-100 hover:text-base-content"
+            aria-label="Close thread"
+            title="Close thread"
+            class={[thread_icon_button_classes(), "text-base-content/60"]}
           >
-            Close
+            <.icon name="hero-x-mark" class="size-4" />
           </button>
         </div>
-      </div>
+      </header>
 
+      <%!-- No scroll box of its own: a row's reaction picker and action menu are popovers that
+           a clipping box would cut. MessageListHook renders the rows' markdown; a forum post has
+           no channel list around it to do so. --%>
       <div
-        id={"thread-scroll-region-#{@message.id}"}
+        id={"thread-messages-#{@message.id}"}
         data-enable-notifications="false"
-        class={["max-h-[28rem] overflow-y-auto px-4 py-3", scrollbar_classes()]}
         phx-hook="MessageListHook"
       >
-        <div
-          :if={@server.thread_messages_empty?}
-          class="rounded-xl border border-dashed border-base-300 bg-base-200/60 px-4 py-5 text-sm text-base-content/65"
-        >
-          No thread replies yet. Kick this conversation off.
-        </div>
+        <p :if={@server.thread_messages_empty?} class="px-3 py-2 text-sm text-base-content/55">
+          No replies yet.
+        </p>
 
-        <div id={"thread-message-list-#{@message.id}"} phx-update="stream" class="space-y-3">
-          <.thread_message_item
+        <div id={"thread-message-list-#{@message.id}"} phx-update="stream">
+          <Messages.message_item
             :for={{thread_dom_id, thread_message} <- @server.streams.thread_messages}
             dom_id={thread_dom_id}
-            thread_message={thread_message}
+            message={thread_message}
             server={@server}
           />
         </div>
       </div>
 
-      <div class="border-t border-base-300 bg-base-100 px-4 py-4">
+      <div class="pl-3 pr-1 pb-1">
         <%= if @server.can_send_thread_messages? do %>
-          <TavernWeb.ServerComponents.Messages.typing_indicator
+          <Messages.typing_indicator
             users={@server.thread_typing_users}
             id={"thread-typing-indicator-#{@message.id}"}
           />
-          <TavernWeb.ServerComponents.Composer.thread_composer server={@server} />
+          <Composer.composer server={@server} target={:thread} />
         <% else %>
-          <div class="rounded-xl border border-warning/30 bg-warning/15 px-4 py-3 text-sm text-warning-content">
+          <p id={"thread-reply-notice-#{@message.id}"} class="py-2 text-sm text-base-content/55">
             {if @thread.locked_at,
               do: "This thread is locked.",
               else: "You can view this thread, but you do not have permission to reply in it."}
-          </div>
+          </p>
         <% end %>
       </div>
-    </div>
-    """
-  end
-
-  attr :dom_id, :any, required: true
-  attr :thread_message, :map, required: true
-  attr :server, :map, required: true
-
-  def thread_message_item(assigns) do
-    ~H"""
-    <div id={@dom_id} class="rounded-xl border border-base-300 bg-base-200/60 px-3 py-3">
-      <div class="flex gap-3">
-        <div class="flex size-8 shrink-0 items-center justify-center rounded-full bg-base-300 text-[11px] font-semibold text-base-content">
-          {@thread_message.author.display_name |> String.first()}
-        </div>
-
-        <div class="min-w-0 flex-1">
-          <div class="flex flex-wrap items-center gap-2">
-            <p class="text-[13px] font-semibold text-base-content">
-              {@thread_message.author.display_name}
-            </p>
-            <span class="text-[11px] text-base-content/45">@{@thread_message.author.username}</span>
-            <time class="text-[11px] text-base-content/45">
-              {message_timestamp(@thread_message.inserted_at)}
-            </time>
-          </div>
-
-          <div
-            :if={@thread_message.reply_to}
-            class="mt-1 flex items-center gap-2 border-l-2 border-base-300 pl-3 text-xs text-base-content/60"
-          >
-            <span class="truncate">
-              Replying to
-              <span class="font-semibold text-base-content/80">
-                {@thread_message.reply_to.author.display_name}
-              </span>
-              · {@thread_message.reply_to.body}
-            </span>
-          </div>
-
-          <div
-            class={["message-body mt-2 text-sm", message_body_classes()]}
-            data-markdown-source={@thread_message.body}
-          >
-            {@thread_message.body}
-          </div>
-
-          <TavernWeb.ServerComponents.Embeds.message_embeds
-            message={@thread_message}
-            removable?={embeds_removable?(@thread_message, @server)}
-          />
-
-          <.thread_reactions message={@thread_message} server={@server} />
-
-          <div class="mt-2 flex items-center gap-2 text-[11px] text-base-content/50">
-            <span :if={edited_message?(@thread_message)}>(edited)</span>
-            <span :if={deleted_message?(@thread_message)} class="text-amber-300">deleted</span>
-
-            <button
-              type="button"
-              phx-click="reply_in_thread"
-              phx-value-id={@thread_message.id}
-              id={"reply-in-thread-#{@thread_message.id}"}
-              disabled={!@server.can_send_thread_messages? or deleted_message?(@thread_message)}
-              class="rounded-md px-1.5 py-0.5 font-semibold text-base-content/65 transition hover:bg-base-100 hover:text-base-content disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Reply
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-    """
-  end
-
-  attr :message, :map, required: true
-  attr :server, :map, required: true
-
-  # A thread message's reactions, and the default reactions a member who may react can add. The
-  # channel message's emoji picker is tied to the channel's stream, so a thread offers the defaults.
-  defp thread_reactions(assigns) do
-    assigns =
-      assign(
-        assigns,
-        :can_react?,
-        assigns.server.can_react_in_thread? and
-          !deleted_message?(assigns.message)
-      )
-
-    assigns =
-      assign(
-        assigns,
-        :quick,
-        Enum.reject(
-          Tavern.Chat.default_reaction_emojis(),
-          fn emoji ->
-            Enum.any?(assigns.message.reactions, &(&1.emoji_unicode == emoji))
-          end
-        )
-      )
-
-    ~H"""
-    <div
-      :if={@can_react? or @message.reactions != []}
-      class="mt-2 flex flex-wrap items-center gap-1.5"
-    >
-      <button
-        :for={reaction <- reaction_summaries(@message, @server.current_user)}
-        type="button"
-        phx-click={
-          if(reaction.kind == :unicode, do: "toggle_reaction", else: "toggle_custom_reaction")
+    </section>
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".ThreadRegion">
+      export default {
+        // Opening a thread brings its region, composer included, into view. The message list
+        // scrolls to its bottom one animation frame after it changes, so this waits a frame more.
+        mounted() {
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => this.el.scrollIntoView({block: "end"}))
+          )
         }
-        phx-value-id={@message.id}
-        phx-value-emoji={reaction.emoji_unicode}
-        phx-value-emoji_id={reaction.emoji_id}
-        id={reaction_dom_id(@message, reaction)}
-        disabled={!@can_react?}
-        class={[
-          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50",
-          reaction.reacted? && "border-violet-400/60 bg-violet-500/20 text-violet-100",
-          !reaction.reacted? &&
-            "border-base-300 bg-base-100 text-base-content/70 hover:border-base-content/20 hover:text-base-content"
-        ]}
-      >
-        <span :if={reaction.kind == :unicode}>{reaction.emoji_unicode}</span>
-        <img
-          :if={reaction.kind == :custom}
-          src={reaction.url}
-          alt={reaction.label}
-          class="size-4 rounded object-cover"
-        />
-        <span>{reaction.count}</span>
-      </button>
-      <button
-        :for={emoji <- @quick}
-        :if={@can_react?}
-        type="button"
-        phx-click="toggle_reaction"
-        phx-value-id={@message.id}
-        phx-value-emoji={emoji}
-        id={"add-#{reaction_dom_id(@message, %{kind: :unicode, emoji_unicode: emoji})}"}
-        aria-label={"React with #{emoji}"}
-        class="inline-flex items-center rounded-full border border-dashed border-base-300 px-2 py-0.5 text-[11px] opacity-60 transition hover:opacity-100"
-      >
-        {emoji}
-      </button>
-    </div>
+      }
+    </script>
     """
   end
 
@@ -417,7 +304,7 @@ defmodule TavernWeb.ServerComponents.Threads do
                 {thread_title(entry.thread)}
               </span>
               <span class="mt-0.5 block truncate text-[11px] text-base-content/55">
-                {entry.reply_count} {if entry.reply_count == 1, do: "reply", else: "replies"} · last activity {message_timestamp(
+                {reply_count_label(entry.reply_count)} · last activity {message_timestamp(
                   entry.last_activity_at
                 )}
               </span>
@@ -461,4 +348,12 @@ defmodule TavernWeb.ServerComponents.Threads do
 
   defp thread_browser_empty_text(%{tab: :archived}), do: "No archived threads."
   defp thread_browser_empty_text(_browser), do: "No active threads."
+
+  defp thread_icon_button_classes,
+    do:
+      "inline-flex size-8 items-center justify-center rounded-md transition hover:bg-base-200 hover:text-base-content"
+
+  defp thread_menu_item_classes,
+    do:
+      "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-semibold text-base-content/80 transition hover:bg-base-200 hover:text-base-content"
 end

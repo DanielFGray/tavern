@@ -38,6 +38,9 @@ defmodule TavernWeb.ServerComponents.Helpers do
 
   def thread_title(thread), do: thread.name || "Thread"
 
+  def reply_count_label(1), do: "1 reply"
+  def reply_count_label(count), do: "#{count} replies"
+
   def section_dom_id(nil), do: "channel-section-uncategorized"
   def section_dom_id(category), do: "channel-section-#{category.slug}"
 
@@ -176,7 +179,33 @@ defmodule TavernWeb.ServerComponents.Helpers do
   # Whether to show the remove button on a message's embeds. `Tavern.Chat.suppress_embeds/2`
   # decides the removal itself.
   def embeds_removable?(message, server),
-    do: message.author_id == server.current_user.id or server.can_manage_messages?
+    do: own_message?(message, server.current_user) or message_rights(server, message).manage?
+
+  @doc """
+  What the viewer may do to `message`, from the rights of the conversation that holds it. A
+  message in the open thread takes the thread's rights, and any other the open channel's: a forum
+  takes no top-level messages, so only the thread's rights let a member answer a post. `server`
+  is the LiveView's assigns. `thread?` is true for a message in the open thread.
+  """
+  def message_rights(server, %{channel_id: channel_id}) do
+    case server.active_thread do
+      %{id: ^channel_id} ->
+        %{
+          thread?: true,
+          send?: server.can_send_thread_messages?,
+          react?: server.can_react_in_thread?,
+          manage?: server.can_manage_thread_messages?
+        }
+
+      _other ->
+        %{
+          thread?: false,
+          send?: server.can_send_messages?,
+          react?: server.can_add_reactions?,
+          manage?: server.can_manage_messages?
+        }
+    end
+  end
 
   def edited_message?(message),
     do: not is_nil(message.edited_at) and not deleted_message?(message)
@@ -193,8 +222,10 @@ defmodule TavernWeb.ServerComponents.Helpers do
     delete_confirmation_message_id == message_id
   end
 
-  def can_open_message_controls?(message, current_user, can_send_messages?, can_manage_messages?) do
+  def can_open_message_controls?(server, message) do
+    rights = message_rights(server, message)
+
     not deleted_message?(message) and
-      (can_send_messages? or own_message?(message, current_user) or can_manage_messages?)
+      (rights.send? or own_message?(message, server.current_user) or rights.manage?)
   end
 end

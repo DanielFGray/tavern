@@ -27,7 +27,7 @@ defmodule TavernWeb.ServerLiveMessagesTest do
 
     for event <-
           ~w(toggle_message_controls toggle_message_action_menu confirm_delete_message reply_message
-             edit_message toggle_reaction_picker reply_in_thread create_thread),
+             edit_message toggle_reaction_picker create_thread),
         id <- [secret.id, "not-a-uuid"] do
       render_hook(view, event, %{"id" => id})
     end

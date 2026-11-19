@@ -40,10 +40,18 @@ defmodule TavernWeb.ServerLiveThreadsTest do
     |> render_submit()
 
     assert has_element?(view, "#thread-panel-#{starter.id}", "thread reply body")
-    assert has_element?(view, "#thread-summary-#{starter.id}", "1 replies")
+    # The open thread's header carries the title and count, so the starter's chip hides.
+    assert has_element?(view, "#thread-reply-count-#{starter.id}", "1 reply")
+    refute has_element?(view, "#thread-summary-#{starter.id}")
+
+    view |> element("#close-thread-#{starter.id}") |> render_click()
+
+    assert has_element?(view, "#thread-summary-#{starter.id}", "1 reply")
   end
 
-  test "opens focused thread view from params", %{conn: conn} do
+  test "a thread URL opens the thread inline, with the thread composer as the only one", %{
+    conn: conn
+  } do
     Bootstrap.ensure_seed_data!()
     conn = log_in_member_user(conn)
     general = channel_by_slug!("general")
@@ -56,7 +64,13 @@ defmodule TavernWeb.ServerLiveThreadsTest do
 
     assert has_element?(view, "#thread-panel-#{starter.id}")
     assert has_element?(view, "#thread-panel-#{starter.id}", "focused thread reply")
-    assert has_element?(view, "#thread-view-focus-#{starter.id}", "Focused")
+    assert has_element?(view, "#thread-message-form")
+    refute has_element?(view, "#message-form")
+
+    view |> element("#close-thread-#{starter.id}") |> render_click()
+    assert_patch(view, ~p"/?channel=general")
+    refute has_element?(view, "#thread-panel-#{starter.id}")
+    assert has_element?(view, "#message-form")
   end
 
   test "supports replying to a thread message", %{conn: conn} do
@@ -76,7 +90,7 @@ defmodule TavernWeb.ServerLiveThreadsTest do
     _ = :sys.get_state(view.pid)
 
     view |> element("#open-thread-#{starter.id}") |> render_click()
-    view |> element("#reply-in-thread-#{reply.id}") |> render_click()
+    view |> element("#quick-reply-message-#{reply.id}") |> render_click()
 
     _ = :sys.get_state(view.pid)
 
@@ -193,5 +207,72 @@ defmodule TavernWeb.ServerLiveThreadsTest do
 
     view |> element("#toggle-lock-thread-#{starter.id}") |> render_click()
     refute has_element?(view, "#thread-locked-badge-#{starter.id}")
+  end
+
+  describe "a thread reply renders as a channel message row" do
+    setup %{conn: conn} do
+      Bootstrap.ensure_seed_data!()
+      conn = log_in_member_user(conn)
+      general = channel_by_slug!("general")
+      author = current_user_from_conn(conn)
+      starter = message_fixture(general, author, %{body: "row starter"})
+      thread = thread_fixture(general, starter, author)
+      reply = message_fixture(thread, author, %{body: "row reply"})
+      {:ok, view, _html} = live_hydrated(conn, ~p"/?channel=general&thread=#{thread.id}")
+
+      %{view: view, author: author, starter: starter, reply: reply}
+    end
+
+    test "edits the reply in the thread, not in the channel list", ctx do
+      %{view: view, starter: starter, reply: reply} = ctx
+
+      view |> element("#open-message-actions-#{reply.id}") |> render_click()
+      view |> element("#edit-message-#{reply.id}") |> render_click()
+
+      view
+      |> form("#edit-message-form-#{reply.id}", %{message: %{id: reply.id, body: "edited reply"}})
+      |> render_submit()
+
+      assert has_element?(view, "#thread-message-list-#{starter.id}", "edited reply")
+      refute has_element?(view, "#message-list > #messages-#{reply.id}")
+    end
+
+    test "reacts to the reply through the channel's reaction picker", ctx do
+      %{view: view, author: author, reply: reply} = ctx
+
+      view |> element("#open-reaction-picker-#{reply.id}") |> render_click()
+      thumbs = Base.url_encode64("👍", padding: false)
+      view |> element("#reaction-picker-default-#{reply.id}-#{thumbs}") |> render_click()
+
+      assert [%{emoji_unicode: "👍"}] = Chat.get_message(scope_for(author), reply.id).reactions
+      refute has_element?(view, "#reaction-picker-#{reply.id}")
+    end
+
+    test "deleting the reply lowers the header's reply count", ctx do
+      %{view: view, starter: starter, reply: reply} = ctx
+      assert has_element?(view, "#thread-reply-count-#{starter.id}", "1 reply")
+
+      view |> element("#open-message-actions-#{reply.id}") |> render_click()
+      view |> element("#prompt-delete-message-#{reply.id}") |> render_click()
+      view |> element("#delete-message-#{reply.id}") |> render_click()
+
+      assert has_element?(view, "#thread-reply-count-#{starter.id}", "0 replies")
+    end
+
+    test "a reply row has no thread controls of its own", ctx do
+      %{view: view, reply: reply} = ctx
+
+      refute has_element?(view, "#create-thread-#{reply.id}")
+      refute has_element?(view, "#thread-summary-#{reply.id}")
+    end
+
+    test "replying to a channel message closes the thread for the channel composer", ctx do
+      %{view: view, starter: starter} = ctx
+
+      view |> element("#quick-reply-message-#{starter.id}") |> render_click()
+
+      refute has_element?(view, "#thread-panel-#{starter.id}")
+      assert has_element?(view, "#message-form #replying-to-banner")
+    end
   end
 end
