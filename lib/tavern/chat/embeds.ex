@@ -7,7 +7,7 @@ defmodule Tavern.Chat.Embeds do
   copies their images into the object store, then stores what the message still wants in one
   transaction and broadcasts the message. A failed fetch stores nothing.
 
-  The message writes in `Tavern.Chat` call `prune/1` inside their own transaction, so an edit
+  The message writes in `Tavern.Chat.Messages` call `prune/1` inside their own transaction, so an edit
   drops the embeds of links it removed, and a deletion or a suppression drops them all. Image
   objects are deleted after the transaction commits (`delete_objects/1`).
   """
@@ -17,11 +17,11 @@ defmodule Tavern.Chat.Embeds do
   require Logger
 
   alias Tavern.Accounts.Scope
-  alias Tavern.Chat
   alias Tavern.Chat.Channel
   alias Tavern.Chat.MediaAsset
   alias Tavern.Chat.MediaAssets
   alias Tavern.Chat.Message
+  alias Tavern.Chat.Messages
   alias Tavern.Chat.MessageEmbed
   alias Tavern.Chat.Topics
   alias Tavern.Chat.Visibility
@@ -163,7 +163,7 @@ defmodule Tavern.Chat.Embeds do
              Visibility.authorize_write(author_scope, :embed_links, %Channel{
                id: message.channel_id
              }),
-           %Message{} = message <- Chat.lock_live_message(message_id),
+           %Message{} = message <- Messages.lock_live_message(message_id),
            wanted when wanted != [] <- wanted_urls(message) do
         embedded =
           MapSet.new(
@@ -179,7 +179,7 @@ defmodule Tavern.Chat.Embeds do
 
         if stored == [],
           do: {:error, :none},
-          else: {:ok, {Chat.reload_message(message_id), stored}}
+          else: {:ok, {Messages.reload_message(message_id), stored}}
       else
         _refused -> {:error, :none}
       end

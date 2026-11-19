@@ -26,7 +26,7 @@ The state lives in `thread_followers`, one row per thread and member: `source`, 
 - An edit that adds a mention follows no one. Only a new message does, so editing an old message does not pull people in.
 - Follow and unfollow are domain operations: scope first, decided with `:view_channel` on the thread inside the write's transaction. A thread the scope may not view answers `{:error, :not_found}`.
 
-The follow writes run inside the transaction of the event that causes them: `insert_thread` for `:created`, and `Chat.write_message/3` (the insert step of `Chat.create_message/3` and of a forum post) after the mentions are stored for `:posted` and `:mentioned`. A post and its follow commit together or not at all.
+The follow writes run inside the transaction of the event that causes them: `insert_thread` for `:created`, and `Chat.Messages.write_message/3` (the insert step of `Chat.create_message/3` and of a forum post) after the mentions are stored for `:posted` and `:mentioned`. A post and its follow commit together or not at all.
 
 ## What following changes
 

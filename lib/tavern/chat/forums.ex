@@ -9,13 +9,15 @@ defmodule Tavern.Chat.Forums do
   import Ecto.Query, warn: false
 
   alias Tavern.Accounts.Scope
-  alias Tavern.Chat
   alias Tavern.Chat.Channel
   alias Tavern.Chat.ChannelMembership
   alias Tavern.Chat.Channels
   alias Tavern.Chat.Emoji
+  alias Tavern.Chat.MediaAssets
   alias Tavern.Chat.Message
+  alias Tavern.Chat.Messages
   alias Tavern.Chat.Reaction
+  alias Tavern.Chat.Slowmode
   alias Tavern.Chat.ThreadFollows
   alias Tavern.Chat.Threads
   alias Tavern.Chat.Topics
@@ -54,10 +56,10 @@ defmodule Tavern.Chat.Forums do
         with :ok <-
                Visibility.authorize_write(scope, :create_public_threads, %Channel{id: forum_id}),
              %Channel{kind: :forum} = forum <- Channels.lock_channel(forum_id),
-             :ok <- enforce_post_slowmode(scope, forum),
+             :ok <- Slowmode.enforce(scope, forum, last_post_at(scope, forum)),
              {:ok, thread} <- insert_post_thread(scope, forum, post),
              {:ok, {message, _followers} = written} <-
-               Chat.write_message(scope, thread.id, %{"body" => post.body, "metadata" => %{}}),
+               Messages.write_message(scope, thread.id, %{"body" => post.body, "metadata" => %{}}),
              {:ok, thread} <- start_post(thread, message) do
           {:ok, {thread, written}}
         else
@@ -69,7 +71,7 @@ defmodule Tavern.Chat.Forums do
       |> case do
         {:ok, {thread, written}} ->
           Topics.broadcast_server({:channel_created, thread})
-          Chat.publish_message(written)
+          Messages.publish_message(written)
           {:ok, thread}
 
         error ->
@@ -171,28 +173,12 @@ defmodule Tavern.Chat.Forums do
     )
   end
 
-  # The forum's slowmode spaces a member's posts, as a channel's spaces their messages.
-  defp enforce_post_slowmode(_scope, %Channel{slowmode_seconds: 0}), do: :ok
-
-  defp enforce_post_slowmode(scope, %Channel{slowmode_seconds: seconds} = forum) do
-    last_post_at =
-      Repo.one(
-        from(post in Channel,
-          where: post.parent_channel_id == ^forum.id and post.created_by_id == ^scope.user_id,
-          select: max(post.inserted_at)
-        )
-      )
-
-    left =
-      if last_post_at,
-        do: seconds - DateTime.diff(DateTime.utc_now(), last_post_at, :millisecond) / 1000,
-        else: 0
-
-    cond do
-      left <= 0 -> :ok
-      Visibility.can?(scope, :bypass_slowmode, forum) -> :ok
-      true -> {:error, {:slowmode, ceil(left)}}
-    end
+  # What counts as a member's last write in a forum: their last post, the thread they created.
+  defp last_post_at(scope, %Channel{id: forum_id}) do
+    from(post in Channel,
+      where: post.parent_channel_id == ^forum_id and post.created_by_id == ^scope.user_id,
+      select: max(post.inserted_at)
+    )
   end
 
   defp insert_post_thread(scope, forum, post) do
@@ -278,7 +264,7 @@ defmodule Tavern.Chat.Forums do
   # A message's images today are its link previews' images. Attachments are not built yet.
   defp first_image_url(%Message{embeds: embeds}) do
     Enum.find_value(embeds, fn
-      %{image_asset: %{} = asset} -> Chat.asset_url(asset)
+      %{image_asset: %{} = asset} -> MediaAssets.asset_url(asset)
       _embed -> nil
     end)
   end

@@ -13,8 +13,8 @@ defmodule Tavern.Chat.Polls do
   import Ecto.Query, warn: false
 
   alias Tavern.Accounts.Scope
-  alias Tavern.Chat
   alias Tavern.Chat.Message
+  alias Tavern.Chat.Messages
   alias Tavern.Chat.Poll
   alias Tavern.Chat.PollBallot
   alias Tavern.Chat.PollCloser
@@ -85,7 +85,7 @@ defmodule Tavern.Chat.Polls do
   def create_poll(%Scope{} = scope, channel_id, attrs) do
     with {:ok, spec} <- Ecto.Changeset.apply_action(change_poll(attrs), :insert),
          {:ok, message} <-
-           Chat.send_message(
+           Messages.send_message(
              scope,
              channel_id,
              %{"body" => spec.question, "metadata" => %{}},
@@ -121,7 +121,7 @@ defmodule Tavern.Chat.Polls do
       end)
 
     Repo.insert_all(PollOption, options)
-    {:ok, {Chat.reload_message(message.id), followers}}
+    {:ok, {Messages.reload_message(message.id), followers}}
   end
 
   @doc """
@@ -144,7 +144,7 @@ defmodule Tavern.Chat.Polls do
            {:ok, ballot} <- parse_choice(poll, choice),
            :ok <- write_ballot(poll, scope.user_id, ballot),
            closed? = close_at_limit(poll, now) do
-        {:ok, {Chat.reload_message(message.id), ballot, closed?}}
+        {:ok, {Messages.reload_message(message.id), ballot, closed?}}
       else
         nil -> {:error, :not_found}
         error -> error
@@ -178,7 +178,7 @@ defmodule Tavern.Chat.Polls do
            %Poll{} = poll <- lock_poll(message.id),
            :ok <- ensure_open(poll, now) do
         mark_closed!(poll, now)
-        {:ok, Chat.reload_message(message.id)}
+        {:ok, Messages.reload_message(message.id)}
       else
         nil -> {:error, :not_found}
         error -> error
@@ -216,7 +216,7 @@ defmodule Tavern.Chat.Polls do
       end)
 
     for message_id <- closed do
-      message = Chat.reload_message(message_id)
+      message = Messages.reload_message(message_id)
       Topics.broadcast_channel(message.channel_id, {:poll_closed, message, :time})
     end
 
@@ -286,7 +286,7 @@ defmodule Tavern.Chat.Polls do
   defp authorize_poll_write(scope, action, message_id) do
     with {:ok, message_id} <- cast_id(message_id),
          :ok <- Visibility.authorize_write(scope, action, %Message{id: message_id}) do
-      case Chat.lock_live_message(message_id) do
+      case Messages.lock_live_message(message_id) do
         %Message{} = message -> {:ok, message}
         nil -> {:error, :not_found}
       end

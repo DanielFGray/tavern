@@ -1,0 +1,105 @@
+defmodule Tavern.Chat.AuditLog do
+  @moduledoc """
+  Reads the audit log. This is the only reader of the audit log. The event log design
+  (`docs/design/event-log.md`) moves the log into the events table, and that change touches this
+  module alone.
+  """
+
+  import Ecto.Query, warn: false
+
+  alias Tavern.Accounts.Scope
+  alias Tavern.Chat.AuditLogEntry
+  alias Tavern.Chat.User
+  alias Tavern.Chat.Visibility
+  alias Tavern.Repo
+
+  @page_size 50
+
+  @doc """
+  One page of the audit log, newest first: `{:ok, %{entries: entries, next_cursor: cursor}}`.
+  `next_cursor` is `nil` on the last page; pass it back as `cursor` for the next one. The cursor
+  is the `{inserted_at, id}` of the last entry, so a write between two pages never shifts one.
+  A scope without `view_audit_log` gets `{:error, :forbidden}`.
+
+  `filters` is a map with any of `:actor_user_id`, `:action_type`, `:from` and `:to` (dates,
+  inclusive, in UTC). Blank values are ignored; a malformed actor id is `{:error, :not_found}`.
+  """
+  def list_entries(%Scope{} = scope, filters \\ %{}, cursor \\ nil) do
+    if Visibility.can?(scope, :view_audit_log, :server) do
+      with {:ok, query} <- apply_filters(AuditLogEntry, filters) do
+        entries =
+          query
+          |> after_cursor(cursor)
+          |> order_by([entry], desc: entry.inserted_at, desc: entry.id)
+          |> limit(^(@page_size + 1))
+          |> preload([:actor_user, :subject_user, :channel])
+          |> Repo.all()
+
+        {page, rest} = Enum.split(entries, @page_size)
+        next_cursor = if rest != [], do: cursor_of(List.last(page))
+
+        {:ok, %{entries: page, next_cursor: next_cursor}}
+      end
+    else
+      {:error, :forbidden}
+    end
+  end
+
+  @doc """
+  The members who appear as the actor of an audit entry, by username, for the page's filter. A
+  scope without `view_audit_log` gets `{:error, :forbidden}`.
+  """
+  def list_actors(%Scope{} = scope) do
+    if Visibility.can?(scope, :view_audit_log, :server) do
+      actors =
+        from(user in User,
+          where: user.id in subquery(from(entry in AuditLogEntry, select: entry.actor_user_id)),
+          order_by: user.username
+        )
+        |> Repo.all()
+
+      {:ok, actors}
+    else
+      {:error, :forbidden}
+    end
+  end
+
+  defp cursor_of(%AuditLogEntry{inserted_at: inserted_at, id: id}), do: {inserted_at, id}
+
+  defp after_cursor(query, nil), do: query
+
+  defp after_cursor(query, {inserted_at, id}) do
+    where(
+      query,
+      [entry],
+      entry.inserted_at < ^inserted_at or (entry.inserted_at == ^inserted_at and entry.id < ^id)
+    )
+  end
+
+  defp apply_filters(query, filters) do
+    Enum.reduce_while(filters, {:ok, query}, fn
+      {_key, value}, acc when value in [nil, ""] ->
+        {:cont, acc}
+
+      {:actor_user_id, id}, {:ok, query} ->
+        case Ecto.UUID.cast(id) do
+          {:ok, id} -> {:cont, {:ok, where(query, [entry], entry.actor_user_id == ^id)}}
+          :error -> {:halt, {:error, :not_found}}
+        end
+
+      {:action_type, type}, {:ok, query} ->
+        {:cont, {:ok, where(query, [entry], entry.action_type == ^type)}}
+
+      {:from, %Date{} = from}, {:ok, query} ->
+        from = DateTime.new!(from, ~T[00:00:00], "Etc/UTC")
+        {:cont, {:ok, where(query, [entry], entry.inserted_at >= ^from)}}
+
+      {:to, %Date{} = to}, {:ok, query} ->
+        before = DateTime.new!(Date.add(to, 1), ~T[00:00:00], "Etc/UTC")
+        {:cont, {:ok, where(query, [entry], entry.inserted_at < ^before)}}
+
+      {_key, _value}, acc ->
+        {:cont, acc}
+    end)
+  end
+end
