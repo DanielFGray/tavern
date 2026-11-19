@@ -2,7 +2,6 @@ defmodule TavernWeb.SettingsInvitesTest do
   use TavernWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
-  import Ecto.Query
 
   alias Tavern.Bootstrap
   alias Tavern.Chat

@@ -28,7 +28,7 @@ defmodule Tavern.Chat.InvitesTest do
     end
 
     test "a member without manage_server is refused" do
-      owner = owner_fixture()
+      _owner = owner_fixture()
       member = user_fixture()
       channel = channel_fixture()
 
