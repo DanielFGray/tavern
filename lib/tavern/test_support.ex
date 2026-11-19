@@ -183,6 +183,21 @@ defmodule Tavern.TestSupport do
     %{user: user_payload(user)}
   end
 
+  # Sends the account a fresh confirmation link and returns the captured mail with the link's
+  # path. This request subscribes to captured mail first, so the capture provider hands it the mail.
+  defp execute("capture_verification_mail", payload) do
+    email = payload["email"] || raise "email is required"
+    user = Accounts.get_user_by_email(email) || raise "no account has #{email}"
+    ensure_safe_test_identity!(email, user.username)
+
+    :ok = Tavern.Mailer.Capture.subscribe()
+    :ok = Accounts.deliver_user_confirmation_instructions(user)
+    mail = Tavern.Mailer.Capture.await(email, 1_000) || raise "no mail was captured for #{email}"
+
+    [link] = Regex.run(~r{https?://\S+/users/confirm/\S+}, mail.text)
+    %{mail: %{to: mail.to, subject: mail.subject, path: URI.parse(link).path}}
+  end
+
   defp execute("bulk_create_users", payload) do
     count = payload["count"] || 10
     offset = payload["offset"] || 0
@@ -197,12 +212,15 @@ defmodule Tavern.TestSupport do
 
         user =
           Accounts.get_user_by_email(email) ||
-            Accounts.register_user!(%{
-              email: email,
-              username: username,
-              display_name: "Load User #{n}",
-              password: password
-            })
+            register_test_user!(
+              %{
+                email: email,
+                username: username,
+                display_name: "Load User #{n}",
+                password: password
+              },
+              true
+            )
 
         %{id: user.id, email: user.email, username: user.username}
       end)
@@ -245,8 +263,20 @@ defmodule Tavern.TestSupport do
     ensure_safe_test_identity!(email, username)
 
     Accounts.get_user_by_email(email) ||
-      normalize_user_attrs(payload, email, username)
-      |> Accounts.register_user!()
+      payload
+      |> normalize_user_attrs(email, username)
+      |> register_test_user!(payload["verified"] != false)
+  end
+
+  # Test users are verified unless the payload says `"verified": false`: the test database is
+  # seeded with the Unverified role and mail is captured, so verification is active, and most
+  # specs need a member who can send.
+  defp register_test_user!(attrs, verified?) do
+    user = Accounts.register_user!(attrs)
+
+    if verified?,
+      do: user |> Ecto.Changeset.change(confirmed_at: DateTime.utc_now()) |> Repo.update!(),
+      else: user
   end
 
   defp normalize_user_attrs(payload, email, username) do

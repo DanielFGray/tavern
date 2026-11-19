@@ -10,6 +10,8 @@ defmodule Tavern.Accounts.LoginRateLimiter do
   @ip_limit 20
   @credential_window_seconds 300
   @credential_limit 5
+  @email_link_window_seconds 900
+  @email_link_limit 3
 
   def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, opts, name: __MODULE__)
@@ -34,6 +36,19 @@ defmodule Tavern.Accounts.LoginRateLimiter do
       nil -> :ok
       seconds -> {:error, seconds}
     end
+  end
+
+  @doc """
+  Counts one mail that carries an email link (a confirmation or an email change) for the account
+  `user_id`: at most #{@email_link_limit} in
+  #{@email_link_window_seconds} seconds. Returns `:ok` or `{:error, retry_after_seconds}`.
+  """
+  def check_email_link(user_id) do
+    now = System.system_time(:second)
+    key = {:email_link, user_id}
+    {count, reset_at} = bump_bucket(key, @email_link_window_seconds, now)
+
+    if count > @email_link_limit, do: {:error, max(reset_at - now, 1)}, else: :ok
   end
 
   def clear_attempts(ip_address, email) do

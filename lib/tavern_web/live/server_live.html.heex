@@ -13,6 +13,7 @@
     />
 
     <section class="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-base-200 transition-colors duration-200">
+      <TavernWeb.ServerComponents.Verification.banner user={@current_user} />
       <TavernWeb.ServerComponents.active_channel_view :if={@active_channel} server={assigns} />
     </section>
 

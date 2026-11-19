@@ -21,8 +21,8 @@ defmodule Tavern.Chat.RoleAuthority do
   actor could pass on bits they do not hold.
 
   The default role (`@everyone`) and managed roles are never given or taken, by anyone. The
-  default role is always lowest; only its permissions are editable. A managed role that is not
-  the default role is changed only by the system.
+  default role and the Unverified role are always lowest; only their permissions are editable.
+  Any other managed role is changed only by the system.
 
   Authority is read from the database each time it is loaded: a session's scope can be stale
   after a role change or a demotion.

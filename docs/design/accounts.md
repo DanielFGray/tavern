@@ -1,6 +1,6 @@
 # Accounts
 
-How an account is deleted, and how a kicked member's deletion is scheduled, and why.
+How an account verifies its email, how it is deleted, and how a kicked member's deletion is scheduled, and why.
 
 ## Summary
 
@@ -9,6 +9,7 @@ How an account is deleted, and how a kicked member's deletion is scheduled, and 
 - `Tavern.Accounts.DeletionSweeper` deletes the accounts whose date has passed, once an hour, through `Accounts.delete_due_accounts/1`.
 - A rejoin with an invite, a ban, or a moderator with `kick_members` cancels a schedule. A banned account is never deleted automatically.
 - Messages stay. Their author shows as "Deleted user" everywhere the account's display name shows.
+- A member who has not confirmed their email holds the Unverified role, which by default makes them read only. Registration mails a confirmation link. An email change applies only when the link sent to the new address opens. With no mail provider, verification is inactive and nobody is restricted.
 
 ## Deleting an account
 
@@ -90,3 +91,78 @@ Each cancellation clears the date and writes an `account_deletion_canceled` entr
 | `account_deleted` | `@actor deleted the account @deleted-…`, or `The scheduled deletion removed the account @deleted-…` from the sweep |
 
 An entry about a deleted account shows its tombstone handle. No entry stores the old username or email.
+
+## Email verification
+
+### Who is unverified
+
+`Accounts.unverified?/1` is the one test. A user is unverified when all of these hold:
+
+- `confirmed_at` is nil;
+- the user is not a bot and not deleted;
+- the user does not own the server;
+- a mail provider is configured (`Accounts.verification_active?/0`, which is `Tavern.Mailer.configured?/0`).
+
+Without a provider a member cannot receive a link, so restricting them would lock them out with no way back. Settings > Roles then shows "Email verification is inactive" and names the missing settings (`Tavern.Mailer.missing_settings/0`). An owner is never restricted: the owner must always be able to run the server. A bot has no inbox; its token is the proof.
+
+The migration `20261119181454_add_email_verification` sets `confirmed_at` on every existing, not deleted account, so no member loses rights when it deploys. An account that registers while verification is inactive keeps `confirmed_at` nil. Once a provider is configured, that account becomes unverified and can resend the link from the banner.
+
+### The Unverified role
+
+An unverified member holds the Unverified role (`roles.is_unverified`) without a `member_roles` row, as every member holds `@everyone`. `Visibility.load` reads the role in the same statement as the member and passes it to `Authorization` as an implicit role. Denies and allows then combine as for any held role (roles.md, "Server permissions"), so another role that allows a bit wins over the Unverified deny.
+
+`Bootstrap.ensure_unverified_role!/0` creates it with these denies: `send_messages`, `send_messages_in_threads`, `create_public_threads`, `create_private_threads`, `attach_files`, `add_reactions` and `mention_everyone`. The role denies nothing for invites, and an unverified member still cannot create one: creating an invite needs `manage_server`, which `@everyone` does not allow. A deny removes only what `@everyone` allows, so an invite deny would change nothing. A member who holds `manage_server` through another role keeps it, since allow wins. Bootstrap writes the bits only when it creates the role, so a manager's edits stay across deploys.
+
+The role is managed. Nobody deletes, moves, gives or takes it, and no message can mention it. Its name, color and flags are fixed; only its allow and deny bits are editable, under the role rule (roles.md, "Fixed rules"). It sits at position 0 beside `@everyone`, outside the ranked roles. A unique partial index allows one such role, and the `unverified_role_is_not_default` check keeps it apart from the default role.
+
+The bot API's member `role_ids` lists the Unverified role while the member holds it.
+
+### Email tokens
+
+Tokens follow the phx.gen.auth pattern and live in `user_sessions`:
+
+- The mail carries a random token. The table stores only its hash (`hash_token`).
+- `context` is `"confirm"`, or `"change:<old email>"` for an email change. `sent_to` is the address the mail went to.
+- A token expires 7 days after it is made (`expires_at`). Using it deletes it and every other token of the same kind for that user, so a link works once.
+
+A confirmation token works only while the account's email is still the `sent_to` address. A change token works only while the account's email is still the old address in its context. A link mailed before another change therefore fails. A token never works for a deleted account or a bot.
+
+Each use runs in one transaction that locks the token row and the user row `FOR UPDATE`, so two clicks on one link cannot both succeed.
+
+### Registration and resend
+
+`UserRegistrationLive` calls `Accounts.deliver_user_confirmation_instructions/1` after the account is created. The function sends nothing to a verified, bot, deleted or email-less account, or while verification is inactive. `Accounts.register_user/2` sends no mail itself, so fixtures and the test support commands do not fill test mailboxes.
+
+A failed send does not block registration. The member can ask for a new link from the banner (`Accounts.resend_user_confirmation/1`). `LoginRateLimiter.check_email_link/1` allows 3 link mails per member per 15 minutes, resends and email changes together, in the same bucket store as the login limit (Valkey, with an ETS fallback). Past the limit the banner flashes how long to wait.
+
+### Opening a link
+
+| Route | Effect |
+| --- | --- |
+| `GET /users/confirm/:token` | `Accounts.confirm_user/1` sets `confirmed_at`, then redirects to `/` with a flash. |
+| `GET /users/confirm-email/:token` | `Accounts.update_user_email_from_token/1` writes the new email, sets `confirmed_at` if it was nil, then redirects to `/settings`. |
+
+Both routes sit in the `:browser` pipeline without an authentication requirement. They sign nobody in or out. The member opens the link in whichever browser the mail client picks, signed in or not. After the commit, both broadcast `{:email_confirmed, user_id}` on the server topic. The member's open ServerLive views reload the member and the open channel, so the banner goes and the composer unlocks without a reload, even when the link opened in another tab. Other views reload their member list, which drops the badge.
+
+### Email change
+
+`Accounts.update_user_email/3` checks the current password and validates the new address, including uniqueness. When verification is active it does not write the address. It mails a change link to the new address and returns `{:ok, :confirmation_sent}`. That mail counts toward the same per-member link limit as a resend. The member stays verified meanwhile, and the old address keeps working. The address changes only when the link opens, which also proves the member controls it. If another account took the address in the meantime, the link answers "taken" and changes nothing. With verification inactive, the change applies at once, as before.
+
+### UI
+
+- **Banner.** ServerLive shows "Check <email> to verify your account." with a Resend button, above the channel view, while the member is unverified.
+- **Composer.** In place of the form, the locked notice says "Verify your email to send messages" when verification is the reason. The thread reply notice says "Verify your email to reply."
+- **Badge.** The member list in ServerLive and in Settings > Server shows "unverified" beside an unverified member, only to viewers with `manage_roles`.
+- **Settings > Roles.** The Unverified role lists its member count and "unconfirmed emails". Its editor shows only the permission grid.
+
+### Tests and the capture provider
+
+The dev and test configs use the capture mail provider (`Tavern.Mailer.Capture`), so verification is active in tests. Capture logs each mail, so in development the link is in the server log. It also sends `{:mail_captured, email}`, but only to a process that called `Capture.subscribe/0`, when that process sent the mail or started the process that did (`$callers`). The `DataCase` and `ConnCase` setups subscribe the test process, and the e2e command subscribes its request. A LiveView never subscribes, so a view that sends mail never receives it.
+
+`user_fixture/1` and the test support commands make verified users by default, because most tests need a member who can send. `unverified_user_fixture/1`, and `"verified": false` on the `upsert_user` and `login` commands, make an unverified one. The `capture_verification_mail` command mails a fresh link and returns its path, for e2e specs. It works wherever the e2e server runs (`MIX_ENV=test`), since it subscribes before it sends.
+
+### Known gaps
+
+- The link is a GET. A mail scanner that follows links can use a token before the member does. The member then finds the account verified, or asks for a new link.
+- Pruning accounts that never verify, and password reset by mail, are separate work.
+- The app has no password change yet. When password reset or change ships, it must delete the account's pending `confirm` and `change:` rows, as phx.gen.auth does, so a link requested with the old password stops working. `revoke_user_sessions/1` deletes only `session` rows.

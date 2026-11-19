@@ -6,7 +6,9 @@ defmodule Tavern.Accounts do
   import Ecto.Query, warn: false
 
   alias Ecto.Changeset
+  alias Tavern.Accounts.LoginRateLimiter
   alias Tavern.Accounts.Scope
+  alias Tavern.Accounts.VerificationMail
   alias Tavern.Chat.AuditLogEntry
   alias Tavern.Chat.BotToken
   alias Tavern.Chat.ChannelMembership
@@ -19,6 +21,7 @@ defmodule Tavern.Accounts do
   alias Tavern.Chat.Invites
   alias Tavern.Chat.ServerSettings
   alias Tavern.Chat.ThreadFollower
+  alias Tavern.Chat.Topics
   alias Tavern.Chat.User
   alias Tavern.Chat.UserNotificationSetting
   alias Tavern.Chat.UserSession
@@ -27,6 +30,7 @@ defmodule Tavern.Accounts do
   alias Tavern.Repo
 
   @session_valid_days 30
+  @email_token_valid_days 7
   @deletion_sweep_limit 500
   # An arbitrary constant that names "server ownership" among Postgres advisory locks.
   @ownership_lock_key 7_314_002_001
@@ -37,12 +41,22 @@ defmodule Tavern.Accounts do
 
   @doc """
   The active members of the server (not deleted, not deactivated), owners first, each with its
-  presence. A scope that is not an active member gets `[]`.
+  presence. A scope that is not an active member gets `[]`. `unverified?` marks a member who holds
+  the Unverified role, and only for a scope that holds `manage_roles`: it is false for everyone
+  else.
   """
   def list_members(%Scope{} = scope) do
-    if is_nil(Visibility.member(scope)),
-      do: [],
-      else: presence_entries(Repo.all(preload(active_members(), [:membership])))
+    if is_nil(Visibility.member(scope)) do
+      []
+    else
+      show_unverified? = Visibility.can?(scope, :manage_roles, :server)
+
+      active_members()
+      |> preload([:membership])
+      |> Repo.all()
+      |> presence_entries()
+      |> Enum.map(&Map.put(&1, :unverified?, show_unverified? and unverified?(&1.user)))
+    end
   end
 
   @doc """
@@ -232,25 +246,253 @@ defmodule Tavern.Accounts do
   @doc """
   Changes the email when `password` is the account's current password. A wrong or missing
   password adds an error on `:password` and writes nothing.
+
+  While verification is active (`verification_active?/0`), the change waits for the new
+  address: this mails a link to it and returns `{:ok, :confirmation_sent}`, and the email
+  changes only when the link is opened (`update_user_email_from_token/1`). The account stays
+  verified meanwhile. With verification inactive, or when the email does not change, it returns
+  `{:ok, user}` at once. A mail that cannot be sent is an error on `:email`.
   """
   def update_user_email(%User{} = user, password, attrs) do
-    changeset = User.email_changeset(user, attrs)
+    changeset =
+      user
+      |> User.email_changeset(attrs)
+      |> Changeset.unsafe_validate_unique(:email, Repo)
 
-    if valid_user_password?(user, password) do
-      changeset
-      |> Repo.update()
-      |> case do
-        {:ok, updated_user} ->
-          {:ok, Repo.preload(updated_user, [:membership, member_roles: :role])}
+    cond do
+      not valid_user_password?(user, password) ->
+        changeset
+        |> Changeset.add_error(:password, "is not correct")
+        |> Changeset.apply_action(:update)
 
-        {:error, changeset} ->
-          {:error, changeset}
+      not verification_active?() or not changeset.valid? or
+          not Changeset.changed?(changeset, :email) ->
+        changeset
+        |> Repo.update()
+        |> case do
+          {:ok, updated_user} ->
+            {:ok, Repo.preload(updated_user, [:membership, member_roles: :role], force: true)}
+
+          {:error, changeset} ->
+            {:error, changeset}
+        end
+
+      true ->
+        request_email_change(user, changeset)
+    end
+  end
+
+  @doc """
+  Applies the email change that `token` confirms, and marks the account verified: the member
+  proved they read the new address. The token is single use and works only while the account
+  still has the email it was requested from. Returns `{:ok, user}`, `{:error, :invalid}` for a
+  used, expired or unknown link, or `{:error, :email_taken}` when another account took the address
+  in the meantime.
+  """
+  def update_user_email_from_token(token) when is_binary(token) do
+    Repo.transact(fn ->
+      case lock_email_token(token, :email_change) do
+        nil ->
+          {:error, :invalid}
+
+        {row, user} ->
+          delete_email_tokens!(user.id, :email_change)
+
+          user
+          |> User.email_changeset(%{email: row.sent_to})
+          |> Changeset.put_change(:confirmed_at, user.confirmed_at || DateTime.utc_now())
+          |> Repo.update()
+          |> case do
+            {:ok, user} -> {:ok, user}
+            {:error, _changeset} -> {:error, :email_taken}
+          end
+      end
+    end)
+    |> broadcast_email_confirmed()
+  end
+
+  # --- Verification --------------------------------------------------------------------------
+
+  @doc """
+  Whether email verification is on. It is on exactly when mail can be sent
+  (`Tavern.Mailer.configured?/0`): with no provider, nobody could verify, so nobody is
+  restricted.
+  """
+  def verification_active?, do: Tavern.Mailer.configured?()
+
+  @doc """
+  Whether the account holds the Unverified role: verification is active, and it is a human,
+  non-owner account whose email is not confirmed. Bots and owners never hold it. The role is
+  derived here each time, never stored as a `member_roles` row. The account needs its membership
+  loaded, or it is not known to be an owner.
+  """
+  def unverified?(%User{bot: true}), do: false
+  def unverified?(%User{confirmed_at: %DateTime{}}), do: false
+  def unverified?(%User{deleted_at: %DateTime{}}), do: false
+  def unverified?(%User{} = user), do: not owner?(user) and verification_active?()
+
+  @doc """
+  Mails `user` a link that confirms their email, while verification is active and the email is
+  not confirmed. Registration calls it. Returns `:ok` (also when there is nothing to send) or
+  `{:error, reason}` when the mail fails.
+  """
+  def deliver_user_confirmation_instructions(
+        %User{bot: false, confirmed_at: nil, deleted_at: nil, email: email} = user
+      )
+      when is_binary(email) do
+    if verification_active?() do
+      token = insert_email_token!(user, :confirm, email)
+      VerificationMail.deliver_confirmation(email, token)
+    else
+      :ok
+    end
+  end
+
+  def deliver_user_confirmation_instructions(%User{}), do: :ok
+
+  @doc """
+  Sends the confirmation link again for a member who holds the Unverified role, through the
+  login rate limiter. Returns `:ok`, `{:error, :not_needed}` for an account that is not
+  unverified, `{:error, {:rate_limited, seconds}}`, or `{:error, reason}` when the mail fails.
+  """
+  def resend_user_confirmation(%User{} = user) do
+    with true <- unverified?(user) || {:error, :not_needed},
+         :ok <- rate_limit_email_link(user) do
+      deliver_user_confirmation_instructions(user)
+    end
+  end
+
+  # Resends and email changes share one bucket per member: each mails a link the member asked for.
+  defp rate_limit_email_link(user) do
+    case LoginRateLimiter.check_email_link(user.id) do
+      :ok -> :ok
+      {:error, seconds} -> {:error, {:rate_limited, seconds}}
+    end
+  end
+
+  @doc """
+  Confirms the email that `token` was sent to: sets `confirmed_at` and spends every confirmation
+  link of the account. It signs nobody in or out. The link is single use, expires after
+  #{@email_token_valid_days} days, and works only while the account still has the address it
+  was sent to. Returns `{:ok, user}` or `{:error, :invalid}`.
+  """
+  def confirm_user(token) when is_binary(token) do
+    Repo.transact(fn ->
+      case lock_email_token(token, :confirm) do
+        nil ->
+          {:error, :invalid}
+
+        {_row, user} ->
+          delete_email_tokens!(user.id, :confirm)
+
+          {:ok,
+           user
+           |> Changeset.change(confirmed_at: user.confirmed_at || DateTime.utc_now())
+           |> Repo.update!()}
+      end
+    end)
+    |> broadcast_email_confirmed()
+  end
+
+  # Tells every open view, after the commit, that `user` confirmed an email: the member's own
+  # views may have lost the Unverified role, and managers' member lists show a badge.
+  defp broadcast_email_confirmed({:ok, %User{} = user} = result) do
+    Topics.broadcast_server({:email_confirmed, user.id})
+    result
+  end
+
+  defp broadcast_email_confirmed(error), do: error
+
+  defp request_email_change(%User{} = user, changeset) do
+    with {:ok, draft} <- Changeset.apply_action(changeset, :update),
+         :ok <- rate_limit_email_link(user) do
+      # Only the latest request's link works.
+      delete_email_tokens!(user.id, :email_change)
+      token = insert_email_token!(user, :email_change, draft.email)
+
+      case VerificationMail.deliver_email_change(draft.email, token) do
+        :ok ->
+          {:ok, :confirmation_sent}
+
+        {:error, reason} ->
+          delete_email_tokens!(user.id, :email_change)
+
+          changeset
+          |> Changeset.add_error(:email, "could not be sent the confirmation link: #{reason}")
+          |> Changeset.apply_action(:update)
       end
     else
-      changeset
-      |> Ecto.Changeset.add_error(:password, "is not correct")
-      |> Ecto.Changeset.apply_action(:update)
+      {:error, {:rate_limited, seconds}} ->
+        changeset
+        |> Changeset.add_error(
+          :email,
+          "was sent too many links. Try again in #{div(seconds + 59, 60)} min."
+        )
+        |> Changeset.apply_action(:update)
+
+      {:error, changeset} ->
+        {:error, changeset}
     end
+  end
+
+  # Email links live in `user_sessions` beside sessions, told apart by `context`: "confirm" for a
+  # verification link, and "change:<current email>" for an email change. The change context names
+  # the address it was requested from, so a link stops working once the email changes another way.
+  defp email_token_context(:confirm, _user), do: "confirm"
+  defp email_token_context(:email_change, %User{email: email}), do: "change:" <> email
+
+  defp insert_email_token!(%User{} = user, kind, sent_to) do
+    insert_token!(&UserSession.changeset/2, %{
+      user_id: user.id,
+      context: email_token_context(kind, user),
+      sent_to: sent_to,
+      expires_at: DateTime.add(DateTime.utc_now(), @email_token_valid_days * 86_400, :second)
+    })
+  end
+
+  # The live token row and its account, both locked, or nil. A second use waits on the first's
+  # lock and then finds the row deleted.
+  defp lock_email_token(token, kind) do
+    now = DateTime.utc_now()
+
+    query =
+      from(session in UserSession,
+        join: user in User,
+        on: user.id == session.user_id,
+        where: session.token_hash == ^hash_token(token) and session.expires_at > ^now,
+        where: is_nil(user.deleted_at) and user.bot == false,
+        lock: "FOR UPDATE",
+        select: {session, user}
+      )
+
+    query =
+      case kind do
+        :confirm ->
+          where(
+            query,
+            [session, user],
+            session.context == "confirm" and session.sent_to == user.email
+          )
+
+        :email_change ->
+          where(query, [session, user], session.context == fragment("'change:' || ?", user.email))
+      end
+
+    Repo.one(query)
+  end
+
+  defp delete_email_tokens!(user_id, :confirm) do
+    from(session in UserSession,
+      where: session.user_id == ^user_id and session.context == "confirm"
+    )
+    |> Repo.delete_all()
+  end
+
+  defp delete_email_tokens!(user_id, :email_change) do
+    from(session in UserSession,
+      where: session.user_id == ^user_id and like(session.context, "change:%")
+    )
+    |> Repo.delete_all()
   end
 
   def dummy_login_changeset do
@@ -280,19 +522,25 @@ defmodule Tavern.Accounts do
   end
 
   def generate_user_session_token(%User{} = user, attrs \\ %{}) do
-    token = Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
     now = DateTime.utc_now()
 
-    %UserSession{}
-    |> UserSession.session_changeset(%{
+    insert_token!(&UserSession.session_changeset/2, %{
       user_id: user.id,
-      token_hash: hash_token(token),
       context: "session",
       expires_at: DateTime.add(now, @session_valid_days * 86_400, :second),
       last_seen_at: now,
       user_agent: Map.get(attrs, :user_agent),
       ip_address: Map.get(attrs, :ip_address)
     })
+  end
+
+  # Inserts a `user_sessions` row for a fresh random token and returns the token. The row keeps
+  # only the hash, so a database leak gives no usable token.
+  defp insert_token!(changeset, attrs) do
+    token = Base.url_encode64(:crypto.strong_rand_bytes(32), padding: false)
+
+    %UserSession{}
+    |> changeset.(Map.put(attrs, :token_hash, hash_token(token)))
     |> Repo.insert!()
 
     token

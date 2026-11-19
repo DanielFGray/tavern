@@ -50,6 +50,8 @@ defmodule TavernWeb.SettingsComponents.Roles do
         Higher roles outrank lower ones. You can change only roles below your highest role.
       </p>
 
+      <.verification_status :if={Enum.any?(@roles, & &1.is_unverified)} />
+
       <.form
         for={@new_role_form}
         id="role-create-form"
@@ -99,7 +101,10 @@ defmodule TavernWeb.SettingsComponents.Roles do
               <p class="text-[11px] text-base-content/50">
                 {role.member_count} {if role.member_count == 1, do: "member", else: "members"}
                 <span :if={role.is_default}>· default</span>
-                <span :if={role.managed and not role.is_default}>· managed</span>
+                <span :if={role.is_unverified}>· unconfirmed emails</span>
+                <span :if={role.managed and not role.is_default and not role.is_unverified}>
+                  · managed
+                </span>
               </p>
             </div>
 
@@ -170,6 +175,26 @@ defmodule TavernWeb.SettingsComponents.Roles do
     """
   end
 
+  # Verification is on exactly when mail can be sent. When it is off, nobody holds the Unverified
+  # role, and the notice names the settings that are missing.
+  defp verification_status(assigns) do
+    assigns = assign(assigns, :missing, Tavern.Mailer.missing_settings())
+
+    ~H"""
+    <div
+      :if={@missing != []}
+      id="verification-inactive"
+      class="mt-4 flex items-start gap-2 rounded-xl border border-base-300 bg-base-200 px-4 py-3 text-sm text-base-content/75"
+    >
+      <.icon name="hero-information-circle" class="mt-0.5 size-4 shrink-0 text-base-content/50" />
+      <p>
+        <span class="font-semibold text-base-content">Email verification is inactive.</span>
+        Mail is not configured ({Enum.join(@missing, ", ")} unset), so nobody holds the Unverified role and new members can send at once.
+      </p>
+    </div>
+    """
+  end
+
   attr :role, :any, required: true
   attr :form, :any, required: true
   attr :grantable, :integer, required: true
@@ -202,7 +227,10 @@ defmodule TavernWeb.SettingsComponents.Roles do
         </button>
       </div>
 
-      <div :if={@role && !@role.is_default} class="grid gap-3 sm:grid-cols-[1fr_6rem]">
+      <div
+        :if={@role && !@role.is_default && !@role.is_unverified}
+        class="grid gap-3 sm:grid-cols-[1fr_6rem]"
+      >
         <.input field={@form[:name]} type="text" label="Name" />
         <.input
           field={@form[:color]}
@@ -216,10 +244,13 @@ defmodule TavernWeb.SettingsComponents.Roles do
       </div>
 
       <p id="role-permission-help" class="text-xs text-base-content/60">
-        <%= if @role && @role.is_default do %>
-          Every member starts with what @everyone allows. Other roles can deny these bits.
-        <% else %>
-          Deny takes away what @everyone allows. Allow wins: a member who holds another role that allows the permission keeps it.
+        <%= cond do %>
+          <% @role && @role.is_default -> %>
+            Every member starts with what @everyone allows. Other roles can deny these bits.
+          <% @role && @role.is_unverified -> %>
+            Every member who has not confirmed their email holds this role, without being given it. Bots and owners never hold it. Deny takes away what @everyone allows; another role that allows the permission wins.
+          <% true -> %>
+            Deny takes away what @everyone allows. Allow wins: a member who holds another role that allows the permission keeps it.
         <% end %>
       </p>
 
@@ -270,11 +301,12 @@ defmodule TavernWeb.SettingsComponents.Roles do
 
   defp movable?(role), do: not role.is_default and not role.managed
 
-  # The default role is last and never moves, so the role just above it cannot move down.
+  # The Unverified role and the default role are last and never move, so the role just above them
+  # cannot move down.
   defp lowest_movable?(roles, index) do
     case Enum.at(roles, index + 1) do
       nil -> true
-      next -> next.is_default
+      next -> next.is_default or next.is_unverified
     end
   end
 

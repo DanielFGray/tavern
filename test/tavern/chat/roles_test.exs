@@ -79,7 +79,7 @@ defmodule Tavern.Chat.RolesTest do
                })
 
       ordered = Chat.list_roles(scope_for(ctx.manager)) |> Enum.map(& &1.name)
-      assert ordered == ["Manager", "Low", "Helpers", "@everyone"]
+      assert ordered == ["Manager", "Low", "Helpers", "Unverified", "@everyone"]
       assert role.position == 1
 
       positions = Repo.all(from(r in Role, where: not r.is_default, select: r.position))
@@ -241,7 +241,7 @@ defmodule Tavern.Chat.RolesTest do
       assert {:ok, _} = Chat.move_role(scope_for(ctx.manager), ctx.low_role.id, :up)
 
       names = Chat.list_roles(scope_for(ctx.manager)) |> Enum.map(& &1.name)
-      assert names == ["Manager", "Low", "Middle", "@everyone"]
+      assert names == ["Manager", "Low", "Middle", "Unverified", "@everyone"]
       assert Repo.get!(Role, middle.id).position < Repo.get!(Role, ctx.low_role.id).position
       assert Repo.get_by(AuditLogEntry, action_type: "role_moved", target_id: ctx.low_role.id)
     end

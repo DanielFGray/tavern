@@ -18,7 +18,19 @@ defmodule Tavern.ChatFixtures do
   def unique_username, do: "user_#{System.unique_integer([:positive])}"
   def unique_slug, do: "channel-#{System.unique_integer([:positive])}"
 
+  @doc """
+  A plain member with a confirmed email. While mail is captured, verification is active, so a
+  member without `confirmed_at` holds the Unverified role wherever the role exists.
+  """
   def user_fixture(attrs \\ %{}) do
+    attrs
+    |> unverified_user_fixture()
+    |> Ecto.Changeset.change(confirmed_at: DateTime.utc_now())
+    |> Repo.update!()
+  end
+
+  @doc "A plain member whose email is not confirmed, as registration leaves one."
+  def unverified_user_fixture(attrs \\ %{}) do
     attrs =
       Enum.into(attrs, %{
         email: "#{unique_username()}@example.com",

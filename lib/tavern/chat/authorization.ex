@@ -14,22 +14,22 @@ defmodule Tavern.Chat.Authorization do
 
   def all_permissions, do: @all_permissions
 
-  def server_permissions(%User{} = user, %Role{} = default_role) do
+  @doc """
+  The member's server bits. `default_role` is @everyone, or nil when there is none.
+  `implicit_roles` are the other roles the member holds without a `member_roles` row: the
+  Unverified role, which the caller derives (`Tavern.Accounts.unverified?/1`). They count exactly
+  as given roles do.
+  """
+  def server_permissions(%User{} = user, default_role, implicit_roles) do
     user
-    |> do_server_permissions(default_role.permissions)
-    |> expand_administrator()
-  end
-
-  def server_permissions(%User{} = user, nil) do
-    user
-    |> do_server_permissions(0)
+    |> do_server_permissions(default_bits(default_role), held_roles(user, implicit_roles))
     |> expand_administrator()
   end
 
   # Overwrites apply to every active member, even one whose server bits are all denied or whose
   # default role grants nothing: a channel overwrite can still grant them bits there.
-  def channel_permissions(%User{} = user, %Channel{} = channel, default_role) do
-    server_permissions = server_permissions(user, default_role)
+  def channel_permissions(%User{} = user, %Channel{} = channel, default_role, implicit_roles) do
+    server_permissions = server_permissions(user, default_role, implicit_roles)
 
     cond do
       not active_member?(user) ->
@@ -42,21 +42,11 @@ defmodule Tavern.Chat.Authorization do
         apply_channel_overwrites(
           server_permissions,
           user,
+          held_roles(user, implicit_roles),
           channel.permission_overwrites || [],
           default_role
         )
     end
-  end
-
-  def can_view_channel?(%User{} = user, %Channel{} = channel, default_role) do
-    channel_permissions(user, channel, default_role)
-    |> has_permission?(:view_channel)
-  end
-
-  def can_send_messages?(%User{} = user, %Channel{} = channel, default_role) do
-    permissions = channel_permissions(user, channel, default_role)
-
-    has_permission?(permissions, :view_channel) and has_permission?(permissions, :send_messages)
   end
 
   def has_permission?(permissions, permission_name) when is_integer(permissions) do
@@ -68,7 +58,7 @@ defmodule Tavern.Chat.Authorization do
   # default role grants, and any held role's allow restores them. Both unions are taken before they
   # combine, so role order never matters. The default role holds no `member_roles` row and denies
   # nothing.
-  defp do_server_permissions(%User{} = user, default_permissions) do
+  defp do_server_permissions(%User{} = user, default_permissions, held_roles) do
     cond do
       not active_member?(user) ->
         0
@@ -78,7 +68,7 @@ defmodule Tavern.Chat.Authorization do
 
       true ->
         {allow, deny} =
-          Enum.reduce(user.member_roles || [], {0, 0}, fn %{role: role}, {allow, deny} ->
+          Enum.reduce(held_roles, {0, 0}, fn role, {allow, deny} ->
             {allow ||| role.permissions, deny ||| role.deny_permissions}
           end)
 
@@ -88,6 +78,13 @@ defmodule Tavern.Chat.Authorization do
     end
   end
 
+  # Every role the member holds other than the default role: the given ones and the implicit ones.
+  defp held_roles(%User{} = user, implicit_roles),
+    do: Enum.map(user.member_roles || [], & &1.role) ++ implicit_roles
+
+  defp default_bits(%Role{permissions: permissions}), do: permissions
+  defp default_bits(nil), do: 0
+
   defp active_member?(%User{} = user), do: Accounts.membership_state(user) == :active
 
   defp expand_administrator(permissions) do
@@ -96,13 +93,19 @@ defmodule Tavern.Chat.Authorization do
 
   defp administrator?(permissions), do: has_permission?(permissions, :administrator)
 
-  defp apply_channel_overwrites(server_permissions, %User{} = user, overwrites, default_role) do
+  defp apply_channel_overwrites(
+         server_permissions,
+         %User{} = user,
+         held_roles,
+         overwrites,
+         default_role
+       ) do
     {everyone_deny, everyone_allow} =
       overwrites
       |> Enum.filter(&matches_default_role?(&1, default_role))
       |> merge_overwrites()
 
-    role_ids = MapSet.new(Enum.map(user.member_roles || [], & &1.role_id))
+    role_ids = MapSet.new(held_roles, & &1.id)
 
     {role_deny, role_allow} =
       overwrites

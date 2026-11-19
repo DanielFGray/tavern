@@ -163,6 +163,14 @@ defmodule TavernWeb.ServerComponents.Navigation do
             >
               owner
             </span>
+            <span
+              :if={@entry.unverified?}
+              id={"member-unverified-#{@entry.user.id}"}
+              title="This member has not confirmed their email"
+              class="rounded bg-amber-500/15 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-amber-600 dark:text-amber-300"
+            >
+              unverified
+            </span>
           </div>
 
           <p class="mt-0.5 truncate text-[11px] text-base-content/50">@{@entry.user.username}</p>

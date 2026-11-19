@@ -3,7 +3,7 @@ defmodule Tavern.Chat.Visibility do
   Makes every access decision in the chat, for a `%Tavern.Accounts.Scope{}`.
 
   A decision loads its inputs in one statement: the account with membership and roles, the
-  default role, and for a channel or message target the channel, its parent and their overwrites.
+  default role, the Unverified role, and for a channel or message target the channel, its parent and their overwrites.
   It then decides with the pure functions in this module and `Tavern.Chat.Authorization`. Nothing
   is cached between calls, so a role, timeout or ban change applies to the next decision.
 
@@ -19,6 +19,7 @@ defmodule Tavern.Chat.Visibility do
 
   import Ecto.Query, warn: false
 
+  alias Tavern.Accounts
   alias Tavern.Accounts.Scope
   alias Tavern.Chat.Authorization
   alias Tavern.Chat.BotToken
@@ -333,6 +334,8 @@ defmodule Tavern.Chat.Visibility do
       on: role.id == member_role.role_id,
       left_join: default_role in Role,
       on: default_role.is_default == true,
+      left_join: unverified_role in Role,
+      on: unverified_role.is_unverified == true,
       left_join: target in Message,
       on: target.id == ^message_id,
       left_join: channel in Channel,
@@ -353,6 +356,7 @@ defmodule Tavern.Chat.Visibility do
         member_role: member_role,
         role: role,
         default_role: default_role,
+        unverified_role: unverified_role,
         target: target,
         channel: channel,
         channel_overwrite: channel_overwrite,
@@ -369,7 +373,14 @@ defmodule Tavern.Chat.Visibility do
   # its overwrites. A visibility decision walks up to two parents (thread, channel, category),
   # so each target is loaded with both.
   defp assemble([]),
-    do: %{account: nil, member: nil, default_role: nil, message: nil, channels: %{}}
+    do: %{
+      account: nil,
+      member: nil,
+      default_role: nil,
+      implicit_roles: [],
+      message: nil,
+      channels: %{}
+    }
 
   defp assemble([%{user: user} | _] = rows) do
     membership = Enum.find_value(rows, & &1.membership)
@@ -388,6 +399,13 @@ defmodule Tavern.Chat.Visibility do
 
     member = if membership && is_nil(membership.deactivated_at), do: account
 
+    unverified_role = Enum.find_value(rows, & &1.unverified_role)
+
+    implicit_roles =
+      if member && unverified_role && Accounts.unverified?(member),
+        do: [unverified_role],
+        else: []
+
     channels =
       rows
       |> Enum.reduce(%{}, fn row, acc ->
@@ -404,6 +422,7 @@ defmodule Tavern.Chat.Visibility do
       account: account,
       member: member,
       default_role: default_role,
+      implicit_roles: implicit_roles,
       message: message,
       channels: channels
     }
@@ -697,7 +716,7 @@ defmodule Tavern.Chat.Visibility do
   end
 
   defp channel_bits(ctx, %Channel{} = channel) do
-    Authorization.channel_permissions(ctx.member, channel, ctx.default_role)
+    Authorization.channel_permissions(ctx.member, channel, ctx.default_role, ctx.implicit_roles)
   end
 
   defp channel_bits(ctx, channel_id) when is_binary(channel_id) do
@@ -707,7 +726,8 @@ defmodule Tavern.Chat.Visibility do
     end
   end
 
-  defp server_bits(ctx), do: Authorization.server_permissions(ctx.member, ctx.default_role)
+  defp server_bits(ctx),
+    do: Authorization.server_permissions(ctx.member, ctx.default_role, ctx.implicit_roles)
 
   defp moderation_bit?(ctx, bit) do
     permissions = server_bits(ctx)

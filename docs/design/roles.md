@@ -11,14 +11,15 @@ How a member manages roles and gives roles to members, and why.
 
 Terms:
 
-- **Top role**: the member's role with the highest position. A member with no roles has the default role's position, 0.
+- **Top role**: the member's role with the highest position. A member with no roles has the default role's position, 0. The Unverified role never counts toward it.
 - **Default role**: `@everyone` (`is_default`). Every member has its permissions without a `member_roles` row.
 - **Managed role**: a role with `managed` set. The system owns it.
+- **Unverified role**: the managed system role (`is_unverified`) that every member who has not confirmed their email holds, without a `member_roles` row. Bots and owners never hold it, and nobody holds it while no mail provider is configured. accounts.md, "Email verification", says who holds it and when.
 - **Allow bits** and **deny bits**: each role stores `permissions` (the bits it allows) and `deny_permissions` (the bits it denies). A bit is allowed, denied or neither (neutral), never both: `Role` validates it and the `role_bits_allowed_or_denied` check enforces it. The default role denies nothing (`default_role_denies_nothing`): it is the base that the other roles' denies subtract from.
 
 ## Server permissions
 
-A member's server bits come from one function, `Authorization.server_permissions/2`:
+A member's server bits come from one function, `Authorization.server_permissions/3`. "The roles the member holds" are the `member_roles` rows plus the implicit roles that `Visibility` passes in: today only the Unverified role, when the member holds it.
 
 1. Start with the default role's allow bits.
 2. Remove the union of the deny bits of every role the member holds.
@@ -35,7 +36,7 @@ Example. `@everyone` allows `view_channel` and `send_messages`. The Unverified r
 | `@everyone`, Unverified, Speaker | view, send | yes: Speaker's allow wins |
 | `@everyone`, Unverified, and a role overwrite on #help that allows `send_messages` for Unverified | view | in #help only |
 
-Channel overwrites apply to every active member, even one whose server bits are 0 because denies removed them all or the default role grants nothing: an overwrite that allows a bit grants it in that channel. An account with no membership, or whose membership is deactivated (removed or banned), holds no bits anywhere, whatever an overwrite allows (`Authorization.channel_permissions/3`).
+Channel overwrites apply to every active member, even one whose server bits are 0 because denies removed them all or the default role grants nothing: an overwrite that allows a bit grants it in that channel. An account with no membership, or whose membership is deactivated (removed or banned), holds no bits anywhere, whatever an overwrite allows (`Authorization.channel_permissions/4`). A role overwrite for the Unverified role applies to exactly the members who hold it..
 
 ## The rule
 
@@ -61,6 +62,7 @@ Each operation applies the rule like this:
 Fixed rules, for every actor including the owner:
 
 - The default role is always lowest. It is never deleted, moved, given or taken. Only its permissions are editable, under the rule. Bootstrap marks it managed; the default-role rule wins over the managed rule.
+- The Unverified role sits at position 0 with the default role and is never deleted, moved, given or taken. Only its allow and deny bits are editable, under the rule. No message mentions it: `Chat` leaves it out of the mention targets, both the composer's candidates and the `@name` lookup, since members hold it without a `member_roles` row and a mention would reach nobody. The default-role and Unverified rules win over the managed rule.
 - Any other managed role is never edited, moved, deleted, given or taken by a person.
 - Only the owner gives a role to an owner. This follows Discord: giving roles is not moderation, so a manager may give themselves a role below their top role.
 - A role below the actor's top role cannot restrict the actor, because the actor manages it. Deleting such a role, or taking it from oneself, also removes its channel denies. This follows Discord. A restriction that must hold against a manager goes on a role above them, or on a user overwrite, which they cannot remove: a user deny is applied last, so the manager does not hold the denied bit in that channel, and an overwrite write changes only bits the actor holds there.
@@ -73,7 +75,7 @@ Why edit checks both states: a role that allows or denies a bit the actor cannot
 
 ## Positions
 
-Non-default roles hold positions `n..1`, highest first; the default role holds 0. Every create, move and delete renumbers the non-default roles in order. Positions therefore stay distinct, and "below" is always strict. A new role starts at position 1, just above the default role, so a manager's new role always lands below them. A move swaps two neighbours.
+The ranked roles (every role except the default role and the Unverified role) hold positions `n..1`, highest first; the default role and the Unverified role both hold 0. Every create, move and delete renumbers the ranked roles in order and never touches the two at 0. Ranked positions therefore stay distinct, and "below" is always strict. Two roles share 0, but neither counts toward a top role and neither moves, so no rank compares them. A new role starts at position 1, just above the default role, so a manager's new role always lands below them. A move swaps two neighbours.
 
 ## Channel overwrites
 
@@ -110,7 +112,7 @@ A role change does not lock every member who holds the role. A write that loaded
 
 ## Effects
 
-- Default permissions: `Tavern.Bootstrap.ensure_default_role!/0` sets the default role's permissions only when it creates the role. `Release.migrate` runs it on every deploy, so it never writes them again: a deploy keeps edits to `@everyone`. A new default bit reaches existing servers through a data migration, as `20261118165602_grant_view_audit_log_to_moderators` does.
+- Default permissions: `Tavern.Bootstrap.ensure_default_role!/0` sets the default role's permissions only when it creates the role. `Release.migrate` runs it on every deploy, so it never writes them again: a deploy keeps edits to `@everyone`. A new default bit reaches existing servers through a data migration, as `20261118165602_grant_view_audit_log_to_moderators` does. `ensure_unverified_role!/0` follows the same rule for the Unverified role: it writes the deny bits only when it creates the role, and later deploys keep a manager's edits.
 - Delete: the foreign keys from `member_roles`, `channel_permission_overwrites`, `emoji_roles` and `message_role_mentions` to `roles` are `ON DELETE CASCADE`, so those rows go with the role.
 - Audit: each write that changes something inserts one `audit_log_entries` row with `target_type: "role"`, the role id, and for give and take the subject's user id. Action types: `role_created`, `role_updated`, `role_moved`, `role_deleted`, `member_role_added`, `member_role_removed`. A move at the edge, giving a held role or taking one not held changes nothing, and is neither audited nor broadcast.
 - Overwrite audit: each overwrite write that changes something inserts one row with `target_type: "channel"`, the channel id in `target_id` and `channel_id`, the subject's user id for a user target, and `role_id`, `allow`, `deny`, `previous_allow`, `previous_deny` in `metadata`. Action types: `channel_overwrite_updated`, `channel_overwrite_deleted`. A put of the bits already stored is neither audited nor broadcast.

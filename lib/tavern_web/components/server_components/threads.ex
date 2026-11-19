@@ -173,9 +173,11 @@ defmodule TavernWeb.ServerComponents.Threads do
           <Composer.composer server={@server} target={:thread} />
         <% else %>
           <p id={"thread-reply-notice-#{@message.id}"} class="py-2 text-sm text-base-content/55">
-            {if @thread.locked_at,
-              do: "This thread is locked.",
-              else: "You can view this thread, but you do not have permission to reply in it."}
+            {cond do
+              @thread.locked_at -> "This thread is locked."
+              Tavern.Accounts.unverified?(@server.current_user) -> "Verify your email to reply."
+              true -> "You can view this thread, but you do not have permission to reply in it."
+            end}
           </p>
         <% end %>
       </div>

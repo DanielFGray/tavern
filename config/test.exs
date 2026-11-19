@@ -50,8 +50,8 @@ config :tavern, Tavern.Embeds.SafeHTTP,
   resolver: Tavern.TestDNS,
   req_options: [plug: {Req.Test, Tavern.Embeds.SafeHTTP}]
 
-# Mail goes to the capture provider: the sending process and its callers receive
-# `{:mail_captured, email}`.
+# Mail goes to the capture provider: a test process that subscribes (the case templates do)
+# receives `{:mail_captured, email}` for the mail it and the processes it drives send.
 config :tavern, Tavern.Mailer, provider: :capture, from: "tavern@example.test"
 
 # Tests close polls by calling `Tavern.Chat.Polls.close_due/1` with a chosen time; a background

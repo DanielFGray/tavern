@@ -164,7 +164,11 @@ defmodule Tavern.AccountsTest do
   end
 
   describe "update_user_email/3" do
-    test "changes the email when the current password is right" do
+    test "without a mail provider, changes the email at once when the password is right" do
+      previous = Application.get_env(:tavern, Tavern.Mailer)
+      Application.put_env(:tavern, Tavern.Mailer, provider: nil)
+      on_exit(fn -> Application.put_env(:tavern, Tavern.Mailer, previous) end)
+
       user = user_fixture(%{email: "before@example.com", username: "email_right"})
 
       assert {:ok, updated} =

@@ -68,11 +68,13 @@ defmodule TavernWeb.SettingsLiveTest do
       assert Repo.get!(User, user.id).email == "keep-me@example.com"
     end
 
-    test "the email form changes the email when the password is right", %{conn: conn} do
+    test "the email form mails the new address, and the email changes when the link opens",
+         %{conn: conn} do
       Bootstrap.ensure_seed_data!()
       user = user_fixture(%{email: "move-me@example.com", username: "move_me"})
+      conn = log_in_as(conn, user)
 
-      {:ok, view, _html} = live(log_in_as(conn, user), ~p"/settings?tab=profile")
+      {:ok, view, _html} = live(conn, ~p"/settings?tab=profile")
 
       view
       |> form("#email-form", %{
@@ -80,8 +82,34 @@ defmodule TavernWeb.SettingsLiveTest do
       })
       |> render_submit()
 
-      assert render(view) =~ "Email updated."
+      assert render(view) =~ "We sent a link to moved@example.com"
+      assert Repo.get!(User, user.id).email == "move-me@example.com"
+
+      assert_receive {:mail_captured, %{to: "moved@example.com", text: text}}
+      [path] = Regex.run(~r{/users/confirm-email/\S+}, text)
+
+      assert redirected_to(get(conn, path)) == ~p"/settings"
       assert Repo.get!(User, user.id).email == "moved@example.com"
+    end
+
+    test "without a mail provider, the email form changes the email at once", %{conn: conn} do
+      previous = Application.get_env(:tavern, Tavern.Mailer)
+      Application.put_env(:tavern, Tavern.Mailer, provider: nil)
+      on_exit(fn -> Application.put_env(:tavern, Tavern.Mailer, previous) end)
+
+      Bootstrap.ensure_seed_data!()
+      user = user_fixture(%{email: "move-now@example.com", username: "move_now"})
+
+      {:ok, view, _html} = live(log_in_as(conn, user), ~p"/settings?tab=profile")
+
+      view
+      |> form("#email-form", %{
+        "email_change" => %{"email" => "moved-now@example.com", "password" => "supersecurepass"}
+      })
+      |> render_submit()
+
+      assert render(view) =~ "Email updated."
+      assert Repo.get!(User, user.id).email == "moved-now@example.com"
     end
 
     test "the email form blocks password checks after the credential limit", %{conn: conn} do

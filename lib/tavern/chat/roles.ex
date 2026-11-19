@@ -24,6 +24,7 @@ defmodule Tavern.Chat.Roles do
 
   import Ecto.Query, warn: false
 
+  alias Tavern.Accounts
   alias Tavern.Accounts.Scope
   alias Tavern.Chat.AuditLogEntry
   alias Tavern.Chat.MemberRole
@@ -46,7 +47,13 @@ defmodule Tavern.Chat.Roles do
       counts = member_counts()
 
       Enum.map(ordered_roles(), fn role ->
-        count = if role.is_default, do: counts.all, else: Map.get(counts.by_role, role.id, 0)
+        count =
+          cond do
+            role.is_default -> counts.all
+            role.is_unverified -> counts.unverified
+            true -> Map.get(counts.by_role, role.id, 0)
+          end
+
         %{role | member_count: count}
       end)
     end
@@ -98,14 +105,19 @@ defmodule Tavern.Chat.Roles do
   end
 
   @doc """
-  An active member the scope may see, with the roles they hold (the default role included), or
-  nil for a user who is not a visible member.
+  An active member the scope may see, with the roles they hold (the Unverified role and the default
+  role included), or nil for a user who is not a visible member.
   """
   def get_member(%Scope{} = scope, user_id) do
     with roles when is_list(roles) <- member_roles(scope, user_id),
-         %User{} = user <- Repo.get(User, user_id) do
+         %User{} = user <- User |> Repo.get(user_id) |> Repo.preload(:membership) do
       default = Repo.get_by(Role, is_default: true)
-      %{user: user, roles: Enum.reject(roles, & &1.is_default) ++ List.wrap(default)}
+      unverified = if Accounts.unverified?(user), do: Repo.get_by(Role, is_unverified: true)
+
+      %{
+        user: user,
+        roles: Enum.reject(roles, & &1.is_default) ++ List.wrap(unverified) ++ List.wrap(default)
+      }
     else
       _ -> nil
     end
@@ -337,8 +349,10 @@ defmodule Tavern.Chat.Roles do
   defp changeable?(%Role{is_default: false, managed: false}), do: true
   defp changeable?(%Role{}), do: false
 
-  # Only its permissions are editable on the default role, which bootstrap marks managed.
+  # Only their permissions are editable on the default role and the Unverified role, which
+  # bootstrap marks managed.
   defp editable?(%Role{is_default: true}), do: true
+  defp editable?(%Role{is_unverified: true}), do: true
   defp editable?(%Role{} = role), do: changeable?(role)
 
   defp permit(true), do: :ok
@@ -373,9 +387,10 @@ defmodule Tavern.Chat.Roles do
     |> Repo.all()
   end
 
-  # The non-default roles, highest first, without `except_id`.
+  # The roles that hold positions n..1, highest first, without `except_id`. The default role and
+  # the Unverified role sit at 0, below them, and never move.
   defp ranked_roles(except_id \\ nil) do
-    Enum.reject(ordered_roles(), &(&1.is_default or &1.id == except_id))
+    Enum.reject(ordered_roles(), &(&1.is_default or &1.is_unverified or &1.id == except_id))
   end
 
   # Writes positions n..1 to `roles`, in order, skipping rows already there.
@@ -412,6 +427,15 @@ defmodule Tavern.Chat.Roles do
       |> Repo.all()
       |> Map.new()
 
-    %{all: Repo.aggregate(active, :count), by_role: by_role}
+    # The SQL keeps only unconfirmed accounts; `Accounts.unverified?/1` decides the rest.
+    unverified =
+      from([membership, user] in active,
+        where: is_nil(user.confirmed_at),
+        select: %{user | membership: membership}
+      )
+      |> Repo.all()
+      |> Enum.count(&Accounts.unverified?/1)
+
+    %{all: Repo.aggregate(active, :count), by_role: by_role, unverified: unverified}
   end
 end

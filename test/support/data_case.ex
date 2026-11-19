@@ -29,6 +29,7 @@ defmodule Tavern.DataCase do
 
   setup tags do
     Tavern.DataCase.setup_sandbox(tags)
+    :ok = Tavern.Mailer.Capture.subscribe()
     :ok
   end
 

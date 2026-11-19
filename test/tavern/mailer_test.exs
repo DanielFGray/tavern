@@ -6,6 +6,10 @@ defmodule Tavern.MailerTest do
 
   @email %{to: "to@example.com", subject: "Hi", text: "Hello", html: "<p>Hello</p>"}
 
+  setup do
+    :ok = Tavern.Mailer.Capture.subscribe()
+  end
+
   describe "the capture provider" do
     test "hands the email to the calling process, from the configured sender" do
       assert :ok = Mailer.deliver(@email)
@@ -15,6 +19,22 @@ defmodule Tavern.MailerTest do
     test "hands the email to the processes in $callers" do
       task = Task.async(fn -> Mailer.deliver(@email) end)
       assert :ok = Task.await(task)
+      assert_received {:mail_captured, %{subject: "Hi"}}
+    end
+
+    test "hands nothing to a sending process that did not subscribe" do
+      task =
+        Task.async(fn ->
+          :ok = Mailer.deliver(@email)
+
+          receive do
+            {:mail_captured, _} -> :received
+          after
+            0 -> :none
+          end
+        end)
+
+      assert Task.await(task) == :none
       assert_received {:mail_captured, %{subject: "Hi"}}
     end
   end

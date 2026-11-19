@@ -15,9 +15,10 @@ defmodule TavernWeb.ServerComponents.Composer do
         <% @server.can_send_messages? -> %>
           <.composer server={@server} target={:channel} />
         <% true -> %>
-          <div class="rounded-lg border border-warning/30 bg-warning/15 px-4 py-3 text-sm text-warning-content">
-            You can view this channel, but you do not have permission to send messages here.
-          </div>
+          <TavernWeb.ServerComponents.Verification.send_notice
+            id="composer-locked-notice"
+            user={@server.current_user}
+          />
       <% end %>
     </div>
     """

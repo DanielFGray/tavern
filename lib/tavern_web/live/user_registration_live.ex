@@ -82,6 +82,8 @@ defmodule TavernWeb.UserRegistrationLive do
     # mode is decided in `Accounts.register_user/2`, from the database.
     case Accounts.register_user(user_params, opts) do
       {:ok, user} ->
+        # A failed send is logged by the mailer; the member can resend from the banner.
+        _ = Accounts.deliver_user_confirmation_instructions(user)
         signed_in(socket, user, user_params)
 
       {:error, :invite_required} ->

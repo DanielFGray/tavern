@@ -11,6 +11,7 @@ defmodule TavernWeb.ServerLive.Events do
   alias TavernWeb.ServerLive.Events.Polls
   alias TavernWeb.ServerLive.Events.Reactions
   alias TavernWeb.ServerLive.Events.Threads
+  alias TavernWeb.ServerLive.Events.Verification
 
   @channel_editor_events ChannelEditor.events()
 
@@ -56,6 +57,9 @@ defmodule TavernWeb.ServerLive.Events do
     Polls.handle_info(message, socket)
   end
 
+  def handle_info({:email_confirmed, _user_id} = message, socket),
+    do: Verification.handle_info(message, socket)
+
   # Only the bot stream reads these; views re-render from the `:message_updated` sent with them.
   def handle_info({event, _message, _reaction}, socket)
       when event in [:reaction_added, :reaction_removed],
@@ -78,6 +82,9 @@ defmodule TavernWeb.ServerLive.Events do
            ] do
     Mobile.handle_event(event, params, socket)
   end
+
+  def handle_event("resend_verification" = event, params, socket),
+    do: Verification.handle_event(event, params, socket)
 
   def handle_event(event, params, socket)
       when event in ["enable_desktop_mentions", "disable_desktop_mentions"] do

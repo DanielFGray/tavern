@@ -117,7 +117,7 @@ defmodule Tavern.Chat do
       |> Repo.all()
 
     roles =
-      Role
+      mention_target_roles()
       |> order_by([role], desc: role.position, asc: role.name)
       |> limit(10)
       |> Repo.all()
@@ -1384,11 +1384,15 @@ defmodule Tavern.Chat do
       |> Enum.flat_map(&role_name_candidates/1)
       |> Enum.uniq()
 
-    Role
+    mention_target_roles()
     |> where([role], role.name in ^role_names or (^everyone? and role.is_default))
     |> select([role], role.id)
     |> Repo.all()
   end
+
+  # The roles a message can mention. The Unverified role is not one: members hold it without a
+  # `member_roles` row, so a mention could reach nobody, and it is not a group to address.
+  defp mention_target_roles, do: where(Role, [role], not role.is_unverified)
 
   defp mention_tokens_from_body(body) when is_binary(body) do
     ~r/(?:^|[^[:alnum:]_])@([[:alnum:]_@-]+)/u

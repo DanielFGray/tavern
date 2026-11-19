@@ -125,6 +125,17 @@ defmodule TavernWeb.SettingsLive do
 
       :ok ->
         case Accounts.update_user_email(user, Map.get(email_params, "password"), email_params) do
+          {:ok, :confirmation_sent} ->
+            :ok = LoginRateLimiter.clear_attempts(ip_address, user.email)
+
+            {:noreply,
+             socket
+             |> assign(:email_form, to_form(Accounts.change_user_email(user), as: :email_change))
+             |> put_flash(
+               :info,
+               "We sent a link to #{email_params["email"]}. Your email changes when you open it."
+             )}
+
           {:ok, updated_user} ->
             :ok = LoginRateLimiter.clear_attempts(ip_address, user.email)
 

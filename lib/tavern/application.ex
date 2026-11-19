@@ -14,6 +14,8 @@ defmodule Tavern.Application do
       Tavern.Accounts.LoginRateLimiter,
       {DNSCluster, query: Application.get_env(:tavern, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Tavern.PubSub},
+      # Test processes that subscribe to captured mail (`Tavern.Mailer.Capture`); empty otherwise.
+      Tavern.Mailer.Capture,
       # Link preview fetches (`Tavern.Chat.Embeds`). The cap bounds the outbound requests one
       # burst of messages can start; a write over it gets no embed.
       {Task.Supervisor, name: Tavern.Embeds.TaskSupervisor, max_children: 50},

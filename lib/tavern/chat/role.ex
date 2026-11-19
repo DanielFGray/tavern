@@ -16,6 +16,7 @@ defmodule Tavern.Chat.Role do
     field(:hoist, :boolean, default: false)
     field(:managed, :boolean, default: false)
     field(:is_default, :boolean, default: false)
+    field(:is_unverified, :boolean, default: false)
     field(:member_count, :integer, virtual: true)
 
     belongs_to(:icon_asset, Tavern.Chat.MediaAsset)
@@ -40,6 +41,7 @@ defmodule Tavern.Chat.Role do
       :hoist,
       :managed,
       :is_default,
+      :is_unverified,
       :icon_asset_id
     ])
     |> validate_required([:name, :permissions, :position])
@@ -50,15 +52,16 @@ defmodule Tavern.Chat.Role do
   end
 
   @doc """
-  The fields a person may set on a role. Position, `managed` and `is_default` are set by
-  `Tavern.Chat.Roles`, never from input. The default role takes only its bits, and its deny must
-  stay empty: it is the base that every other role's deny subtracts from.
+  The fields a person may set on a role. Position, `managed`, `is_default` and `is_unverified`
+  are set by `Tavern.Chat.Roles` and bootstrap, never from input. The default role and the
+  Unverified role take only their bits. The default role's deny must stay empty: it is the base
+  that every other role's deny subtracts from.
   """
-  def manage_changeset(%__MODULE__{is_default: true} = role, attrs) do
-    role
-    |> cast(attrs, [:permissions, :deny_permissions])
-    |> validate_bits()
-  end
+  def manage_changeset(%__MODULE__{is_default: true} = role, attrs),
+    do: bits_changeset(role, attrs)
+
+  def manage_changeset(%__MODULE__{is_unverified: true} = role, attrs),
+    do: bits_changeset(role, attrs)
 
   def manage_changeset(%__MODULE__{} = role, attrs) do
     role
@@ -74,6 +77,12 @@ defmodule Tavern.Chat.Role do
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 100)
     |> validate_number(:color, greater_than_or_equal_to: 0, less_than_or_equal_to: 0xFFFFFF)
+    |> validate_bits()
+  end
+
+  defp bits_changeset(role, attrs) do
+    role
+    |> cast(attrs, [:permissions, :deny_permissions])
     |> validate_bits()
   end
 
@@ -122,5 +131,6 @@ defmodule Tavern.Chat.Role do
     changeset
     |> check_constraint(:deny_permissions, name: :role_bits_allowed_or_denied)
     |> check_constraint(:deny_permissions, name: :default_role_denies_nothing)
+    |> check_constraint(:is_unverified, name: :unverified_role_is_not_default)
   end
 end

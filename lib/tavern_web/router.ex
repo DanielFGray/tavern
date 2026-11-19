@@ -67,6 +67,11 @@ defmodule TavernWeb.Router do
     pipe_through(:browser)
 
     delete("/logout", UserSessionController, :delete)
+
+    # Email links. Each works for anyone who holds it, signed in or not, and signs nobody in or
+    # out (docs/design/accounts.md).
+    get("/users/confirm/:token", UserConfirmationController, :confirm)
+    get("/users/confirm-email/:token", UserConfirmationController, :confirm_email)
   end
 
   scope "/", TavernWeb do

@@ -144,12 +144,17 @@ defmodule Tavern.Chat.RoleDenyTest do
 
       channel = Repo.preload(ctx.channel, :permission_overwrites, force: true)
       user = Repo.preload(ctx.member, [:membership, member_roles: :role], force: true)
-      assert Authorization.channel_permissions(user, channel, ctx.default) != 0
+      assert Authorization.channel_permissions(user, channel, ctx.default, []) != 0
 
       deactivated = put_in(user.membership.deactivated_at, DateTime.utc_now())
-      assert Authorization.channel_permissions(deactivated, channel, ctx.default) == 0
+      assert Authorization.channel_permissions(deactivated, channel, ctx.default, []) == 0
 
-      assert Authorization.channel_permissions(%{user | membership: nil}, channel, ctx.default) ==
+      assert Authorization.channel_permissions(
+               %{user | membership: nil},
+               channel,
+               ctx.default,
+               []
+             ) ==
                0
     end
 
