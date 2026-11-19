@@ -36,6 +36,14 @@ defmodule TavernWeb.ServerLive.Events do
     Navigation.handle_info(message, socket)
   end
 
+  def handle_info(message, socket)
+      when (is_tuple(message) and tuple_size(message) == 2 and
+              elem(message, 0) == :thread_message_created) or
+             (is_tuple(message) and tuple_size(message) == 3 and
+                elem(message, 0) == :thread_followers_changed) do
+    Threads.handle_info(message, socket)
+  end
+
   def handle_event(event, params, socket)
 
   def handle_event(event, params, socket)
@@ -86,6 +94,14 @@ defmodule TavernWeb.ServerLive.Events do
              "unarchive_thread",
              "lock_thread",
              "unlock_thread",
+             "follow_thread",
+             "unfollow_thread",
+             "open_thread_browser",
+             "close_thread_browser",
+             "thread_browser_tab",
+             "thread_browser_search",
+             "thread_browser_more",
+             "open_browsed_thread",
              "reply_in_thread",
              "cancel_thread_reply",
              "send_thread_message",

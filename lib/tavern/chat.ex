@@ -19,6 +19,7 @@ defmodule Tavern.Chat do
   alias Tavern.Chat.Notifications
   alias Tavern.Chat.Roles
   alias Tavern.Chat.ServerConfig
+  alias Tavern.Chat.ThreadFollows
   alias Tavern.Chat.Threads
   alias Tavern.Chat.Topics
   alias Tavern.Chat.Visibility
@@ -318,6 +319,11 @@ defmodule Tavern.Chat do
   defdelegate unarchive_thread(scope, thread_id), to: Threads
   defdelegate lock_thread(scope, thread_id), to: Threads
   defdelegate unlock_thread(scope, thread_id), to: Threads
+  defdelegate followed_threads(scope), to: Threads
+  defdelegate browse_threads(scope, channel_id, opts \\ []), to: Threads
+  defdelegate follow_thread(scope, thread_id), to: ThreadFollows, as: :follow
+  defdelegate unfollow_thread(scope, thread_id), to: ThreadFollows, as: :unfollow
+  defdelegate following_thread?(scope, thread_id), to: ThreadFollows, as: :following?
 
   def create_user(attrs) do
     %User{}
@@ -352,19 +358,23 @@ defmodule Tavern.Chat do
                %Message{channel_id: channel_id, author_id: scope.user_id}
                |> Message.create_changeset(attrs)
                |> Repo.insert(),
-             :ok <- sync_message_mentions(message) do
-          {:ok, {reload_message(message.id), reopened}}
+             :ok <- sync_message_mentions(message),
+             {:ok, new_followers} <- ThreadFollows.follow_for_message(message) do
+          {:ok, {reload_message(message.id), reopened, new_followers}}
         end
       end)
       |> case do
-        {:ok, {message, reopened}} ->
+        {:ok, {message, reopened, new_followers}} ->
+          broadcast_message(:message_created, message)
+          ThreadFollows.broadcast_message_created(message, new_followers)
+          # After the message events: a session reloads its sidebar on the reopen, and that reload
+          # must already include the message, or the message would be counted twice.
           if reopened, do: Topics.broadcast_server({:channel_updated, reopened})
           {:ok, message}
 
         {:error, reason} ->
           {:error, reason}
       end
-      |> broadcast_written(:message_created)
       |> schedule_embeds([])
     end
   end
@@ -844,6 +854,7 @@ defmodule Tavern.Chat do
   end
 
   defdelegate message_mentions_user?(message, user), to: Notifications
+  defdelegate message_mentions_user_directly?(message, user), to: Notifications
   defdelegate mention_notifications_enabled?(user, channel), to: Notifications
 
   @doc """

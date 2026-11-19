@@ -6,6 +6,7 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
 
   alias Tavern.Chat
   alias TavernWeb.ServerLive.State
+  alias TavernWeb.ServerLive.ThreadNav
 
   def handle_params(%{"thread" => thread_id} = params, _uri, socket) do
     if not socket.assigns.navigation_ready? do
@@ -81,7 +82,10 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
 
   def handle_info({:channel_created, channel}, socket) do
     if Chat.thread_channel?(channel) do
-      {:noreply, State.maybe_refresh_thread_summaries(socket, channel)}
+      {:noreply,
+       socket
+       |> State.maybe_refresh_thread_summaries(channel)
+       |> ThreadNav.reload()}
     else
       {:noreply, State.refresh_channels(socket)}
     end

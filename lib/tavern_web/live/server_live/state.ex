@@ -12,6 +12,7 @@ defmodule TavernWeb.ServerLive.State do
   alias Tavern.Chat
   alias Tavern.Chat.Message
   alias Tavern.Chat.Topics
+  alias TavernWeb.ServerLive.ThreadNav
 
   def queue_initial_hydration(socket) do
     if connected?(socket) do
@@ -46,6 +47,7 @@ defmodule TavernWeb.ServerLive.State do
     |> assign(:navigation_ready?, true)
     |> sync_active_channel(channels)
     |> sync_channel_subscriptions()
+    |> ThreadNav.refresh_followed_threads()
   end
 
   @doc """
@@ -242,6 +244,7 @@ defmodule TavernWeb.ServerLive.State do
       )
     )
     |> sync_channel_subscriptions()
+    |> ThreadNav.reload()
   end
 
   def maybe_insert_message(socket, message) do
@@ -280,6 +283,8 @@ defmodule TavernWeb.ServerLive.State do
 
       true ->
         starter_message_id = active_thread.starter_message_id
+        # The member is reading the open thread, so its sidebar badge must not return on reload.
+        Chat.mark_channel_read(socket.assigns.current_user, active_thread, message)
 
         socket
         |> assign(:thread_messages_empty?, false)
@@ -479,6 +484,8 @@ defmodule TavernWeb.ServerLive.State do
     |> assign(:thread_messages_empty?, thread_messages == [])
     |> assign_thread_message_form()
     |> stream(:thread_messages, thread_messages, reset: true)
+    |> ThreadNav.mark_thread_seen(thread.id)
+    |> ThreadNav.refresh_thread_following()
     |> rerender_messages([previous_starter_message_id, thread.starter_message_id])
   end
 
@@ -528,6 +535,7 @@ defmodule TavernWeb.ServerLive.State do
     |> assign(:can_send_thread_messages?, false)
     |> assign(:can_archive_thread?, false)
     |> assign(:can_lock_thread?, false)
+    |> assign(:thread_following?, false)
     |> assign(:thread_message_count, 0)
     |> assign(:thread_messages_empty?, true)
     |> assign_thread_message_form()

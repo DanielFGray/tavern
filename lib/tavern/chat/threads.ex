@@ -8,9 +8,136 @@ defmodule Tavern.Chat.Threads do
   alias Tavern.Chat.Channel
   alias Tavern.Chat.Channels
   alias Tavern.Chat.Message
+  alias Tavern.Chat.ThreadFollower
+  alias Tavern.Chat.ThreadFollows
   alias Tavern.Chat.Topics
   alias Tavern.Chat.Visibility
   alias Tavern.Repo
+
+  @browse_page_size 25
+
+  @doc """
+  The unarchived threads the scope follows and may view, newest activity first, as entries (see
+  `browse_threads/3`). The sidebar lists them under their parent channels.
+  """
+  def followed_threads(%Scope{} = scope) do
+    case visible_thread_ids(scope) do
+      [] ->
+        []
+
+      thread_ids ->
+        thread_ids
+        |> thread_entries_query(scope.user_id)
+        |> where([thread, _activity, follower], not is_nil(follower.id))
+        |> where([thread], is_nil(thread.archived_at))
+        |> Repo.all()
+    end
+  end
+
+  @doc """
+  One page of the threads under `channel_id` for the thread browser, each an entry
+  `%{thread: thread, last_activity_at: at, reply_count: n, following?: bool}`.
+
+  Options: `:tab` (`:active` or `:archived`), `:query` (a title substring) and `:after` (the
+  `next` cursor of the page before). Returns `{:ok, %{entries: entries, next: cursor_or_nil}}`, or
+  `{:error, :not_found}` for a channel the scope may not view or one that holds no threads.
+  """
+  def browse_threads(%Scope{} = scope, channel_id, opts \\ []) do
+    with {:ok, channel_id} <- Ecto.UUID.cast(channel_id),
+         visible = Visibility.visible_channels(scope),
+         %Channel{} = channel <- Enum.find(visible, &(&1.id == channel_id)),
+         true <- Channel.thread_host?(channel) do
+      thread_ids =
+        for thread <- visible,
+            thread.parent_channel_id == channel_id,
+            Channel.thread?(thread),
+            do: thread.id
+
+      entries =
+        thread_ids
+        |> thread_entries_query(scope.user_id)
+        |> where_tab(Keyword.get(opts, :tab, :active))
+        |> where_title(Keyword.get(opts, :query))
+        |> where_after(Keyword.get(opts, :after))
+        |> limit(@browse_page_size + 1)
+        |> Repo.all()
+
+      {page, rest} = Enum.split(entries, @browse_page_size)
+      next = if rest == [], do: nil, else: cursor(List.last(page))
+      {:ok, %{entries: page, next: next}}
+    else
+      _ -> {:error, :not_found}
+    end
+  end
+
+  defp visible_thread_ids(scope) do
+    for channel <- Visibility.visible_channels(scope), Channel.thread?(channel), do: channel.id
+  end
+
+  # Threads among `thread_ids`, each with its last activity (its newest live message, or its
+  # creation), its live reply count and whether `user_id` follows it. Ordered newest activity
+  # first, then by id, the order `where_after/2` pages by.
+  defp thread_entries_query(thread_ids, user_id) do
+    activity =
+      from(message in Message,
+        where: message.channel_id in ^thread_ids and is_nil(message.deleted_at),
+        group_by: message.channel_id,
+        select: %{
+          channel_id: message.channel_id,
+          last_at: max(message.inserted_at),
+          reply_count: count(message.id)
+        }
+      )
+
+    from(thread in Channel,
+      as: :thread,
+      left_join: activity in subquery(activity),
+      as: :activity,
+      on: activity.channel_id == thread.id,
+      left_join: follower in ThreadFollower,
+      on:
+        follower.thread_id == thread.id and follower.user_id == ^user_id and
+          is_nil(follower.unfollowed_at),
+      where: thread.id in ^thread_ids,
+      order_by: [desc: coalesce(activity.last_at, thread.inserted_at), desc: thread.id],
+      preload: [:parent_channel],
+      select: %{
+        thread: thread,
+        last_activity_at:
+          type(coalesce(activity.last_at, thread.inserted_at), :utc_datetime_usec),
+        reply_count: coalesce(activity.reply_count, 0),
+        following?: not is_nil(follower.id)
+      }
+    )
+  end
+
+  defp where_tab(query, :archived), do: where(query, [thread], not is_nil(thread.archived_at))
+  defp where_tab(query, _active), do: where(query, [thread], is_nil(thread.archived_at))
+
+  defp where_title(query, text) when is_binary(text) do
+    case String.trim(text) do
+      "" -> query
+      text -> where(query, [thread], ilike(thread.name, ^"%#{escape_like(text)}%"))
+    end
+  end
+
+  defp where_title(query, _none), do: query
+
+  defp where_after(query, {%DateTime{} = at, id}) do
+    where(
+      query,
+      [thread, activity],
+      coalesce(activity.last_at, thread.inserted_at) < type(^at, :utc_datetime_usec) or
+        (coalesce(activity.last_at, thread.inserted_at) == type(^at, :utc_datetime_usec) and
+           thread.id < type(^id, :binary_id))
+    )
+  end
+
+  defp where_after(query, _first_page), do: query
+
+  defp cursor(%{last_activity_at: at, thread: %Channel{id: id}}), do: {at, id}
+
+  defp escape_like(text), do: String.replace(text, ~r/[\\%_]/, "\\\\\\0")
 
   defp list_threads_for_channel(channel_ids) do
     Channel
@@ -215,7 +342,8 @@ defmodule Tavern.Chat.Threads do
            |> new_thread(parent, scope.user_id)
            |> Channel.thread_changeset(thread_name_attrs(attrs))
            |> Repo.insert(),
-         :ok <- Channels.ensure_channel_memberships(scope, [thread]) do
+         :ok <- Channels.ensure_channel_memberships(scope, [thread]),
+         :ok <- ThreadFollows.follow_created(thread, scope.user_id) do
       {:ok, Repo.preload(thread, [:parent_channel, starter_message: :author])}
     end
   end

@@ -16,5 +16,6 @@
     </section>
 
     <TavernWeb.ServerComponents.members_drawer server={assigns} />
+    <TavernWeb.ServerComponents.Threads.thread_browser :if={@thread_browser} server={assigns} />
   </div>
 </Layouts.app>

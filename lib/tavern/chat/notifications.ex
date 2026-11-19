@@ -86,6 +86,14 @@ defmodule Tavern.Chat.Notifications do
       end)
   end
 
+  @doc """
+  Whether `message` mentions `user` by name. A role or @everyone mention does not count. A thread
+  the user does not follow notifies only on this kind of mention.
+  """
+  def message_mentions_user_directly?(%Message{user_mentions: user_mentions}, %User{id: user_id})
+      when is_list(user_mentions),
+      do: Enum.any?(user_mentions, &(&1.mentioned_user_id == user_id))
+
   def mention_notifications_enabled?(%User{} = user, %Channel{} = channel) do
     setting = get_user_notification_setting(user)
 
@@ -219,12 +227,26 @@ defmodule Tavern.Chat.Notifications do
     )
   end
 
+  # A thread whose own level is :default takes its parent channel's level, so muting a channel
+  # also mutes the threads under it.
   defp effective_channel_notification_level(%User{} = user, %Channel{} = channel) do
+    case own_notification_level(user, channel.id) do
+      :default when is_binary(channel.parent_channel_id) ->
+        if Channel.thread?(channel),
+          do: own_notification_level(user, channel.parent_channel_id),
+          else: :default
+
+      level ->
+        level
+    end
+  end
+
+  defp own_notification_level(%User{} = user, channel_id) do
     override =
-      Repo.get_by(ChannelNotificationOverride, user_id: user.id, channel_id: channel.id)
+      Repo.get_by(ChannelNotificationOverride, user_id: user.id, channel_id: channel_id)
 
     membership =
-      Repo.get_by(ChannelMembership, user_id: user.id, channel_id: channel.id)
+      Repo.get_by(ChannelMembership, user_id: user.id, channel_id: channel_id)
 
     cond do
       override && override.level != :default -> override.level

@@ -2,11 +2,20 @@ defmodule TavernWeb.ServerLive.Events.Threads do
   @moduledoc false
 
   import Phoenix.Component, only: [assign: 3, to_form: 2]
-  import Phoenix.LiveView, only: [put_flash: 3, push_event: 3]
+  use TavernWeb, :verified_routes
+
+  import Phoenix.LiveView, only: [put_flash: 3, push_event: 3, push_patch: 2]
 
   alias Tavern.Chat
   alias TavernWeb.ServerLive.Events.Helpers
   alias TavernWeb.ServerLive.State
+  alias TavernWeb.ServerLive.ThreadNav
+
+  def handle_info({:thread_message_created, message}, socket),
+    do: {:noreply, ThreadNav.apply_thread_message(socket, message)}
+
+  def handle_info({:thread_followers_changed, _thread_id, user_ids}, socket),
+    do: {:noreply, ThreadNav.apply_follow_change(socket, user_ids)}
 
   def handle_event("create_thread", %{"id" => message_id}, socket) do
     with {:ok, thread} <-
@@ -15,7 +24,8 @@ defmodule TavernWeb.ServerLive.Events.Threads do
        socket
        |> State.close_message_ui()
        |> State.refresh_thread_summaries_for_active_channel()
-       |> State.open_thread(thread)}
+       |> State.open_thread(thread)
+       |> ThreadNav.refresh_followed_threads()}
     else
       :error ->
         {:noreply, socket}
@@ -100,7 +110,8 @@ defmodule TavernWeb.ServerLive.Events.Threads do
              |> assign(:thread_reply_to_message, nil)
              |> State.refresh_thread_typing_users()
              |> State.maybe_insert_thread_message(message)
-             |> State.refresh_thread_summaries_for_active_channel()}
+             |> State.refresh_thread_summaries_for_active_channel()
+             |> ThreadNav.refresh_followed_threads()}
 
           {:error, {:slowmode, seconds_left}} ->
             {:noreply, put_flash(socket, :error, Helpers.slowmode_message(seconds_left))}
@@ -119,6 +130,58 @@ defmodule TavernWeb.ServerLive.Events.Threads do
              |> assign(:thread_message_form, to_form(changeset, as: :message))
              |> State.rerender_active_thread_panel()}
         end
+    end
+  end
+
+  def handle_event(event, %{"id" => thread_id}, socket)
+      when event in ["follow_thread", "unfollow_thread"] do
+    following? = event == "follow_thread"
+
+    result =
+      if following?,
+        do: Chat.follow_thread(socket.assigns.current_scope, thread_id),
+        else: Chat.unfollow_thread(socket.assigns.current_scope, thread_id)
+
+    case result do
+      :ok ->
+        {:noreply,
+         socket
+         |> ThreadNav.refresh_followed_threads()
+         |> ThreadNav.set_browser_following(thread_id, following?)
+         |> State.rerender_active_thread_panel()}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "That thread no longer exists.")}
+    end
+  end
+
+  def handle_event("open_thread_browser", %{"channel-id" => channel_id}, socket),
+    do: {:noreply, ThreadNav.open_browser(socket, channel_id)}
+
+  def handle_event("close_thread_browser", _params, socket),
+    do: {:noreply, ThreadNav.close_browser(socket)}
+
+  def handle_event("thread_browser_tab", %{"tab" => tab}, socket)
+      when tab in ["active", "archived"],
+      do: {:noreply, ThreadNav.filter_browser(socket, %{tab: String.to_existing_atom(tab)})}
+
+  def handle_event("thread_browser_search", %{"thread_search" => %{"query" => query}}, socket)
+      when is_binary(query),
+      do: {:noreply, ThreadNav.filter_browser(socket, %{query: query})}
+
+  def handle_event("thread_browser_more", _params, socket),
+    do: {:noreply, ThreadNav.load_more(socket)}
+
+  # A row names a thread the browser loaded, so the click acts only on a thread found there.
+  def handle_event("open_browsed_thread", %{"id" => thread_id}, socket) do
+    with %{entries: entries, channel: channel} <- socket.assigns.thread_browser,
+         %{thread: thread} <- Enum.find(entries, &(&1.thread.id == thread_id)) do
+      {:noreply,
+       socket
+       |> ThreadNav.close_browser()
+       |> push_patch(to: ~p"/?channel=#{channel.slug}&thread=#{thread.id}")}
+    else
+      _ -> {:noreply, socket}
     end
   end
 

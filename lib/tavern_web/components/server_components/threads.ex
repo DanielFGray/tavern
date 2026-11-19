@@ -52,6 +52,26 @@ defmodule TavernWeb.ServerComponents.Threads do
             Archived
           </span>
           <button
+            type="button"
+            phx-click={if @server.thread_following?, do: "unfollow_thread", else: "follow_thread"}
+            phx-value-id={@thread.id}
+            id={"toggle-follow-thread-#{@message.id}"}
+            aria-pressed={to_string(@server.thread_following?)}
+            class={[
+              "inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-[11px] font-semibold transition",
+              @server.thread_following? &&
+                "bg-primary/10 text-primary hover:bg-primary/15",
+              !@server.thread_following? &&
+                "text-base-content/75 hover:bg-base-100 hover:text-base-content"
+            ]}
+          >
+            <.icon
+              name={if @server.thread_following?, do: "hero-bell-alert", else: "hero-bell"}
+              class="size-3.5"
+            />
+            {if @server.thread_following?, do: "Following", else: "Follow"}
+          </button>
+          <button
             :if={@server.can_archive_thread?}
             type="button"
             phx-click={if @thread.archived_at, do: "unarchive_thread", else: "archive_thread"}
@@ -205,4 +225,158 @@ defmodule TavernWeb.ServerComponents.Threads do
     </div>
     """
   end
+
+  attr :server, :map, required: true
+
+  @doc """
+  The thread browser: a drawer over the page listing one channel's threads in Active and Archived
+  tabs, newest activity first, with a title search and a button that loads the next page.
+  """
+  def thread_browser(assigns) do
+    assigns = assign(assigns, :browser, assigns.server.thread_browser)
+
+    ~H"""
+    <div
+      id="thread-browser-backdrop"
+      class="fixed inset-0 z-40 bg-black/60 transition"
+      phx-click="close_thread_browser"
+    />
+    <aside
+      id="thread-browser"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="thread-browser-title"
+      phx-window-keydown="close_thread_browser"
+      phx-key="Escape"
+      class="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col border-l border-base-300 bg-base-100 shadow-2xl"
+    >
+      <header class="flex items-start justify-between gap-3 border-b border-base-300 px-4 py-4 sm:px-5">
+        <div class="min-w-0">
+          <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-base-content/45">
+            Threads
+          </p>
+          <h2
+            id="thread-browser-title"
+            class="mt-1 truncate text-base font-semibold text-base-content"
+          >
+            # {@browser.channel.name}
+          </h2>
+        </div>
+        <button
+          type="button"
+          id="close-thread-browser"
+          phx-click="close_thread_browser"
+          aria-label="Close thread browser"
+          class="rounded-md p-1.5 text-base-content/60 transition hover:bg-base-200 hover:text-base-content"
+        >
+          <.icon name="hero-x-mark" class="size-5" />
+        </button>
+      </header>
+
+      <div class="space-y-3 border-b border-base-300 px-4 py-3 sm:px-5">
+        <div role="tablist" class="inline-flex rounded-lg bg-base-200 p-1">
+          <button
+            :for={tab <- [:active, :archived]}
+            type="button"
+            role="tab"
+            id={"thread-browser-tab-#{tab}"}
+            aria-selected={to_string(@browser.tab == tab)}
+            phx-click="thread_browser_tab"
+            phx-value-tab={tab}
+            class={[
+              "rounded-md px-3 py-1 text-xs font-semibold transition",
+              @browser.tab == tab && "bg-base-100 text-base-content shadow-sm",
+              @browser.tab != tab && "text-base-content/60 hover:text-base-content"
+            ]}
+          >
+            {if tab == :active, do: "Active", else: "Archived"}
+          </button>
+        </div>
+
+        <.form
+          for={@browser.form}
+          id="thread-browser-search"
+          phx-change="thread_browser_search"
+          phx-submit="thread_browser_search"
+        >
+          <.input
+            field={@browser.form[:query]}
+            type="search"
+            placeholder="Search thread titles"
+            autocomplete="off"
+            phx-debounce="250"
+          />
+        </.form>
+      </div>
+
+      <div class={["flex-1 overflow-y-auto px-2 py-2 sm:px-3", scrollbar_classes()]}>
+        <p
+          :if={@browser.entries == []}
+          id="thread-browser-empty"
+          class="px-3 py-8 text-center text-sm text-base-content/55"
+        >
+          {thread_browser_empty_text(@browser)}
+        </p>
+
+        <ul id="thread-browser-list" class="space-y-1">
+          <li
+            :for={entry <- @browser.entries}
+            id={"thread-browser-row-#{entry.thread.id}"}
+            class="group flex items-center gap-3 rounded-lg px-3 py-2.5 transition hover:bg-base-200"
+          >
+            <button
+              type="button"
+              phx-click="open_browsed_thread"
+              phx-value-id={entry.thread.id}
+              id={"thread-browser-open-#{entry.thread.id}"}
+              class="min-w-0 flex-1 text-left"
+            >
+              <span class="block truncate text-sm font-semibold text-base-content">
+                {thread_title(entry.thread)}
+              </span>
+              <span class="mt-0.5 block truncate text-[11px] text-base-content/55">
+                {entry.reply_count} {if entry.reply_count == 1, do: "reply", else: "replies"} · last activity {message_timestamp(
+                  entry.last_activity_at
+                )}
+              </span>
+            </button>
+            <button
+              type="button"
+              phx-click={if entry.following?, do: "unfollow_thread", else: "follow_thread"}
+              phx-value-id={entry.thread.id}
+              id={"thread-browser-follow-#{entry.thread.id}"}
+              aria-pressed={to_string(entry.following?)}
+              class={[
+                "shrink-0 rounded-md px-2.5 py-1 text-[11px] font-semibold transition",
+                entry.following? && "bg-primary/10 text-primary hover:bg-primary/15",
+                !entry.following? &&
+                  "text-base-content/60 hover:bg-base-300 hover:text-base-content"
+              ]}
+            >
+              {if entry.following?, do: "Following", else: "Follow"}
+            </button>
+          </li>
+        </ul>
+
+        <div :if={@browser.next} class="px-3 py-3">
+          <button
+            type="button"
+            id="thread-browser-more"
+            phx-click="thread_browser_more"
+            phx-disable-with="Loading..."
+            class="w-full rounded-md border border-base-300 px-3 py-2 text-xs font-semibold text-base-content/75 transition hover:bg-base-200 hover:text-base-content"
+          >
+            Load more
+          </button>
+        </div>
+      </div>
+    </aside>
+    """
+  end
+
+  defp thread_browser_empty_text(%{query: query}) when query not in [nil, ""],
+    do: "No threads match that title."
+
+  defp thread_browser_empty_text(%{tab: :archived}), do: "No archived threads."
+  defp thread_browser_empty_text(_browser), do: "No active threads."
 end
