@@ -8,6 +8,7 @@ defmodule TavernWeb.ServerLive.Events.Threads do
 
   alias Tavern.Chat
   alias TavernWeb.ServerLive.Events.Helpers
+  alias TavernWeb.ServerLive.Events.Navigation
   alias TavernWeb.ServerLive.ForumNav
   alias TavernWeb.ServerLive.State
   alias TavernWeb.ServerLive.ThreadNav
@@ -78,6 +79,24 @@ defmodule TavernWeb.ServerLive.Events.Threads do
 
       {:error, _refusal} ->
         {:noreply, put_flash(socket, :error, "You cannot change that thread.")}
+    end
+  end
+
+  # The deleter's own view hears no broadcast, so it runs the handler of `{:channel_deleted, _}`
+  # itself, as every other session does on receiving it.
+  def handle_event("delete_thread", _params, socket) do
+    with %{} = thread <- socket.assigns.active_thread,
+         {:ok, deleted} <- Chat.delete_thread(socket.assigns.current_scope, thread.id) do
+      Navigation.handle_info({:channel_deleted, deleted}, socket)
+    else
+      nil ->
+        {:noreply, socket}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "That thread no longer exists.")}
+
+      {:error, _refusal} ->
+        {:noreply, put_flash(socket, :error, "You cannot delete that thread.")}
     end
   end
 

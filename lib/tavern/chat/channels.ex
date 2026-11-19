@@ -8,6 +8,7 @@ defmodule Tavern.Chat.Channels do
 
   import Ecto.Query, warn: false
 
+  alias Tavern.Chat.AuditLogEntry
   alias Tavern.Chat.Channel
   alias Tavern.Accounts.Scope
   alias Tavern.Chat.ChannelMembership
@@ -185,7 +186,7 @@ defmodule Tavern.Chat.Channels do
   @doc """
   Soft-deletes a channel or category: it sets `deleted_at`, and `Visibility` then hides the
   channel, its threads and their messages from everyone. A category's channels move to the end
-  of the top level and stay. A thread is refused: it goes with its starter message.
+  of the top level and stay. A thread is refused here: `delete_thread/2` deletes it.
   """
   def delete_channel(%Scope{} = scope, channel_id) do
     with {:ok, channel_id} <- Ecto.UUID.cast(channel_id) do
@@ -200,6 +201,26 @@ defmodule Tavern.Chat.Channels do
 
           true ->
             soft_delete(channel)
+        end
+      end)
+    else
+      :error -> {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Soft-deletes a thread or forum post, with its messages, and records it in the audit log. A
+  member with `manage_messages` in its parent channel may; deleting the starter message does not.
+  A deleted thread is not restorable. Refusals: `{:error, :not_found}` for a thread the scope
+  cannot view, `{:error, :forbidden}` otherwise. Broadcasts `{:channel_deleted, thread}` on the
+  server topic.
+  """
+  def delete_thread(%Scope{} = scope, thread_id) do
+    with {:ok, thread_id} <- Ecto.UUID.cast(thread_id) do
+      write_channel(scope, :delete_thread, thread_id, :channel_deleted, fn thread ->
+        with {:ok, thread} <- soft_delete(thread) do
+          record_thread_deleted!(scope, thread)
+          {:ok, thread}
         end
       end)
     else
@@ -391,6 +412,19 @@ defmodule Tavern.Chat.Channels do
     |> Repo.all()
     |> Enum.with_index(start)
     |> Enum.each(fn {child, position} -> set_place(child.id, nil, position) end)
+  end
+
+  defp record_thread_deleted!(%Scope{user_id: actor_id}, thread) do
+    %AuditLogEntry{}
+    |> AuditLogEntry.changeset(%{
+      action_type: "thread_deleted",
+      actor_user_id: actor_id,
+      channel_id: thread.id,
+      target_type: "channel",
+      target_id: thread.id,
+      metadata: %{"channel_name" => thread.name, "parent_channel_id" => thread.parent_channel_id}
+    })
+    |> Repo.insert!()
   end
 
   defp soft_delete(channel) do

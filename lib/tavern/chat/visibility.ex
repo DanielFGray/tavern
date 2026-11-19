@@ -588,6 +588,11 @@ defmodule Tavern.Chat.Visibility do
   defp channel_decision(action, ctx, channel) when action in [:lock_thread, :unlock_thread],
     do: Channel.thread?(channel) and view?(ctx, channel) and thread_manager?(ctx, channel)
 
+  # Deleting a thread or forum post: a manager's alone, whatever the thread's state. The creator
+  # holds no right to it.
+  defp channel_decision(:delete_thread, ctx, channel),
+    do: Channel.thread?(channel) and view?(ctx, channel) and thread_manager?(ctx, channel)
+
   # Whether the member may send in this channel or thread without waiting out its slowmode.
   defp channel_decision(:bypass_slowmode, ctx, channel),
     do:

@@ -21,7 +21,9 @@ defmodule TavernWeb.ServerComponents.Threads do
     assigns =
       assign(assigns,
         menu_id: "thread-actions-menu-#{assigns.message.id}",
-        menu?: assigns.server.can_archive_thread? or assigns.server.can_lock_thread?
+        menu?:
+          assigns.server.can_archive_thread? or assigns.server.can_lock_thread? or
+            assigns.server.can_delete_thread?
       )
 
     ~H"""
@@ -126,6 +128,50 @@ defmodule TavernWeb.ServerComponents.Threads do
                 />
                 {if @thread.locked_at, do: "Unlock", else: "Lock"}
               </button>
+              <%!-- The confirm step is client-side: the prompt button swaps for the confirm row. --%>
+              <div :if={@server.can_delete_thread?}>
+                <button
+                  type="button"
+                  role="menuitem"
+                  phx-click={
+                    JS.hide(to: "#prompt-delete-thread-#{@message.id}")
+                    |> JS.show(to: "#confirm-delete-thread-#{@message.id}")
+                  }
+                  id={"prompt-delete-thread-#{@message.id}"}
+                  class={[thread_menu_item_classes(), "text-error hover:text-error"]}
+                >
+                  <.icon name="hero-trash" class="size-4" /> Delete thread
+                </button>
+                <div
+                  id={"confirm-delete-thread-#{@message.id}"}
+                  class="hidden px-3 py-2 text-xs"
+                >
+                  <p class="mb-2 font-semibold text-base-content/80">
+                    Delete this thread and its replies?
+                  </p>
+                  <div class="flex gap-1.5">
+                    <button
+                      type="button"
+                      phx-click={JS.hide(to: "##{@menu_id}") |> JS.push("delete_thread")}
+                      id={"delete-thread-#{@message.id}"}
+                      class="rounded-lg bg-error px-2.5 py-1 font-semibold text-error-content transition hover:opacity-90"
+                    >
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      phx-click={
+                        JS.hide(to: "#confirm-delete-thread-#{@message.id}")
+                        |> JS.show(to: "#prompt-delete-thread-#{@message.id}", display: "flex")
+                      }
+                      id={"cancel-delete-thread-#{@message.id}"}
+                      class="rounded-lg px-2.5 py-1 font-semibold text-base-content/70 transition hover:bg-base-200"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 

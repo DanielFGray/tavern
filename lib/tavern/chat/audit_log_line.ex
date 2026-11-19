@@ -16,7 +16,7 @@ defmodule Tavern.Chat.AuditLogLine do
                    account_deletion_scheduled account_deletion_canceled account_deleted
                    role_created role_updated role_moved role_deleted
                    member_role_added member_role_removed
-                   channel_overwrite_updated channel_overwrite_deleted
+                   channel_overwrite_updated channel_overwrite_deleted thread_deleted
                    bot_created bot_updated bot_revoked bot_token_created bot_token_revoked
                    invite_request_approved invite_request_denied invite_requests_denied_by_ip)
 
@@ -89,6 +89,9 @@ defmodule Tavern.Chat.AuditLogLine do
   defp line("channel_overwrite_deleted", actor, _subject, meta, entry),
     do:
       "#{actor} removed permissions for #{overwrite_target(meta, entry)} in #{channel_name(entry)}"
+
+  defp line("thread_deleted", actor, _subject, _meta, entry),
+    do: "#{actor} deleted the thread #{channel_name(entry)}"
 
   defp line("bot_created", actor, subject, _meta, _entry), do: "#{actor} created bot #{subject}"
   defp line("bot_revoked", actor, subject, _meta, _entry), do: "#{actor} revoked bot #{subject}"

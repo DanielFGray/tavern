@@ -73,7 +73,7 @@ A session may list a parent and still not see a thread under it. So the unfollow
 
 `Topics` broadcasts skip the calling process, so the session that posts, creates, follows or unfollows reloads its own sidebar after the call.
 
-Archiving, unarchiving, creating and deleting threads, and role changes already broadcast on the server topic. Each makes every session reload its followed threads.
+Archiving, unarchiving, creating and deleting threads, and role changes broadcast on the server topic. Each makes every session reload its followed threads. A delete arrives as `{:channel_deleted, thread}` ("Deleting a thread" below).
 
 ## Known limits
 
@@ -91,3 +91,12 @@ A deleted message keeps its row (`deleted_at`, body replaced) but no list shows 
 - **Live delete.** A delete removes the row from every open view (`State.stream_update_message/2` calls `stream_delete`). `State.rerender_messages/2` skips deleted messages, so no later re-render brings the row back.
 - **Replies.** A reply keeps its quote line when the quoted message is deleted, and shows "Original message deleted" (`#reply-deleted-<reply id>`) in place of the body. The read still preloads the reply target. A viewer who already has the reply open sees the old quote until the row renders again.
 - **Starters.** A thread whose starter was deleted has no row in the channel, so no chip. It stays in the thread browser and, when followed, in the sidebar, and it opens from either. A forum post with a deleted first message stays a post (forums.md).
+
+## Deleting a thread
+
+A thread is deleted by its own action, never by deleting its starter. A member with `manage_messages` in the parent channel (the thread creator holds no right to it) picks "Delete thread" in the thread panel menu and confirms. The confirm step is client-side: the menu item swaps for "Delete" and "Cancel" buttons.
+
+- `Chat.delete_thread/2` (`Channels.delete_thread/2`) runs through the channel write path: it takes the tree lock, decides `:delete_thread` (`Visibility`: a thread, viewable, with `manage_messages` in its parent), sets `deleted_at` on the thread row and inserts a `thread_deleted` audit entry in one transaction. The thread keeps its messages, which `Visibility` hides with it. A forum post takes the same action under the same rule. `Channels.delete_channel/2` still refuses a thread.
+- It broadcasts `{:channel_deleted, thread}` on the server topic. `Navigation.handle_info/2` handles it for threads: a session that has the thread open leaves it with the flash "Thread deleted.", then every session reloads its channels, followed threads, thread browser and forum post list, and refreshes the reply pill under the starter. The deleter's own session runs the same handler, because `Topics` skips the calling process.
+- A deleted thread is not restorable: `:restore_channel` refuses threads, so the deleted-channels list never offers one.
+- The thread panel menu shows the item when `Chat.can_delete_thread?/2` holds, so a manager sees it even when the thread is locked or archived.

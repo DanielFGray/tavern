@@ -57,6 +57,7 @@ defmodule TavernWeb.ServerLive do
       |> assign(:can_send_thread_messages?, false)
       |> assign(:can_archive_thread?, false)
       |> assign(:can_lock_thread?, false)
+      |> assign(:can_delete_thread?, false)
       |> assign(:can_react_in_thread?, false)
       |> assign(:can_manage_thread_messages?, false)
       |> assign(:forum, nil)

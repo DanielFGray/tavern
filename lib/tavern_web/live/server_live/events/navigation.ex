@@ -99,21 +99,10 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
     {:noreply, socket |> State.refresh_channels() |> State.refresh_active_thread(channel.id)}
   end
 
-  # The active channel is read before the refresh, which drops a channel that is no longer visible.
   def handle_info({:channel_deleted, channel}, socket) do
-    viewing? = match?(%{id: id} when id == channel.id, socket.assigns.active_channel)
-    socket = State.refresh_channels(socket)
-
-    cond do
-      viewing? ->
-        {:noreply,
-         socket
-         |> put_flash(:info, "Channel deleted.")
-         |> State.redirect_to_default_channel()}
-
-      true ->
-        {:noreply, socket}
-    end
+    if Chat.Channel.thread?(channel),
+      do: {:noreply, drop_deleted_thread(socket, channel)},
+      else: drop_deleted_channel(socket, channel)
   end
 
   def handle_info(:channels_reordered, socket) do
@@ -123,6 +112,34 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
   # A role change can show or hide channels for this member.
   def handle_info(:roles_changed, socket) do
     {:noreply, State.refresh_channels(socket)}
+  end
+
+  # The reload drops the thread from the sidebar, the browser and a forum's post list; the
+  # summaries drop the reply pill under its starter.
+  defp drop_deleted_thread(socket, thread) do
+    socket =
+      if match?(%{id: id} when id == thread.id, socket.assigns.active_thread),
+        do: socket |> State.leave_thread() |> put_flash(:info, "Thread deleted."),
+        else: socket
+
+    socket
+    |> State.refresh_channels()
+    |> State.maybe_refresh_thread_summaries(thread)
+  end
+
+  # The active channel is read before the refresh, which drops a channel that is no longer visible.
+  defp drop_deleted_channel(socket, channel) do
+    viewing? = match?(%{id: id} when id == channel.id, socket.assigns.active_channel)
+    socket = State.refresh_channels(socket)
+
+    if viewing? do
+      {:noreply,
+       socket
+       |> put_flash(:info, "Channel deleted.")
+       |> State.redirect_to_default_channel()}
+    else
+      {:noreply, socket}
+    end
   end
 
   defp push_panel_entered(socket, thread, watching, already_open) do

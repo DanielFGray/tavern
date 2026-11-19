@@ -121,6 +121,7 @@ defmodule TavernWeb.ServerLive.Events do
              "unarchive_thread",
              "lock_thread",
              "unlock_thread",
+             "delete_thread",
              "follow_thread",
              "unfollow_thread",
              "open_thread_browser",

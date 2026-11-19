@@ -541,6 +541,7 @@ defmodule TavernWeb.ServerLive.State do
     |> assign(:can_send_thread_messages?, Chat.can_send_messages_in_threads?(thread, user))
     |> assign(:can_archive_thread?, Chat.can_archive_thread?(thread, user))
     |> assign(:can_lock_thread?, Chat.can_lock_thread?(thread, user))
+    |> assign(:can_delete_thread?, Chat.can_delete_thread?(thread, user))
     |> assign(:can_react_in_thread?, Chat.can_add_reactions?(thread, user))
     |> assign(:can_manage_thread_messages?, Chat.can_manage_messages?(thread, user))
   end
@@ -577,6 +578,7 @@ defmodule TavernWeb.ServerLive.State do
     |> assign(:can_send_thread_messages?, false)
     |> assign(:can_archive_thread?, false)
     |> assign(:can_lock_thread?, false)
+    |> assign(:can_delete_thread?, false)
     |> assign(:can_react_in_thread?, false)
     |> assign(:can_manage_thread_messages?, false)
     |> assign(:thread_following?, false)

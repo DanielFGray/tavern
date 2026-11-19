@@ -336,6 +336,7 @@ defmodule Tavern.Chat do
   defdelegate unarchive_thread(scope, thread_id), to: Threads
   defdelegate lock_thread(scope, thread_id), to: Threads
   defdelegate unlock_thread(scope, thread_id), to: Threads
+  defdelegate delete_thread(scope, thread_id), to: Channels
   defdelegate followed_threads(scope), to: Threads
   defdelegate browse_threads(scope, channel_id, opts \\ []), to: Threads
   defdelegate change_forum_post(attrs \\ %{}), to: Forums, as: :change_post
@@ -1103,6 +1104,9 @@ defmodule Tavern.Chat do
     action = if thread.locked_at, do: :unlock_thread, else: :lock_thread
     Visibility.can?(user_scope(user), action, thread)
   end
+
+  def can_delete_thread?(thread, user),
+    do: Visibility.can?(user_scope(user), :delete_thread, thread)
 
   def can_add_reactions?(channel, user),
     do: Visibility.can?(user_scope(user), :add_reactions, channel)
