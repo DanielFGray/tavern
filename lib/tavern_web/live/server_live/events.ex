@@ -55,6 +55,11 @@ defmodule TavernWeb.ServerLive.Events do
     Polls.handle_info(message, socket)
   end
 
+  # Only the bot stream reads these; views re-render from the `:message_updated` sent with them.
+  def handle_info({event, _message, _reaction}, socket)
+      when event in [:reaction_added, :reaction_removed],
+      do: {:noreply, socket}
+
   def handle_event(event, params, socket)
 
   def handle_event(event, params, socket) when event in @channel_editor_events do

@@ -17,3 +17,11 @@ Every serialized message (`Tavern.Bots.Serializer.serialize_message/1`: each mes
 ## `GET /api/v1/members/:user_id`
 
 Returns `{"data": {"id", "username", "display_name", "bot", "system", "role_ids"}}`. `role_ids` holds the roles the member holds and the default role. The scope is checked first (`Chat.get_member/2` through `Visibility.member/1`): a user who is not an active, visible member (a stranger, a deactivated or deleted member, a malformed id) answers 404 `not_found`. A request without a bot token answers 401.
+
+## Reactions
+
+A bot sees who reacted through two events, and what a message holds through a summary.
+
+- `reaction.added` and `reaction.removed` carry `{message_id, channel_id, user_id, emoji}`. A unicode emoji is its character (`"🛑"`). A custom emoji is `{"id": "<uuid>", "name": "<name>"}`. A reaction toggled off sends `reaction.removed` with the emoji it removed.
+- `Tavern.Chat.toggle_reaction/3` broadcasts `{:reaction_added | :reaction_removed, message, reaction}` on the channel topic, after the `:message_updated` it has always sent. The bot stream subscribes only to channels the bot can view, so a reaction in any other channel is never sent. `ServerLive` ignores the two events.
+- Every serialized message carries `reactions: [{"emoji", "count"}]`, in the order each emoji was first used, with no voter list. The emoji has the same shape as in the events. The list is empty for an unreacted message. It is read from the `reactions` preload of `@read_preloads` and `@message_preloads`, so the serializer runs no query.

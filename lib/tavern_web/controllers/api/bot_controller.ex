@@ -250,6 +250,12 @@ defmodule TavernWeb.API.BotController do
   def dispatch({:message_deleted, message}),
     do: {:emit, "message.deleted", Bots.serialize_message(message)}
 
+  def dispatch({:reaction_added, message, reaction}),
+    do: {:emit, "reaction.added", Bots.serialize_reaction(message, reaction)}
+
+  def dispatch({:reaction_removed, message, reaction}),
+    do: {:emit, "reaction.removed", Bots.serialize_reaction(message, reaction)}
+
   def dispatch({:poll_voted, message, vote}),
     do: {:emit, "poll.voted", Bots.serialize_poll_vote(message, vote)}
 

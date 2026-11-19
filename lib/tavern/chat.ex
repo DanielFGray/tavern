@@ -945,20 +945,36 @@ defmodule Tavern.Chat do
       Repo.transact(fn ->
         with {:ok, message} <- authorize_message_write(scope, :add_reactions, message_id),
              {:ok, key} <- emoji_key.(Visibility.member(scope)),
-             {:ok, _reaction} <- toggle_reaction_row(message, scope.user_id, key) do
-          {:ok, reload_message(message.id)}
+             {:ok, change} <- toggle_reaction_row(message, scope.user_id, key) do
+          {:ok, {reload_message(message.id), change}}
         end
       end)
-      |> broadcast_written(:message_updated)
+      |> broadcast_reaction()
     end
   end
 
+  # `:message_updated` re-renders open views. `:reaction_added` / `:reaction_removed` tell the bot
+  # stream who reacted, which the message alone does not say.
+  defp broadcast_reaction({:ok, {%Message{} = message, {event, reaction}}}) do
+    broadcast_message(:message_updated, message)
+    Topics.broadcast_channel(message.channel_id, {event, message, reaction})
+    {:ok, message}
+  end
+
+  defp broadcast_reaction({:error, reason}), do: {:error, reason}
+
+  # The row carries its emoji, so the removal event can name a custom emoji after the row is gone.
   defp toggle_reaction_row(message, user_id, emoji_key) do
     fields = Map.merge(emoji_key, %{message_id: message.id, user_id: user_id})
 
     case Repo.get_by(Reaction, Map.to_list(fields)) do
-      nil -> %Reaction{} |> Reaction.changeset(fields) |> Repo.insert()
-      reaction -> Repo.delete(reaction)
+      nil ->
+        with {:ok, reaction} <- %Reaction{} |> Reaction.changeset(fields) |> Repo.insert(),
+             do: {:ok, {:reaction_added, Repo.preload(reaction, :emoji)}}
+
+      reaction ->
+        reaction = Repo.preload(reaction, :emoji)
+        with {:ok, reaction} <- Repo.delete(reaction), do: {:ok, {:reaction_removed, reaction}}
     end
   end
 

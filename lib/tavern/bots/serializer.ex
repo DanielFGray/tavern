@@ -3,12 +3,14 @@ defmodule Tavern.Bots.Serializer do
 
   alias Ecto.Association.NotLoaded
   alias Tavern.Chat.Channel
+  alias Tavern.Chat.Emoji
   alias Tavern.Chat.MediaAsset
   alias Tavern.Chat.MediaAssets
   alias Tavern.Chat.Message
   alias Tavern.Chat.MessageEmbed
   alias Tavern.Chat.Poll
   alias Tavern.Chat.Polls
+  alias Tavern.Chat.Reaction
   alias Tavern.Chat.User
 
   def serialize_bot_user(%User{} = bot_user) do
@@ -54,9 +56,42 @@ defmodule Tavern.Bots.Serializer do
       reply_to: serialize_message_reference(message.reply_to),
       embeds: serialize_embeds(message.embeds),
       poll: serialize_poll(message.poll),
+      reactions: serialize_reactions(message.reactions),
       mentions: serialize_mentions(message)
     }
   end
+
+  @doc """
+  The `reaction.added` / `reaction.removed` payload. `reaction` is the row inserted or deleted, with
+  its emoji loaded.
+  """
+  def serialize_reaction(%Message{} = message, %Reaction{} = reaction) do
+    %{
+      message_id: message.id,
+      channel_id: message.channel_id,
+      user_id: reaction.user_id,
+      emoji: serialize_emoji(reaction)
+    }
+  end
+
+  # `[{emoji, count}]` in the order each emoji was first used, without who reacted.
+  defp serialize_reactions(reactions) when is_list(reactions) do
+    sorted = Enum.sort_by(reactions, &{&1.inserted_at, &1.id})
+    counts = Enum.frequencies_by(sorted, &serialize_emoji/1)
+
+    sorted
+    |> Enum.map(&serialize_emoji/1)
+    |> Enum.uniq()
+    |> Enum.map(&%{emoji: &1, count: Map.fetch!(counts, &1)})
+  end
+
+  defp serialize_reactions(%NotLoaded{}), do: nil
+
+  # A unicode emoji is its character; a custom emoji is `%{id, name}`.
+  defp serialize_emoji(%Reaction{emoji_unicode: unicode}) when is_binary(unicode), do: unicode
+
+  defp serialize_emoji(%Reaction{emoji_id: id, emoji: %Emoji{name: name}}),
+    do: %{id: id, name: name}
 
   # `@everyone` and `@here` are stored as a mention of the default role, so they are reported as
   # `everyone`, not as a role id.

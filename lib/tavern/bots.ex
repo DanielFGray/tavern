@@ -426,6 +426,8 @@ defmodule Tavern.Bots do
 
   def serialize_message(message), do: Serializer.serialize_message(message)
 
+  def serialize_reaction(message, reaction), do: Serializer.serialize_reaction(message, reaction)
+
   def serialize_thread(thread), do: Serializer.serialize_thread(thread)
 
   def serialize_poll_vote(message, vote), do: Serializer.serialize_poll_vote(message, vote)
