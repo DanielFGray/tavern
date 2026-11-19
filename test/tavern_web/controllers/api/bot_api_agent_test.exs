@@ -231,6 +231,15 @@ defmodule TavernWeb.API.BotApiAgentTest do
       assert ids(conn) == Enum.slice(posts, 1, 2)
     end
 
+    test "a deleted message is not listed", ctx do
+      %{channel: channel, owner: owner, token: token, all: all} = ctx
+      {:ok, _} = Chat.delete_message(scope_for(owner), Enum.at(all, 2))
+
+      conn = token |> api() |> get(~p"/api/v1/channels/#{channel.id}/messages")
+
+      assert ids(conn) == List.delete_at(all, 2)
+    end
+
     test "a deleted message still works as a cursor", ctx do
       %{channel: channel, owner: owner, token: token, all: all} = ctx
       {:ok, _} = Chat.delete_message(scope_for(owner), Enum.at(all, 2))

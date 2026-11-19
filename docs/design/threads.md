@@ -83,3 +83,11 @@ Archiving, unarchiving, creating and deleting threads, and role changes already 
 ## Forum channels
 
 A forum post is a thread: see forums.md. The follow code, the sidebar and the browser select threads by `Channel.thread?/1` and hosts by `Channel.thread_host?/1`, which includes `:forum`.
+
+## Deleted messages
+
+A deleted message keeps its row (`deleted_at`, body replaced) but no list shows it. `Chat.list_messages/3` leaves it out of channel and thread pages, the bot API's `GET /api/v1/channels/:id/messages` included. A cursor may still name it (bot-api.md). The `message.deleted` event stays.
+
+- **Live delete.** A delete removes the row from every open view (`State.stream_update_message/2` calls `stream_delete`). `State.rerender_messages/2` skips deleted messages, so no later re-render brings the row back.
+- **Replies.** A reply keeps its quote line when the quoted message is deleted, and shows "Original message deleted" (`#reply-deleted-<reply id>`) in place of the body. The read still preloads the reply target. A viewer who already has the reply open sees the old quote until the row renders again.
+- **Starters.** A thread whose starter was deleted has no row in the channel, so no chip. It stays in the thread browser and, when followed, in the sidebar, and it opens from either. A forum post with a deleted first message stays a post (forums.md).

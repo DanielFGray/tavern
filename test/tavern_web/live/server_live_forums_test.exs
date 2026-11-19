@@ -123,6 +123,64 @@ defmodule TavernWeb.ServerLiveForumsTest do
              Chat.get_message(scope_for(ctx.me), post.starter_message_id).reactions
   end
 
+  test "the list shows active posts and the Archived tab shows archived ones", ctx do
+    open = new_post(ctx, ctx.other, "Still open")
+    closed = new_post(ctx, ctx.other, "Wrapped up")
+    {:ok, _} = Chat.archive_thread(scope_for(ctx.other), closed.id)
+
+    {:ok, view, _html} = live_hydrated(ctx.conn, ~p"/?channel=help")
+
+    assert post_ids(view) == [open.id]
+    assert has_element?(view, "#forum-tab-active[aria-pressed=true]")
+
+    view |> element("#forum-tab-archived") |> render_click()
+
+    assert post_ids(view) == [closed.id]
+    assert has_element?(view, "#forum-tab-archived[aria-pressed=true]")
+
+    view |> form("#forum-search", forum_search: %{query: "still"}) |> render_change()
+    assert has_element?(view, "#forum-empty", "No posts match")
+  end
+
+  test "an empty Archived tab says so", ctx do
+    new_post(ctx, ctx.other, "Still open")
+    {:ok, view, _html} = live_hydrated(ctx.conn, ~p"/?channel=help")
+
+    view |> element("#forum-tab-archived") |> render_click()
+
+    assert has_element?(view, "#forum-empty", "No archived posts")
+  end
+
+  test "a post archived or unarchived live moves between the tabs", ctx do
+    post = new_post(ctx, ctx.other, "Moving")
+    {:ok, view, _html} = live_hydrated(ctx.conn, ~p"/?channel=help")
+    assert post_ids(view) == [post.id]
+
+    {:ok, _} = Chat.archive_thread(scope_for(ctx.other), post.id)
+    _ = :sys.get_state(view.pid)
+    assert post_ids(view) == []
+
+    view |> element("#forum-tab-archived") |> render_click()
+    assert post_ids(view) == [post.id]
+
+    {:ok, _} = Chat.unarchive_thread(scope_for(ctx.other), post.id)
+    _ = :sys.get_state(view.pid)
+    assert post_ids(view) == []
+  end
+
+  test "a post whose first message was deleted stays in the list and hides that message", ctx do
+    post = new_post(ctx, ctx.other, "Orphaned", "secret first words")
+    message_fixture(post, ctx.me, %{body: "a reply"})
+    {:ok, _} = Chat.delete_message(scope_for(ctx.other), post.starter_message_id)
+
+    {:ok, view, _html} = live_hydrated(ctx.conn, ~p"/?channel=help")
+    assert post_ids(view) == [post.id]
+
+    {:ok, view, _html} = live_hydrated(ctx.conn, ~p"/?channel=help&thread=#{post.id}")
+    assert has_element?(view, "#thread-message-list-#{post.starter_message_id}", "a reply")
+    refute render(view) =~ "secret first words"
+  end
+
   defp new_post(ctx, author, title, body \\ "first message") do
     {:ok, post} =
       Chat.create_forum_post(scope_for(author), ctx.forum.id, %{"title" => title, "body" => body})

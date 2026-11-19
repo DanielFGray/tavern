@@ -35,7 +35,7 @@ The tags are written when a thread is created, and again when its starter messag
 
 ## Listing and search
 
-`Forums.list_posts/3` checks that the scope may view the forum, then reads through `Threads.browse_threads/3` with `tab: :all`, so active and archived posts list together and every row passed `Visibility`. It adds to each entry the first message (with author), the first message's top reaction with its count, and `image_url`.
+`Forums.list_posts/3` checks that the scope may view the forum, then reads through `Threads.browse_threads/3` with the `:tab` of the post list (`:active` by default, or `:archived`), so a list holds one tab and every row passed `Visibility`. A search runs within that tab. It adds to each entry the first message (with author), the first message's top reaction with its count, and `image_url`.
 
 - **Sort**: `:activity` (newest reply, or creation; the default) or `:created`. Both page by keyset, 25 at a time.
 - **Search**: the forum search and the thread browser share one parser, `Hashtags.split_query/1`. A word that starts with `#` filters by exact tag; every tag must match. Each other word must appear in the title.
@@ -61,3 +61,11 @@ DOM ids: `#forum-view`, `#forum-search`, `#forum-sort` and `#forum-layout` (each
 - No attachments in the New post form, and no uploaded gallery image (see Listing).
 - A forum's sidebar unread count stays at zero: its messages are all in posts.
 - Out of this build: moderator-defined tags, required tags and post guidelines.
+
+## Active and archived posts
+
+The post list shows active posts only. An Active/Archived switch (`#forum-tab`, beside the sort and layout switches) selects the archived ones, with the same unarchive control in the open post's ⋯ menu. The tab is per view, not remembered. The search, the sort and paging all run within the selected tab, and an empty tab says so. A post that is archived, unarchived or reopened by a reply moves between the tabs when the forum reloads on `:channel_updated`. The list has no "Archived" badge, because an archived post can no longer appear in it.
+
+## Deleted first messages
+
+A deleted message is hidden from every list (threads.md). A post whose first message was deleted stays a post: it keeps its row in the list (no excerpt or author line), and the first message's row inside the open post is hidden like any deleted message.

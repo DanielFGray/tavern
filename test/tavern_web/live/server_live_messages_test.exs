@@ -254,8 +254,8 @@ defmodule TavernWeb.ServerLiveMessagesTest do
     view |> element("#prompt-delete-message-#{message.id}") |> render_click()
     view |> element("#delete-message-#{message.id}") |> render_click()
 
-    assert has_element?(view, "#message-list", "[message deleted]")
-    assert render(view) =~ "deleted"
+    refute has_element?(view, "#messages-#{message.id}")
+    refute render(view) =~ "delete me"
   end
 
   test "moderators can delete other users messages", %{conn: conn} do
@@ -299,7 +299,7 @@ defmodule TavernWeb.ServerLiveMessagesTest do
     view |> element("#prompt-delete-message-#{message.id}") |> render_click()
     view |> element("#delete-message-#{message.id}") |> render_click()
 
-    assert has_element?(view, "#message-list", "[message deleted]")
+    refute has_element?(view, "#messages-#{message.id}")
   end
 
   test "shows composer guidance when mention_everyone is unavailable", %{conn: conn} do

@@ -16,7 +16,7 @@ defmodule TavernWeb.ServerComponents.Embeds do
   def message_embeds(assigns) do
     ~H"""
     <div
-      :if={@message.embeds != [] and is_nil(@message.deleted_at)}
+      :if={@message.embeds != []}
       id={"message-embeds-#{@message.id}"}
       class="mt-2 flex flex-col gap-2"
     >

@@ -192,11 +192,37 @@ defmodule Tavern.Chat.ForumsTest do
       assert {:error, :not_found} = Chat.list_forum_posts(scope_for(ctx.reader), ctx.forum.id)
     end
 
-    test "lists archived posts with the active ones", ctx do
-      {:ok, post} = new_post(ctx.forum, ctx.author, "Archived")
-      {:ok, _} = Chat.archive_thread(scope_for(ctx.author), post.id)
+    test "lists active posts by default and archived posts on the archived tab", ctx do
+      {:ok, open} = new_post(ctx.forum, ctx.author, "Open")
+      {:ok, archived} = new_post(ctx.forum, ctx.author, "Closed")
+      {:ok, _} = Chat.archive_thread(scope_for(ctx.author), archived.id)
+      scope = scope_for(ctx.reader)
 
-      assert ids(Chat.list_forum_posts(scope_for(ctx.reader), ctx.forum.id)) == [post.id]
+      assert ids(Chat.list_forum_posts(scope, ctx.forum.id)) == [open.id]
+      assert ids(Chat.list_forum_posts(scope, ctx.forum.id, tab: :active)) == [open.id]
+      assert ids(Chat.list_forum_posts(scope, ctx.forum.id, tab: :archived)) == [archived.id]
+    end
+
+    test "searches within the selected tab", ctx do
+      {:ok, _open} = new_post(ctx.forum, ctx.author, "Crash open")
+      {:ok, archived} = new_post(ctx.forum, ctx.author, "Crash closed")
+      {:ok, _} = Chat.archive_thread(scope_for(ctx.author), archived.id)
+      scope = scope_for(ctx.reader)
+
+      assert ids(Chat.list_forum_posts(scope, ctx.forum.id, tab: :archived, query: "crash")) ==
+               [archived.id]
+
+      assert ids(Chat.list_forum_posts(scope, ctx.forum.id, tab: :archived, query: "open")) == []
+    end
+
+    test "keeps a post whose first message was deleted, with no starter", ctx do
+      {:ok, post} = new_post(ctx.forum, ctx.author, "Orphaned")
+      {:ok, _} = Chat.delete_message(scope_for(ctx.author), post.starter_message_id)
+
+      assert {:ok, %{entries: [%{thread: %{id: id}, starter: nil}]}} =
+               Chat.list_forum_posts(scope_for(ctx.reader), ctx.forum.id)
+
+      assert id == post.id
     end
   end
 

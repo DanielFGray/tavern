@@ -16,6 +16,9 @@ defmodule TavernWeb.ServerLive.Events.Forums do
   def handle_event("forum_view", params, socket),
     do: {:noreply, ForumNav.set_view(socket, Map.take(params, ["sort", "layout"]))}
 
+  def handle_event("forum_tab", %{"tab" => tab}, socket) when tab in ["active", "archived"],
+    do: {:noreply, ForumNav.set_tab(socket, String.to_existing_atom(tab))}
+
   def handle_event("forum_more", _params, socket),
     do: {:noreply, ForumNav.load_more(socket)}
 

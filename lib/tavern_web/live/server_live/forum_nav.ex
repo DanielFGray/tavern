@@ -2,9 +2,9 @@ defmodule TavernWeb.ServerLive.ForumNav do
   @moduledoc """
   The post list of the open forum (docs/design/forums.md).
 
-  `:forum` is nil unless the open channel is a forum. Then it is `%{channel, view, query,
-  search_form, entries, next, post_form}`: `view` is the member's remembered `%{sort, layout}`,
-  `query` the search (each `#tag` an exact tag, other words title words), `entries` the loaded
+  `:forum` is nil unless the open channel is a forum. Then it is `%{channel, tab, view, query,
+  search_form, entries, next, post_form}`: `tab` is `:active` or `:archived`, `view` the member's
+  remembered `%{sort, layout}`, `query` the search (each `#tag` an exact tag, other words title words), `entries` the loaded
   pages of `Chat.list_forum_posts/3`, and `post_form` the New post form, or nil while it is
   closed.
   """
@@ -21,6 +21,7 @@ defmodule TavernWeb.ServerLive.ForumNav do
     socket
     |> assign(:forum, %{
       channel: channel,
+      tab: :active,
       view: view,
       query: "",
       search_form: search_form(""),
@@ -55,6 +56,13 @@ defmodule TavernWeb.ServerLive.ForumNav do
   def search(socket, query) when is_binary(query) do
     socket
     |> update_forum(&%{&1 | query: query, search_form: search_form(query)})
+    |> list_first_page()
+  end
+
+  @doc "Shows the active or the archived posts, keeping the search, and reloads."
+  def set_tab(socket, tab) when tab in [:active, :archived] do
+    socket
+    |> update_forum(&%{&1 | tab: tab})
     |> list_first_page()
   end
 
@@ -125,7 +133,7 @@ defmodule TavernWeb.ServerLive.ForumNav do
     Chat.list_forum_posts(
       socket.assigns.current_scope,
       forum.channel.id,
-      [sort: forum.view.sort, query: forum.query] ++ opts
+      [tab: forum.tab, sort: forum.view.sort, query: forum.query] ++ opts
     )
   end
 

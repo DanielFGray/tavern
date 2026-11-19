@@ -176,8 +176,8 @@ defmodule TavernWeb.ServerComponents.Helpers do
 
   defdelegate deleted_message?(message), to: Tavern.Chat.Message, as: :deleted?
 
-  @doc "Whether the message is a live poll. A deleted poll shows as any deleted message."
-  def poll_message?(%{poll: %Tavern.Chat.Poll{}} = message), do: not deleted_message?(message)
+  @doc "Whether the message is a poll."
+  def poll_message?(%{poll: %Tavern.Chat.Poll{}}), do: true
   def poll_message?(_message), do: false
 
   # Whether to show the remove button on a message's embeds. `Tavern.Chat.suppress_embeds/2`
@@ -211,8 +211,7 @@ defmodule TavernWeb.ServerComponents.Helpers do
     end
   end
 
-  def edited_message?(message),
-    do: not is_nil(message.edited_at) and not deleted_message?(message)
+  def edited_message?(message), do: not is_nil(message.edited_at)
 
   def message_controls_visible?(message_id, active_message_controls_id, message_action_menu_id) do
     active_message_controls_id == message_id or message_action_menu_id == message_id
@@ -229,7 +228,6 @@ defmodule TavernWeb.ServerComponents.Helpers do
   def can_open_message_controls?(server, message) do
     rights = message_rights(server, message)
 
-    not deleted_message?(message) and
-      (rights.send? or own_message?(message, server.current_user) or rights.manage?)
+    rights.send? or own_message?(message, server.current_user) or rights.manage?
   end
 end

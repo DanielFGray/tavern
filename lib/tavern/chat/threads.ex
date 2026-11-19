@@ -41,7 +41,7 @@ defmodule Tavern.Chat.Threads do
 
   Options:
 
-    * `:tab` - `:active` (default) or `:archived`; `:all` takes both.
+    * `:tab` - `:active` (default) or `:archived`.
     * `:sort` - `:activity` (default, newest activity first) or `:created` (newest first).
     * `:query` - a search: each `#tag` must be one of the thread's tags, and each other word
       must appear in its title (case-insensitive).
@@ -131,7 +131,6 @@ defmodule Tavern.Chat.Threads do
   defp last_activity,
     do: dynamic([thread, activity], coalesce(activity.last_at, thread.inserted_at))
 
-  defp where_tab(query, :all), do: query
   defp where_tab(query, :archived), do: where(query, [thread], not is_nil(thread.archived_at))
   defp where_tab(query, _active), do: where(query, [thread], is_nil(thread.archived_at))
 

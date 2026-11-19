@@ -6,7 +6,14 @@ defmodule TavernWeb.ServerLive.State do
   import Phoenix.Component, only: [assign: 3, to_form: 2]
 
   import Phoenix.LiveView,
-    only: [connected?: 1, push_event: 3, push_patch: 2, stream: 4, stream_insert: 3]
+    only: [
+      connected?: 1,
+      push_event: 3,
+      push_patch: 2,
+      stream: 4,
+      stream_delete: 3,
+      stream_insert: 3
+    ]
 
   alias Tavern.Accounts
   alias Tavern.Chat
@@ -303,7 +310,7 @@ defmodule TavernWeb.ServerLive.State do
     case socket.assigns do
       %{active_thread: %{id: ^channel_id} = thread} ->
         socket
-        |> stream_insert(:thread_messages, message)
+        |> stream_message(:thread_messages, message)
         |> assign(
           :thread_message_count,
           Chat.thread_reply_count(socket.assigns.current_scope, thread.id)
@@ -312,11 +319,20 @@ defmodule TavernWeb.ServerLive.State do
         |> rerender_active_thread_panel()
 
       %{active_channel: %{id: ^channel_id}} ->
-        stream_insert(socket, :messages, message)
+        socket
+        |> stream_message(:messages, message)
+        |> assign(:message_count, Chat.message_count(socket.assigns.current_scope, channel_id))
 
       _other ->
         socket
     end
+  end
+
+  # A deleted message has no row in any list: it leaves the stream instead of rendering again.
+  defp stream_message(socket, name, %Message{} = message) do
+    if Message.deleted?(message),
+      do: stream_delete(socket, name, message),
+      else: stream_insert(socket, name, message)
   end
 
   def maybe_refresh_thread_summaries(socket, channel) do
@@ -400,10 +416,16 @@ defmodule TavernWeb.ServerLive.State do
     {thread_rows, other_rows} =
       scope
       |> Chat.get_messages(message_ids)
+      |> Enum.reject(&Message.deleted?/1)
       |> Enum.split_with(&(&1.channel_id == thread_id))
 
     starter_rows =
-      if thread_rows == [], do: [], else: Chat.get_messages(scope, [thread.starter_message_id])
+      if thread_rows == [],
+        do: [],
+        else:
+          scope
+          |> Chat.get_messages([thread.starter_message_id])
+          |> Enum.reject(&Message.deleted?/1)
 
     channel_rows = Enum.filter(other_rows ++ starter_rows, &(&1.channel_id == channel_id))
 

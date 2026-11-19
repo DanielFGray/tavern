@@ -140,6 +140,7 @@ defmodule TavernWeb.ServerLive.Events do
              "forum_search",
              "forum_tag",
              "forum_view",
+             "forum_tab",
              "forum_more",
              "new_forum_post",
              "cancel_forum_post",

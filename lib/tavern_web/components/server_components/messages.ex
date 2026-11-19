@@ -76,6 +76,7 @@ defmodule TavernWeb.ServerComponents.Messages do
         </button>
         <span
           :if={!Chat.Channel.forum?(@server.active_channel)}
+          id="channel-message-count"
           class="hidden rounded-md bg-base-100 px-2 py-1 font-medium sm:inline-flex"
         >
           <%= if @server.channel_ready? do %>
@@ -187,7 +188,14 @@ defmodule TavernWeb.ServerComponents.Messages do
                 <span class="font-semibold text-base-content/80">
                   {@message.reply_to.author.display_name}
                 </span>
-                · {@message.reply_to.body}
+                ·
+                <%= if deleted_message?(@message.reply_to) do %>
+                  <span id={"reply-deleted-#{@message.id}"} class="italic">
+                    Original message deleted
+                  </span>
+                <% else %>
+                  {@message.reply_to.body}
+                <% end %>
               </span>
             </div>
 
@@ -257,7 +265,6 @@ defmodule TavernWeb.ServerComponents.Messages do
 
             <div class="mt-1 flex items-center gap-2 text-[11px] text-base-content/50">
               <span :if={edited_message?(@message)}>(edited)</span>
-              <span :if={deleted_message?(@message)} class="text-amber-300">deleted</span>
             </div>
 
             <div class="mt-2 flex flex-wrap items-center gap-1.5">
@@ -271,13 +278,13 @@ defmodule TavernWeb.ServerComponents.Messages do
                 phx-value-emoji={reaction.emoji_unicode}
                 phx-value-emoji_id={reaction.emoji_id}
                 id={reaction_dom_id(@message, reaction)}
-                disabled={!@rights.react? or deleted_message?(@message)}
+                disabled={!@rights.react?}
                 class={[
                   "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition",
                   reaction.reacted? && "border-violet-400/60 bg-violet-500/20 text-violet-100",
                   !reaction.reacted? &&
                     "border-base-300 bg-base-100 text-base-content/70 hover:border-base-content/20 hover:text-base-content",
-                  (!@rights.react? or deleted_message?(@message)) &&
+                  !@rights.react? &&
                     "cursor-not-allowed opacity-50 hover:border-base-300 hover:text-base-content/70"
                 ]}
               >
@@ -496,7 +503,7 @@ defmodule TavernWeb.ServerComponents.Messages do
         phx-click="reply_message"
         phx-value-id={@message.id}
         id={"quick-reply-message-#{@message.id}"}
-        disabled={!@rights.send? or deleted_message?(@message)}
+        disabled={!@rights.send?}
         class="inline-flex size-8 items-center justify-center rounded-full text-base-content/75 transition hover:bg-base-200 hover:text-base-content disabled:cursor-not-allowed disabled:opacity-50"
         aria-label="Reply"
         title="Reply"
@@ -518,10 +525,7 @@ defmodule TavernWeb.ServerComponents.Messages do
       </button>
 
       <button
-        :if={
-          not @rights.thread? and is_nil(@thread) and @server.can_create_public_threads? and
-            not deleted_message?(@message)
-        }
+        :if={not @rights.thread? and is_nil(@thread) and @server.can_create_public_threads?}
         type="button"
         phx-click="create_thread"
         phx-value-id={@message.id}
@@ -538,7 +542,7 @@ defmodule TavernWeb.ServerComponents.Messages do
         phx-click="toggle_reaction_picker"
         phx-value-id={@message.id}
         id={"open-reaction-picker-#{@message.id}"}
-        disabled={!@rights.react? or deleted_message?(@message)}
+        disabled={!@rights.react?}
         class="inline-flex size-8 items-center justify-center rounded-full text-base-content/75 transition hover:bg-base-200 hover:text-base-content disabled:cursor-not-allowed disabled:opacity-50"
         aria-label="Add reaction"
         title="Add reaction"
@@ -577,10 +581,7 @@ defmodule TavernWeb.ServerComponents.Messages do
           </button>
         <% else %>
           <button
-            :if={
-              not @rights.thread? and @server.can_create_public_threads? and
-                not deleted_message?(@message)
-            }
+            :if={not @rights.thread? and @server.can_create_public_threads?}
             type="button"
             phx-click="create_thread"
             phx-value-id={@message.id}
@@ -593,10 +594,7 @@ defmodule TavernWeb.ServerComponents.Messages do
         <% end %>
 
         <button
-          :if={
-            own_message?(@message, @server.current_user) and not deleted_message?(@message) and
-              not poll_message?(@message)
-          }
+          :if={own_message?(@message, @server.current_user) and not poll_message?(@message)}
           type="button"
           phx-click="edit_message"
           phx-value-id={@message.id}
@@ -607,7 +605,7 @@ defmodule TavernWeb.ServerComponents.Messages do
           <span class="text-base-content/50">✎</span>
         </button>
 
-        <%= if (own_message?(@message, @server.current_user) or @rights.manage?) and not deleted_message?(@message) do %>
+        <%= if own_message?(@message, @server.current_user) or @rights.manage? do %>
           <%= if delete_confirmation_open?(@message.id, @server.delete_confirmation_message_id) do %>
             <div
               id={"confirm-delete-message-#{@message.id}"}

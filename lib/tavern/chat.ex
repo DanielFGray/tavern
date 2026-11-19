@@ -1023,12 +1023,13 @@ defmodule Tavern.Chat do
 
   defdelegate thread_channel?(channel), to: Channel, as: :thread?
 
-  @doc "The number of messages in a channel the scope may view. A hidden channel counts 0, as a missing one does."
+  @doc "The number of live (not deleted) messages in a channel the scope may view. A hidden channel counts 0, as a missing one does."
   def message_count(%Scope{} = scope, channel_id) do
     with {:ok, channel_id} <- cast_id(channel_id),
          true <- Visibility.can?(scope, :view_channel, %Channel{id: channel_id}) do
       Message
       |> where([message], message.channel_id == ^channel_id)
+      |> where([message], is_nil(message.deleted_at))
       |> Repo.aggregate(:count)
     else
       _ -> 0

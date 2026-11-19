@@ -58,6 +58,14 @@ defmodule TavernWeb.ServerComponents.Forums do
 
       <div class="flex flex-wrap items-center gap-2">
         <.segmented
+          id="forum-tab"
+          label="Post status"
+          event="forum_tab"
+          field="tab"
+          current={@forum.tab}
+          options={[active: "Active", archived: "Archived"]}
+        />
+        <.segmented
           id="forum-sort"
           label="Sort posts"
           field="sort"
@@ -88,6 +96,7 @@ defmodule TavernWeb.ServerComponents.Forums do
   attr :id, :string, required: true
   attr :label, :string, required: true
   attr :field, :string, required: true
+  attr :event, :string, default: "forum_view"
   attr :current, :atom, required: true
   attr :options, :list, required: true
 
@@ -98,7 +107,8 @@ defmodule TavernWeb.ServerComponents.Forums do
         :for={{value, text} <- @options}
         type="button"
         id={"#{@id}-#{value}"}
-        phx-click="forum_view"
+        phx-click={@event}
+        phx-value-tab={@field == "tab" && value}
         phx-value-sort={@field == "sort" && value}
         phx-value-layout={@field == "layout" && value}
         aria-pressed={to_string(@current == value)}
@@ -167,9 +177,11 @@ defmodule TavernWeb.ServerComponents.Forums do
       id="forum-empty"
       class="rounded-xl border border-dashed border-base-300 bg-base-100 px-4 py-10 text-center text-sm text-base-content/60"
     >
-      {if String.trim(@forum.query) == "",
-        do: "No posts yet. Start the first one.",
-        else: "No posts match that search."}
+      {cond do
+        String.trim(@forum.query) != "" -> "No posts match that search."
+        @forum.tab == :archived -> "No archived posts."
+        true -> "No posts yet. Start the first one."
+      end}
     </p>
 
     <ul
@@ -216,12 +228,6 @@ defmodule TavernWeb.ServerComponents.Forums do
             >
               <span class="line-clamp-2">{thread_title(entry.thread)}</span>
             </.link>
-            <span
-              :if={entry.thread.archived_at}
-              class="shrink-0 rounded-full bg-base-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-base-content/60"
-            >
-              Archived
-            </span>
           </div>
 
           <p

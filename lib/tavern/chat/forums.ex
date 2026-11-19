@@ -82,17 +82,17 @@ defmodule Tavern.Chat.Forums do
   end
 
   @doc """
-  One page of a forum's posts, active and archived, each an entry of `Chat.browse_threads/3` with
+  One page of a forum's active or archived posts, each an entry of `Chat.browse_threads/3` with
   `:starter` (the first message with its author, or nil once deleted), `:top_reaction` (`%{emoji,
   emoji_unicode, count}` or nil) and `:image_url` (the first message's first image, or nil).
 
-  Options: `:sort` (`:activity` or `:created`), `:query` (see `Chat.browse_threads/3`) and
-  `:after`. A channel that is not a visible forum is `{:error, :not_found}`.
+  Options: `:tab` (`:active`, the default, or `:archived`), `:sort` (`:activity` or `:created`),
+  `:query` (see `Chat.browse_threads/3`, searched within the tab) and `:after`. A channel that is not a visible forum is `{:error, :not_found}`.
   """
   def list_posts(%Scope{} = scope, forum_id, opts \\ []) do
     with %Channel{kind: :forum} <- visible_forum(scope, forum_id),
          {:ok, page} <-
-           Threads.browse_threads(scope, forum_id, Keyword.put(opts, :tab, :all)) do
+           Threads.browse_threads(scope, forum_id, opts) do
       {:ok, %{page | entries: with_post_details(page.entries)}}
     else
       _ -> {:error, :not_found}
