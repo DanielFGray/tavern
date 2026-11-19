@@ -19,6 +19,7 @@ defmodule Tavern.Chat do
   alias Tavern.Chat.Threads
   alias Tavern.Chat.Topics
   alias Tavern.Chat.Visibility
+  alias Tavern.Chat.MemberRole
   alias Tavern.Chat.Membership
   alias Tavern.Chat.Message
   alias Tavern.Chat.MessageRoleMention
@@ -371,6 +372,99 @@ defmodule Tavern.Chat do
     end
   end
 
+  @audit_page_size 50
+
+  @doc """
+  One page of the audit log, newest first: `{:ok, %{entries: entries, next_cursor: cursor}}`.
+  `next_cursor` is `nil` on the last page; pass it back as `cursor` for the next one. The cursor
+  is the `{inserted_at, id}` of the last entry, so a write between two pages never shifts one.
+  A scope without `view_audit_log` gets `{:error, :forbidden}`.
+
+  `filters` is a map with any of `:actor_user_id`, `:action_type`, `:from` and `:to` (dates,
+  inclusive, in UTC). Blank values are ignored; a malformed actor id is `{:error, :not_found}`.
+
+  This is the only reader of the audit log. The event log design moves the log into the events
+  table, and that change touches this function alone.
+  """
+  def list_audit_entries(%Scope{} = scope, filters \\ %{}, cursor \\ nil) do
+    if Visibility.can?(scope, :view_audit_log, :server) do
+      with {:ok, query} <- audit_filters(AuditLogEntry, filters) do
+        entries =
+          query
+          |> audit_after(cursor)
+          |> order_by([entry], desc: entry.inserted_at, desc: entry.id)
+          |> limit(^(@audit_page_size + 1))
+          |> preload([:actor_user, :subject_user, :channel])
+          |> Repo.all()
+
+        {page, rest} = Enum.split(entries, @audit_page_size)
+        next_cursor = if rest != [], do: audit_cursor(List.last(page))
+
+        {:ok, %{entries: page, next_cursor: next_cursor}}
+      end
+    else
+      {:error, :forbidden}
+    end
+  end
+
+  @doc """
+  The members who appear as the actor of an audit entry, by username, for the page's filter. A
+  scope without `view_audit_log` gets `{:error, :forbidden}`.
+  """
+  def list_audit_actors(%Scope{} = scope) do
+    if Visibility.can?(scope, :view_audit_log, :server) do
+      actors =
+        from(user in Tavern.Chat.User,
+          where: user.id in subquery(from(entry in AuditLogEntry, select: entry.actor_user_id)),
+          order_by: user.username
+        )
+        |> Repo.all()
+
+      {:ok, actors}
+    else
+      {:error, :forbidden}
+    end
+  end
+
+  defp audit_cursor(%AuditLogEntry{inserted_at: inserted_at, id: id}), do: {inserted_at, id}
+
+  defp audit_after(query, nil), do: query
+
+  defp audit_after(query, {inserted_at, id}) do
+    where(
+      query,
+      [entry],
+      entry.inserted_at < ^inserted_at or (entry.inserted_at == ^inserted_at and entry.id < ^id)
+    )
+  end
+
+  defp audit_filters(query, filters) do
+    Enum.reduce_while(filters, {:ok, query}, fn
+      {_key, value}, acc when value in [nil, ""] ->
+        {:cont, acc}
+
+      {:actor_user_id, id}, {:ok, query} ->
+        case Ecto.UUID.cast(id) do
+          {:ok, id} -> {:cont, {:ok, where(query, [entry], entry.actor_user_id == ^id)}}
+          :error -> {:halt, {:error, :not_found}}
+        end
+
+      {:action_type, type}, {:ok, query} ->
+        {:cont, {:ok, where(query, [entry], entry.action_type == ^type)}}
+
+      {:from, %Date{} = from}, {:ok, query} ->
+        from = DateTime.new!(from, ~T[00:00:00], "Etc/UTC")
+        {:cont, {:ok, where(query, [entry], entry.inserted_at >= ^from)}}
+
+      {:to, %Date{} = to}, {:ok, query} ->
+        before = DateTime.new!(Date.add(to, 1), ~T[00:00:00], "Etc/UTC")
+        {:cont, {:ok, where(query, [entry], entry.inserted_at < ^before)}}
+
+      {_key, _value}, acc ->
+        {:cont, acc}
+    end)
+  end
+
   @doc """
   Times out the member `subject_user_id` and records the case and the audit entry. Returns
   `{:ok, subject, moderation_case}`; see `moderate/4` for the refusals.
@@ -410,6 +504,101 @@ defmodule Tavern.Chat do
       "ban_reason" => reason
     })
   end
+
+  @doc """
+  The banned members, newest ban first, for a scope with `ban_members`; any other scope gets
+  `{:error, :forbidden}`. `ban_members` is the right to lift a ban, so it is also the right to
+  read the list the unban button belongs to. `view_audit_log` alone does not open it.
+
+  Each entry is `%{user: user, reason: reason, banned_at: datetime, moderator: user | nil}`; the
+  reason and the moderator come from the member's latest `:ban` case.
+  """
+  def list_bans(%Scope{} = scope) do
+    if Visibility.can?(scope, :ban_members, :server) do
+      banned =
+        from(user in User,
+          join: membership in Membership,
+          on: membership.user_id == user.id,
+          where:
+            not is_nil(membership.deactivated_at) and
+              fragment("?->>'banned' = 'true'", membership.flags),
+          order_by: [desc: membership.deactivated_at],
+          select: {user, membership.deactivated_at}
+        )
+        |> Repo.all()
+
+      ids = Enum.map(banned, fn {user, _banned_at} -> user.id end)
+
+      # Oldest first, so `Map.new/2` keeps each member's latest case.
+      cases =
+        from(moderation_case in ModerationCase,
+          where: moderation_case.action_type == :ban and moderation_case.subject_user_id in ^ids,
+          order_by: [asc: moderation_case.inserted_at],
+          preload: :actor_user
+        )
+        |> Repo.all()
+        |> Map.new(&{&1.subject_user_id, &1})
+
+      {:ok,
+       for {user, banned_at} <- banned do
+         moderation_case = Map.get(cases, user.id)
+
+         %{
+           user: user,
+           banned_at: banned_at,
+           reason: moderation_case && moderation_case.reason,
+           moderator: moderation_case && moderation_case.actor_user
+         }
+       end}
+    else
+      {:error, :forbidden}
+    end
+  end
+
+  @doc """
+  Lifts the ban on `subject_user_id`. The member is active again with the default role only: the
+  roles they held when banned are dropped, not restored. Records an `:unban` case, marks the ban
+  case revoked, and broadcasts `:roles_changed`. Returns `{:ok, subject, moderation_case}`; a
+  member who is not banned (or has no membership) is `{:error, :not_found}`, and the moderation
+  rules of `ban_member/3` apply.
+  """
+  def unban_member(%Scope{} = scope, subject_user_id, reason \\ nil) do
+    moderate(scope, subject_user_id, :ban_members, fn membership, subject_id ->
+      if banned_membership?(membership) do
+        now = DateTime.utc_now()
+
+        from(member_role in MemberRole, where: member_role.user_id == ^subject_id)
+        |> Repo.delete_all()
+
+        from(moderation_case in ModerationCase,
+          where:
+            moderation_case.subject_user_id == ^subject_id and
+              moderation_case.action_type == :ban and moderation_case.state == :executed
+        )
+        |> Repo.update_all(
+          set: [state: :revoked, revoked_at: now, revoked_by_user_id: scope.user_id]
+        )
+
+        membership = membership |> Membership.reactivate_changeset() |> Repo.update!()
+
+        moderation_case =
+          record_moderation_case(scope.user_id, subject_id, :unban, reason, executed_at: now)
+
+        record_audit_log!(scope.user_id, subject_id, "unban_member", reason, %{})
+
+        {membership, moderation_case}
+      else
+        {:error, :not_found}
+      end
+    end)
+    |> tap(fn
+      {:ok, _subject, _moderation_case} -> Topics.broadcast_server(:roles_changed)
+      {:error, _reason} -> :ok
+    end)
+  end
+
+  defp banned_membership?(%Membership{deactivated_at: nil}), do: false
+  defp banned_membership?(%Membership{flags: flags}), do: Map.get(flags || %{}, "banned") == true
 
   @doc """
   Edits a message the scope authored, and broadcasts it. A message the scope may not view is
@@ -706,14 +895,14 @@ defmodule Tavern.Chat do
   # decision sees the subject's state as of the lock. `change` gets the subject's membership row,
   # which that lock already holds, and returns the membership to keep and the moderation case. A
   # subject with no membership row is `:not_found`; a subject the actor may not moderate is
-  # `:forbidden`, both from `Visibility`.
+  # `:forbidden`, both from `Visibility`. `change` may instead return `{:error, reason}`, which
+  # rolls the transaction back.
   defp moderate(%Scope{} = scope, subject_user_id, bit, change) do
     with {:ok, subject_user_id} <- cast_id(subject_user_id) do
       Repo.transact(fn ->
         with :ok <- Visibility.authorize_write(scope, {:moderate, bit}, subject_user_id),
-             {:ok, membership} <- subject_membership(subject_user_id) do
-          {membership, moderation_case} = change.(membership, subject_user_id)
-
+             {:ok, membership} <- subject_membership(subject_user_id),
+             {%Membership{} = membership, moderation_case} <- change.(membership, subject_user_id) do
           subject =
             User
             |> Repo.get!(subject_user_id)

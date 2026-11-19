@@ -35,6 +35,10 @@ defmodule TavernWeb.SettingsComponents.Shell do
           <%= if @active_tab == "roles" and @role_controls.manage_roles? do %>
             <TavernWeb.SettingsComponents.Roles.roles_tab {assigns} />
           <% end %>
+
+          <%= if @active_tab == "audit" and @can_view_audit_log? do %>
+            <TavernWeb.SettingsComponents.Audit.audit_tab {assigns} />
+          <% end %>
         </section>
       </div>
 
@@ -93,6 +97,13 @@ defmodule TavernWeb.SettingsComponents.Shell do
           tab="roles"
           id="settings-tab-roles"
           label="Roles"
+        />
+        <.tab_button
+          :if={@can_view_audit_log?}
+          active_tab={@active_tab}
+          tab="audit"
+          id="settings-tab-audit"
+          label="Audit log"
         />
       </nav>
 

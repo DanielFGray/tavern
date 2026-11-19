@@ -52,4 +52,12 @@ defmodule Tavern.Chat.Membership do
   def deactivate_changeset(membership, deactivated_at, flags) when is_map(flags) do
     change(membership, deactivated_at: deactivated_at, timeout_until: nil, flags: flags)
   end
+
+  @doc """
+  Reactivates a deactivated membership and drops its ban flags. Other flags stay.
+  """
+  def reactivate_changeset(membership) do
+    flags = Map.drop(membership.flags || %{}, ["banned", "ban_reason"])
+    change(membership, deactivated_at: nil, flags: flags)
+  end
 end

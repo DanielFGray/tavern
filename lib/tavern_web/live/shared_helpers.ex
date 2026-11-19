@@ -117,6 +117,16 @@ defmodule TavernWeb.Live.SharedHelpers do
     end
   end
 
+  def run_member_moderation(scope, subject_id, %{"action" => "unban", "reason" => reason}) do
+    case Chat.unban_member(scope, subject_id, blank_to_nil(reason)) do
+      {:ok, updated_subject, moderation_case} ->
+        {:ok, updated_subject, moderation_case, "Member unbanned."}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   def run_member_moderation(_scope, _subject_id, _params), do: {:error, :invalid_action}
 
   def emoji_entries_for_picker(current_user) do

@@ -11,13 +11,15 @@ defmodule TavernWeb.SettingsLive do
   alias TavernWeb.Live.SharedHelpers
   alias TavernWeb.Plugs.ClientIp
   alias Tavern.Chat.Topics
+  alias TavernWeb.SettingsLive.Audit
   alias TavernWeb.SettingsLive.ChannelPermissions
   alias TavernWeb.SettingsLive.Roles
   alias TavernWeb.SettingsLive.State
 
-  @tabs ["profile", "notifications", "channel_notifications", "theme", "server", "roles"]
+  @tabs ["profile", "notifications", "channel_notifications", "theme", "server", "roles", "audit"]
   @role_events Roles.events()
   @channel_permission_events ChannelPermissions.events()
+  @audit_events Audit.events()
 
   @impl true
   def mount(_params, _session, socket) do
@@ -36,6 +38,7 @@ defmodule TavernWeb.SettingsLive do
       )
       |> State.init()
       |> Roles.init()
+      |> Audit.init()
       |> ChannelPermissions.init()
 
     if connected?(socket), do: Topics.subscribe_server()
@@ -45,9 +48,12 @@ defmodule TavernWeb.SettingsLive do
 
   @impl true
   def handle_params(%{"tab" => tab}, _uri, socket) do
-    if tab_allowed?(socket, tab),
-      do: {:noreply, assign(socket, :active_tab, tab)},
-      else: {:noreply, socket}
+    if tab_allowed?(socket, tab) do
+      socket = assign(socket, :active_tab, tab)
+      {:noreply, if(tab == "audit", do: Audit.load(socket), else: socket)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_params(_params, _uri, socket) do
@@ -63,6 +69,12 @@ defmodule TavernWeb.SettingsLive do
 
   def handle_event(event, params, socket) when event in @role_events do
     Roles.handle_event(event, params, socket)
+  end
+
+  def handle_event(event, params, socket) when event in @audit_events do
+    if tab_allowed?(socket, "audit"),
+      do: Audit.handle_event(event, params, socket),
+      else: {:noreply, socket}
   end
 
   def handle_event(event, params, socket) when event in @channel_permission_events do
@@ -635,11 +647,42 @@ defmodule TavernWeb.SettingsLive do
     end
   end
 
+  @impl true
+  def handle_event("unban_member", %{"user_id" => user_id} = params, socket) do
+    reason = Map.get(params, "reason", "")
+
+    case State.run_member_moderation(socket.assigns.current_scope, user_id, %{
+           "action" => "unban",
+           "reason" => reason
+         }) do
+      {:ok, _subject, _case, message} ->
+        {:noreply, socket |> State.refresh_member_presence() |> put_flash(:info, message)}
+
+      {:error, :forbidden} ->
+        {:noreply, put_flash(socket, :error, "You do not have permission to unban that member.")}
+
+      {:error, :not_found} ->
+        {:noreply,
+         socket
+         |> State.refresh_member_presence()
+         |> put_flash(:error, "That member is not banned.")}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Could not unban that member.")}
+    end
+  end
+
   # Server events: a role change can change what this member may manage and which channels they
   # see; a channel change re-reads the channel lists. Other server events change nothing here.
   @impl true
   def handle_info(:roles_changed, socket) do
-    socket = Roles.refresh(socket)
+    socket =
+      socket
+      |> Roles.refresh()
+      |> assign(
+        :can_view_audit_log?,
+        SharedHelpers.can_view_audit_log?(socket.assigns.current_scope)
+      )
 
     socket =
       if tab_allowed?(socket, socket.assigns.active_tab),
@@ -663,6 +706,10 @@ defmodule TavernWeb.SettingsLive do
 
   # The Roles tab is shown only to a member who holds `manage_roles`.
   defp tab_allowed?(socket, "roles"), do: socket.assigns.role_controls.manage_roles?
+
+  defp tab_allowed?(socket, "audit"),
+    do: SharedHelpers.can_view_audit_log?(socket.assigns.current_scope)
+
   defp tab_allowed?(_socket, tab), do: tab in @tabs
 
   # A scope without `view_audit_log` reads no cases, and so does a malformed id.

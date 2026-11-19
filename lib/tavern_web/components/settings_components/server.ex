@@ -117,6 +117,73 @@ defmodule TavernWeb.SettingsComponents.Server do
       <.bot_registry :if={@can_manage_bots?} {assigns} />
       <.invites_panel :if={@can_manage_server?} {assigns} />
       <.members_panel {assigns} />
+      <.bans_panel :if={@bans} {assigns} />
+    </div>
+    """
+  end
+
+  def bans_panel(assigns) do
+    ~H"""
+    <div id="bans-panel" class="mt-5 rounded-xl border border-base-300 bg-base-200 p-4">
+      <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-base-content/50">
+        Bans
+      </p>
+      <p class="mt-1 text-xs text-base-content/60">
+        An unbanned member returns with the default role only. The roles they held are not restored.
+      </p>
+
+      <div id="ban-list" class="mt-3 space-y-2">
+        <div
+          :for={ban <- @bans}
+          id={"ban-#{ban.user.id}"}
+          class="rounded-lg border border-base-300 bg-base-100 p-3"
+        >
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0">
+              <p class="truncate text-sm font-semibold text-base-content">
+                {ban.user.display_name}
+                <span class="font-normal text-base-content/50">@{ban.user.username}</span>
+              </p>
+              <p class="text-[11px] text-base-content/50">
+                Banned {Calendar.strftime(ban.banned_at, "%b %-d, %Y")}{if ban.moderator,
+                  do: " by #{ban.moderator.display_name}"}
+              </p>
+              <p class="mt-1 text-xs text-base-content/70">
+                {ban.reason || "No reason given"}
+              </p>
+            </div>
+
+            <.form
+              for={%{}}
+              as={:unban}
+              id={"unban-form-#{ban.user.id}"}
+              phx-submit="unban_member"
+              class="flex items-center gap-2"
+            >
+              <input type="hidden" name="user_id" value={ban.user.id} />
+              <input
+                type="text"
+                name="reason"
+                id={"unban-reason-#{ban.user.id}"}
+                placeholder="Reason (optional)"
+                class="w-40 rounded-md border border-base-300 bg-base-100 px-2 py-1 text-xs"
+              />
+              <button
+                type="submit"
+                id={"unban-#{ban.user.id}"}
+                data-confirm={"Unban #{ban.user.display_name}? They return as a member with the default role only."}
+                class="rounded-md bg-emerald-500 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-emerald-400"
+              >
+                Unban
+              </button>
+            </.form>
+          </div>
+        </div>
+
+        <p :if={@bans == []} id="ban-list-empty" class="text-xs text-base-content/50">
+          No banned members.
+        </p>
+      </div>
     </div>
     """
   end

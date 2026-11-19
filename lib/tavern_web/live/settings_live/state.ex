@@ -56,7 +56,7 @@ defmodule TavernWeb.SettingsLive.State do
     |> maybe_load_invites()
     |> assign(:manage_channels_open?, false)
     |> assign(:manage_emojis_open?, false)
-    |> assign(:member_presence, Accounts.list_members(socket.assigns.current_scope))
+    |> refresh_member_presence()
     |> assign(:member_action_user_id, nil)
     |> assign(:member_action_form, to_form(Chat.change_moderation_action(%{}), as: :moderation))
     |> assign(:moderation_cases, [])
@@ -162,8 +162,20 @@ defmodule TavernWeb.SettingsLive.State do
     |> assign(:channel_memberships, channel_memberships_map(current_user, channels))
   end
 
+  # Who is in the server and who is banned change together, so one refresh reads both. `:bans` is
+  # nil for a scope that may not list bans, which hides the Bans panel.
   def refresh_member_presence(socket) do
-    assign(socket, :member_presence, Accounts.list_members(socket.assigns.current_scope))
+    scope = socket.assigns.current_scope
+
+    bans =
+      case Chat.list_bans(scope) do
+        {:ok, bans} -> bans
+        {:error, :forbidden} -> nil
+      end
+
+    socket
+    |> assign(:member_presence, Accounts.list_members(scope))
+    |> assign(:bans, bans)
   end
 
   def save_channel(socket, channel_params) do
