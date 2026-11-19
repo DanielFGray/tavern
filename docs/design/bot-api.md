@@ -14,6 +14,15 @@ Every serialized message (`Tavern.Bots.Serializer.serialize_message/1`: each mes
 - `@everyone` and `@here` are stored as a mention of the default role. They set `everyone: true` and are left out of `role_ids`.
 - The lists are preloaded by the scoped reads in `Tavern.Chat` (`@read_preloads`) and by the write path (`@message_preloads`), so the serializer runs no query.
 
+## `GET /api/v1/messages/:message_id`
+
+Returns `{"data": <serialized message>}`, the same shape as `message.created`. The read goes through `Tavern.Bots.get_message/2`, which calls `Chat.get_message/2` (scoped, with `@read_preloads`), so the serializer runs no query and the `mentions` lists are present.
+
+- A message is visible when the bot can view its channel and every parent: a thread's parent channel, a channel's category. A message in a deleted channel is hidden with it.
+- A thread's starter message lives in the thread's parent channel, so a bot that can view the parent reads the starter by id, even though the thread's own message list leaves it out.
+- A hidden message, a missing one and a malformed id all answer 404 `not_found`. The response never says whether a hidden message exists.
+- A request without a bot token answers 401.
+
 ## `GET /api/v1/members/:user_id`
 
 Returns `{"data": {"id", "username", "display_name", "bot", "system", "role_ids"}}`. `role_ids` holds the roles the member holds and the default role. The scope is checked first (`Chat.get_member/2` through `Visibility.member/1`): a user who is not an active, visible member (a stranger, a deactivated or deleted member, a malformed id) answers 404 `not_found`. A request without a bot token answers 401.

@@ -371,6 +371,17 @@ defmodule Tavern.Bots do
 
   def create_poll(_, _, _), do: {:error, :invalid_params}
 
+  @doc "The message `message_id`, serialized, when the bot may view its channel."
+  def get_message(%Scope{} = scope, message_id) do
+    case Chat.get_message(scope, message_id) do
+      %Tavern.Chat.Message{} = message ->
+        {:ok, %{message: Serializer.serialize_message(message)}}
+
+      nil ->
+        {:error, :not_found}
+    end
+  end
+
   @doc "The poll message `message_id` with its results, when the bot may view it."
   def get_poll(%Scope{} = scope, message_id) do
     case Chat.get_message(scope, message_id) do

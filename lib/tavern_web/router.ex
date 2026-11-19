@@ -115,6 +115,7 @@ defmodule TavernWeb.Router do
     post("/channels/:channel_id/messages", MessageController, :create)
     patch("/channels/:channel_id/messages/:message_id", MessageController, :update)
     post("/channels/:channel_id/typing", MessageController, :typing)
+    get("/messages/:message_id", MessageController, :show)
     get("/messages/:message_id/thread", MessageController, :thread)
     post("/channels/:channel_id/polls", PollController, :create)
     get("/messages/:message_id/poll", PollController, :show)

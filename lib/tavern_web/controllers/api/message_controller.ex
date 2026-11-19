@@ -144,6 +144,16 @@ defmodule TavernWeb.API.MessageController do
     end
   end
 
+  def show(conn, %{"message_id" => message_id}) do
+    case Bots.get_message(conn.assigns.current_bot_scope, message_id) do
+      {:ok, %{message: message}} ->
+        render(conn, :show, message: message)
+
+      {:error, :not_found} ->
+        ErrorHelpers.render_error(conn, :not_found, "not_found", "Message not found.")
+    end
+  end
+
   def thread(conn, %{"message_id" => message_id}) do
     case Bots.get_thread_for_starter_message(conn.assigns.current_bot_scope, message_id) do
       {:ok, %{thread: thread}} ->
