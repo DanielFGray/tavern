@@ -5,6 +5,7 @@ import Mention from "@tiptap/extension-mention"
 import Link from "@tiptap/extension-link"
 import MarkdownIt from "markdown-it"
 import DOMPurify from "dompurify"
+import { highlightCode } from "./code_highlight"
 import { CATEGORY_ICONS, CATEGORY_ORDER, CATEGORY_LABELS, filterEmojiCatalog } from "./emoji_catalog"
 
 const md = new MarkdownIt({
@@ -16,7 +17,7 @@ const md = new MarkdownIt({
     const languageLabel = language
       ? `<span class="inline-flex px-[0.9rem] pt-[0.55rem] text-[10px] font-extrabold uppercase tracking-[0.18em] text-zinc-400">${escapeHtml(language)}</span>`
       : ""
-    return `<div class="message-code-block overflow-hidden rounded-[0.9rem] border border-white/6 bg-[rgb(17_18_20_/_0.92)]">${languageLabel}<pre class="m-0 overflow-x-auto px-[0.95rem] pt-[0.85rem] pb-4"><code class="text-[13px] text-zinc-200">${escapeHtml(code)}</code></pre></div>`
+    return `<div class="message-code-block overflow-hidden rounded-[0.9rem] border border-white/6 bg-[rgb(17_18_20_/_0.92)]">${languageLabel}<pre class="m-0 overflow-x-auto px-[0.95rem] pt-[0.85rem] pb-4"><code class="text-[13px] text-zinc-200">${highlightCode(code, language) ?? escapeHtml(code)}</code></pre></div>`
   },
 })
 

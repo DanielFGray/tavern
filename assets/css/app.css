@@ -101,3 +101,39 @@
 
 /* Make LiveView wrapper divs transparent for layout */
 [data-phx-session], [data-phx-teleported-src] { display: contents }
+
+/* Syntax colours for highlight.js tokens in message code blocks. The block surface is a fixed
+   dark fill in both themes, so each colour is a status or primary token that stays readable on
+   it in light and dark. Plain identifiers keep the block's text colour. */
+.message-code-block .hljs-keyword,
+.message-code-block .hljs-selector-tag,
+.message-code-block .hljs-section,
+.message-code-block .hljs-tag,
+.message-code-block .hljs-name { color: var(--color-primary) }
+
+.message-code-block .hljs-string,
+.message-code-block .hljs-regexp,
+.message-code-block .hljs-addition { color: var(--color-success) }
+
+.message-code-block .hljs-number,
+.message-code-block .hljs-literal,
+.message-code-block .hljs-symbol,
+.message-code-block .hljs-bullet,
+.message-code-block .hljs-meta,
+.message-code-block .hljs-link { color: var(--color-warning) }
+
+.message-code-block .hljs-title,
+.message-code-block .hljs-function { color: var(--color-info) }
+
+.message-code-block .hljs-type,
+.message-code-block .hljs-built_in,
+.message-code-block .hljs-attr { color: color-mix(in oklab, var(--color-info) 55%, white) }
+
+.message-code-block .hljs-deletion { color: var(--color-error) }
+
+.message-code-block .hljs-comment,
+.message-code-block .hljs-quote,
+.message-code-block .hljs-doc { color: color-mix(in oklab, var(--color-neutral-content) 55%, transparent); font-style: italic }
+
+.message-code-block .hljs-emphasis { font-style: italic }
+.message-code-block .hljs-strong { font-weight: 700 }
