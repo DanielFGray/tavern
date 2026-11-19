@@ -2,6 +2,9 @@ const { test, expect } = require('@playwright/test')
 
 const { command, unique } = require('./support')
 
+// A form filled before the socket connects is submitted as a plain HTTP post, and the connecting mount resets what was typed.
+const connected = (page) => expect(page.locator('[data-phx-main]')).toHaveClass(/phx-connected/, { timeout: 60_000 })
+
 test('invite-only registration requires a valid code and consumes one use', async ({ page }, testInfo) => {
   const suffix = unique(testInfo)
 
@@ -15,8 +18,9 @@ test('invite-only registration requires a valid code and consumes one use', asyn
   // A bad code refuses the registration and creates no account.
   const fillForm = async (email, code) => {
     await page.goto('/register')
+    await connected(page)
     await page.locator('#registration-form input[name="user[email]"]').fill(email)
-    await page.locator('#registration-form input[name="user[username]"]').fill(`late_${suffix}`)
+    await page.locator('#registration-form input[name="user[username]"]').fill(email.split('@')[0].replace('-', '_'))
     await page.locator('#registration-form input[name="user[display_name]"]').fill('Late Arrival')
     await page.locator('#registration-form input[name="user[password]"]').fill('supersecurepass')
     await page.locator('#registration-form input[name="user[invite_code]"]').fill(code)
@@ -46,6 +50,7 @@ test('open registration needs no invite code', async ({ page }, testInfo) => {
   await command(page.request, 'set_registration_mode', { mode: 'open' })
 
   await page.goto('/register')
+  await connected(page)
   await expect(page.locator("input[name='user[invite_code]']")).toHaveCount(0)
 
   await page.locator('#registration-form input[name="user[email]"]').fill(`free-${suffix}@example.com`)
