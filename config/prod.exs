@@ -6,6 +6,7 @@ import Config
 # which you should run after static files are built and
 # before starting your production server.
 config :tavern, TavernWeb.Endpoint, cache_static_manifest: "priv/static/cache_manifest.json"
+config :tavern, :serve_gzip_assets, true
 config :tavern, :secure_cookies, true
 
 # The app serves plain HTTP. TLS ends outside it, at Traefik for a public route and at
