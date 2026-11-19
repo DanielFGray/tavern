@@ -1,22 +1,6 @@
 const { test, expect } = require('@playwright/test')
 
-const baseURL = 'http://127.0.0.1:4001'
-
-async function command(request, name, payload = {}) {
-  const response = await request.post(new URL('/api/testing/command', baseURL).toString(), {
-    data: { command: name, ...payload },
-  })
-  expect(response.ok()).toBeTruthy()
-  return (await response.json()).data
-}
-
-async function login(page) {
-  const url = new URL('/api/testing/command', baseURL)
-  url.searchParams.set('command', 'login')
-  url.searchParams.set('payload', JSON.stringify({ email: 'e2e@example.com', username: 'e2e_user', password: 'supersecurepass', next: '/' }))
-  await page.goto(url.toString())
-  await expect(page.locator('#server-shell[data-hydrated="true"]')).toBeVisible()
-}
+const { command, login, unique } = require('./support')
 
 // Role ids are server-generated, so a row is found by its name and its id read from the DOM.
 async function roleId(page, name) {
@@ -38,9 +22,13 @@ async function createRole(page, name) {
 }
 
 test('an owner creates, edits, moves, gives and deletes a role', async ({ page, request }, testInfo) => {
+  // Role names and the member are per run: a role left by an earlier run or project would make a row lookup match twice.
+  const tag = unique(testInfo)
+  const alphaName = `E2E Alpha ${tag}`
+  const betaName = `E2E Beta ${tag}`
   const { user: member } = await command(request, 'upsert_user', {
-    email: 'e2e-roles-member@example.com',
-    username: 'e2e_roles_member',
+    email: `e2e-roles-${tag}@example.com`,
+    username: `e2e_${tag}`,
     password: 'supersecurepass',
   })
 
@@ -51,8 +39,8 @@ test('an owner creates, edits, moves, gives and deletes a role', async ({ page, 
   await expect(page.locator('[data-phx-main]')).toHaveClass(/phx-connected/, { timeout: 60_000 })
   await expect(page.locator('#settings-view-roles')).toBeVisible()
 
-  const alpha = await createRole(page, 'E2E Alpha')
-  const beta = await createRole(page, 'E2E Beta')
+  const alpha = await createRole(page, alphaName)
+  const beta = await createRole(page, betaName)
 
   // A new role lands just above the default role, so Beta starts below Alpha.
   const rowIds = () => page.locator('#role-list > li').evaluateAll((rows) => rows.map((row) => row.id))
@@ -62,7 +50,7 @@ test('an owner creates, edits, moves, gives and deletes a role', async ({ page, 
   await choose(page, 'kick_members', 'allow')
   await choose(page, 'send_messages', 'deny')
   await page.locator('#save-role-button').click()
-  await expect(page.locator('#flash-group')).toContainText("Role E2E Beta saved.")
+  await expect(page.locator('#flash-group')).toContainText(`Role ${betaName} saved.`)
   await page.locator(`#edit-role-${beta}`).click()
   await expect(page.locator('#role-permission-kick_members-allow')).toBeChecked()
   await expect(page.locator('#role-permission-send_messages-deny')).toBeChecked()

@@ -1,13 +1,11 @@
 const { test, expect } = require('@playwright/test')
 
-const baseURL = 'http://127.0.0.1:4001'
+const { login, openSidebar, openUserMenu } = require('./support')
 
-async function login(page) {
-  const url = new URL('/api/testing/command', baseURL)
-  url.searchParams.set('command', 'login')
-  url.searchParams.set('payload', JSON.stringify({ email: 'e2e@example.com', username: 'e2e_user', password: 'supersecurepass', next: '/' }))
-  await page.goto(url.toString())
-  await expect(page.locator('#server-shell[data-hydrated="true"]')).toBeVisible()
+// The theme buttons sit in the sidebar footer, inside the drawer on a phone.
+async function pickTheme(page, theme) {
+  await openSidebar(page)
+  await page.locator(`button[data-phx-theme="${theme}"]`).first().click()
 }
 
 // Skip colour transitions so computed styles and screenshots show the settled theme.
@@ -27,31 +25,31 @@ test('theme toggle switches shell surfaces between light, dark and system', asyn
   await login(page)
   await settle(page)
 
-  await page.locator('button[data-phx-theme="light"]').first().click()
+  await pickTheme(page, 'light')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   const light = await surfaceColors(page)
   await page.screenshot({ path: testInfo.outputPath('light.png') })
 
-  await page.locator('button[data-phx-theme="dark"]').first().click()
+  await pickTheme(page, 'dark')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
   const dark = await surfaceColors(page)
   await page.screenshot({ path: testInfo.outputPath('dark.png') })
 
   // The choice survives a full page load.
-  await page.locator('button[data-phx-theme="light"]').first().click()
+  await pickTheme(page, 'light')
   await page.reload()
   await expect(page.locator('#server-shell[data-hydrated="true"]')).toBeVisible()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
   await settle(page)
   await page.screenshot({ path: testInfo.outputPath('light-reloaded.png') })
-  await page.locator('button[data-phx-theme="dark"]').first().click()
+  await pickTheme(page, 'dark')
 
   expect(light.scheme).toBe('light')
   expect(dark.scheme).toBe('dark')
   expect(light.main).not.toBe(dark.main)
   expect(light.sidebar).not.toBe(dark.sidebar)
 
-  await page.locator('button[data-phx-theme="system"]').first().click()
+  await pickTheme(page, 'system')
   await expect(page.locator('html')).not.toHaveAttribute('data-theme', /.+/)
   expect((await surfaceColors(page)).main).toBe(dark.main)
   await page.emulateMedia({ colorScheme: 'light' })
@@ -61,8 +59,8 @@ test('theme toggle switches shell surfaces between light, dark and system', asyn
 test('light theme applies to the settings page', async ({ page }, testInfo) => {
   await page.emulateMedia({ colorScheme: 'dark' })
   await login(page)
-  await page.locator('button[data-phx-theme="light"]').first().click()
-  await page.locator('#user-menu-button').click()
+  await pickTheme(page, 'light')
+  await openUserMenu(page)
   await page.locator('#user-menu-settings').click()
   await expect(page.locator('#settings-panel-title')).toBeVisible()
   await settle(page)

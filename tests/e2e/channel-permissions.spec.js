@@ -1,6 +1,7 @@
 const { test, expect } = require('@playwright/test')
 
 const baseURL = 'http://127.0.0.1:4001'
+const { openSidebar } = require('./support')
 
 async function command(request, name, payload = {}) {
   const response = await request.post(new URL('/api/testing/command', baseURL).toString(), {
@@ -31,13 +32,13 @@ async function choose(page, rowKey, flag, state) {
 }
 
 test('an owner makes a channel private to one role', async ({ page, browser, request }, testInfo) => {
-  // The desktop sidebar shows the channel links; the mobile project would also repeat the flow
-  // against the same database.
-  test.skip(testInfo.project.name !== 'desktop-chromium', 'desktop-only edit-mode flow')
   const owner = { email: 'e2e@example.com', username: 'e2e_user', password: 'supersecurepass' }
+  // Per run, so a member or role left behind by an earlier run never collides.
+  const stamp = Date.now().toString(36)
+  const roleName = `E2E Insiders ${stamp}`
   const member = {
-    email: 'e2e-perms-member@example.com',
-    username: 'e2e_perms_member',
+    email: `e2e-perms-${stamp}@example.com`,
+    username: `e2e_perms_${stamp}`,
     password: 'supersecurepass',
   }
   await command(request, 'upsert_user', member)
@@ -50,14 +51,16 @@ test('an owner makes a channel private to one role', async ({ page, browser, req
   await login(page, owner)
   await page.goto('/settings?tab=roles')
   await connected(page)
-  await page.getByLabel('New role name').fill('E2E Insiders')
+  await page.getByLabel('New role name').fill(roleName)
   await page.locator('#create-role-button').click()
-  const roleRow = page.locator('#role-list > li', { hasText: 'E2E Insiders' })
+  const roleRow = page.locator('#role-list > li', { hasText: roleName })
   await expect(roleRow).toHaveCount(1)
   const roleId = (await roleRow.getAttribute('id')).replace('role-row-', '')
 
   await page.goto('/')
   await connected(page)
+  await expect(page.locator('#server-shell[data-hydrated="true"]')).toBeVisible({ timeout: 60_000 })
+  await openSidebar(page)
   await page.locator('#toggle-channel-edit').click()
   const randomId = await page.locator('input[data-original="Random"]').getAttribute('data-id')
   await page.locator(`#channel-settings-${randomId}`).click()

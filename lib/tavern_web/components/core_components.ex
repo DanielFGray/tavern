@@ -214,7 +214,7 @@ defmodule TavernWeb.CoreComponents do
           disabled={@rest[:disabled]}
           form={@rest[:form]}
         />
-        <span class="label">
+        <span class="label items-start whitespace-normal">
           <input
             type="checkbox"
             id={@id}
@@ -235,7 +235,7 @@ defmodule TavernWeb.CoreComponents do
     ~H"""
     <div class="fieldset mb-2">
       <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="label mb-1 whitespace-normal">{@label}</span>
         <select
           id={@id}
           name={@name}
@@ -256,7 +256,7 @@ defmodule TavernWeb.CoreComponents do
     ~H"""
     <div class="fieldset mb-2">
       <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="label mb-1 whitespace-normal">{@label}</span>
         <textarea
           id={@id}
           name={@name}
@@ -277,7 +277,7 @@ defmodule TavernWeb.CoreComponents do
     ~H"""
     <div class="fieldset mb-2">
       <label for={@id}>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="label mb-1 whitespace-normal">{@label}</span>
         <input
           type={@type}
           name={@name}

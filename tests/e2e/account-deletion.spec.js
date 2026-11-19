@@ -67,23 +67,25 @@ test('an owner kicks with deletion scheduled, the member sees the date, and the 
 })
 
 test("a deleted author's messages show as Deleted user", async ({ page, request }, testInfo) => {
+  const stamp = Date.now().toString(36)
+  const gone = `e2e_gone_${stamp}`
   await command(request, 'upsert_user', {
-    email: 'e2e-gone@example.com',
-    username: 'e2e_gone',
+    email: `e2e-gone-${stamp}@example.com`,
+    username: gone,
     display_name: 'Gone Soon',
   })
   const { message } = await command(request, 'create_message', {
     channel_slug: 'general',
-    username: 'e2e_gone',
-    body: 'These words outlive their author.',
+    username: gone,
+    body: `These words outlive their author ${stamp}.`,
   })
-  await command(request, 'delete_account', { username: 'e2e_gone' })
+  await command(request, 'delete_account', { username: gone })
 
   await loginAs(page, owner)
   await expect(page.locator('#server-shell[data-hydrated="true"]')).toBeVisible()
 
   const row = page.locator(`#messages-${message.id}`)
-  await expect(row).toContainText('These words outlive their author.')
+  await expect(row).toContainText(`These words outlive their author ${stamp}.`)
   await expect(row).toContainText('Deleted user')
   await expect(row).not.toContainText('Gone Soon')
   await row.scrollIntoViewIfNeeded()

@@ -1,41 +1,6 @@
 const { test, expect } = require('@playwright/test')
 
-const baseURL = 'http://127.0.0.1:4001'
-
-/**
- * Run a test-support server command and return its JSON data.
- * For non-login commands that return JSON responses.
- */
-async function runServerCommand(page, command, payload = {}) {
-  const url = new URL('/api/testing/command', baseURL)
-  url.searchParams.set('command', command)
-  url.searchParams.set('payload', JSON.stringify(payload))
-
-  const response = await page.request.get(url.toString())
-  expect(response.ok()).toBeTruthy()
-  const body = await response.json()
-  return body.data
-}
-
-/**
- * Log in by navigating the browser to the test-support login endpoint.
- * The server creates a session and redirects to `next` (default "/").
- * The browser follows the redirect and ends up authenticated.
- */
-async function loginViaTestSupport(page, { email = 'e2e@example.com', username = 'e2e_user', password = 'supersecurepass', display_name, next = '/' } = {}) {
-  const url = new URL('/api/testing/command', baseURL)
-  url.searchParams.set('command', 'login')
-  url.searchParams.set('payload', JSON.stringify({ email, username, password, display_name, next }))
-  await page.goto(url.toString())
-  await page.locator('#user-menu-button').click()
-  await expect(page.locator('#logout-link')).toBeVisible()
-  // ServerLive loads channels, members and unread state after the socket connects; act only once it has.
-  await expect(page.locator('#server-shell[data-hydrated="true"]')).toBeVisible()
-}
-
-async function loginAsSeedUser(page) {
-  await loginViaTestSupport(page)
-}
+const { baseURL, command: runServerCommand, login, openSidebar, openUserMenu, unique: runSuffix } = require('./support')
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -63,8 +28,8 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
-test('desktop user can switch channels and send a chat message', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop-chromium', 'desktop-only interaction flow')
+test('desktop user can switch channels and send a chat message', async ({ page, isMobile }) => {
+  test.skip(isMobile, 'desktop-only interaction flow')
 
   const displayName = 'E2E User'
   const unique = `${Date.now()}`.slice(-6)
@@ -72,7 +37,7 @@ test('desktop user can switch channels and send a chat message', async ({ page }
   const code = `console.log("${unique}")`
   const link = `https://example.com/${unique}`
 
-  await loginAsSeedUser(page)
+  await login(page)
   await expect(page.locator('#channel-link-general')).toBeVisible()
 
   await page.locator('#channel-link-engineering').click()
@@ -101,10 +66,16 @@ test('desktop user can switch channels and send a chat message', async ({ page }
   await expect(page.locator('#message-list')).toContainText(displayName)
 })
 
-test('mobile user can open drawers and reaction bottom sheet', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'mobile-safari', 'mobile-only interaction flow')
+test('mobile user can open drawers and reaction bottom sheet', async ({ page, isMobile }, testInfo) => {
+  test.skip(!isMobile, 'mobile-only interaction flow')
 
-  await loginAsSeedUser(page)
+  const { message } = await runServerCommand(page.request, 'create_message', {
+    channel_slug: 'engineering',
+    username: 'e2e_user',
+    body: `react to me ${runSuffix(testInfo)}`,
+  })
+
+  await login(page)
 
   await page.locator('#open-mobile-sidebar').click()
   await expect(page.locator('#mobile-channel-drawer')).toHaveClass(/translate-x-0/)
@@ -116,7 +87,9 @@ test('mobile user can open drawers and reaction bottom sheet', async ({ page }, 
   await expect(page.locator('#mobile-members-drawer')).toContainText('Members')
   await page.locator('#close-mobile-members').click()
 
-  const reactionButton = page.locator('[id^="open-reaction-picker-"]').first()
+  // The message toolbar stays hidden on a touch screen until the message is tapped.
+  await page.locator(`#messages-${message.id} [phx-click="toggle_message_controls"]`).click()
+  const reactionButton = page.locator(`#open-reaction-picker-${message.id}`)
   await reactionButton.click()
 
   const reactionSheet = page.locator('[id^="reaction-picker-"]').first()
@@ -128,28 +101,32 @@ test('mobile user can open drawers and reaction bottom sheet', async ({ page }, 
 })
 
 test('settings trigger is visible and navigates to authenticated settings route', async ({ page }) => {
-  await loginViaTestSupport(page)
+  await login(page)
 
-  await page.locator('#user-menu-button').click()
-  await expect(page.locator('#user-menu-settings')).toBeVisible()
+  await openUserMenu(page)
   await page.locator('#user-menu-settings').click()
   await expect(page).toHaveURL(/\/settings$/)
   await expect(page.locator('#settings-panel-title')).toBeVisible()
 
   const guest = await page.context().browser().newPage()
-  await guest.goto('/settings')
+  await guest.goto(`${baseURL}/settings`)
   await expect(guest).toHaveURL(/\/login$/)
   await guest.close()
 })
 
 test('server branding updates settings and shell surfaces', async ({ page }) => {
-  await runServerCommand(page, 'set_server_name', { name: 'Tavern' })
-  await loginAsSeedUser(page)
+  await runServerCommand(page.request, 'set_server_name', { name: 'Tavern' })
+  await login(page)
 
-  await page.locator('#open-settings-link').click()
+  await openUserMenu(page)
+  await page.locator('#user-menu-settings').click()
   await expect(page).toHaveURL(/\/settings$/)
 
   await page.getByRole('button', { name: 'Server management' }).click()
+  // A long checkbox label must wrap: a nowrap one made this tab wider than a phone screen.
+  await expect(page.locator('#accept-invite-requests')).toBeVisible()
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)
+  expect(overflow).toBeLessThanOrEqual(0)
   await page.getByLabel('Server name').fill('Orbit HQ')
   await page.getByRole('button', { name: 'Save server settings' }).click()
 
@@ -168,7 +145,7 @@ const tinyPng = Buffer.from(
 )
 
 test('owner uploads a custom emoji from the browser and deletes it', async ({ page }) => {
-  await loginAsSeedUser(page)
+  await login(page)
   await page.goto('/settings?tab=server')
   // A click before the LiveView connects is lost, and the closed panel stays aria-hidden.
   await expect(page.locator('[data-phx-main]')).toHaveClass(/phx-connected/)
@@ -230,9 +207,10 @@ test('inactive channel mention triggers browser notification', async ({ browser 
     window.__tavernNotifications = notifications
   })
 
-  await loginViaTestSupport(author, { email: authorEmail, username: authorUsername, password, display_name: authorDisplayName })
-  await loginViaTestSupport(receiver)
+  await login(author, { email: authorEmail, username: authorUsername, password, display_name: authorDisplayName })
+  await login(receiver)
 
+  await openSidebar(author)
   await author.locator('#channel-link-engineering').click()
   await expect(author).toHaveURL(/\?channel=engineering$/)
 

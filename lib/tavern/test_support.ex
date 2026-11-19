@@ -87,6 +87,28 @@ defmodule Tavern.TestSupport do
     %{server: %{name: settings.name, icon_url: Chat.server_icon_url(settings)}}
   end
 
+  defp execute("set_registration_mode", payload) do
+    mode = payload["mode"] || raise "mode is required"
+
+    {:ok, settings} = Chat.update_server_settings(%{"registration_mode" => mode}, owner_user!())
+
+    %{server: %{registration_mode: Atom.to_string(settings.registration_mode)}}
+  end
+
+  defp execute("create_invite", payload) do
+    channel =
+      Chat.list_channels(%Tavern.Accounts.Scope{user_id: owner_user!().id})
+      |> Enum.find(&(&1.slug == "general")) || raise "no general channel"
+
+    {:ok, invite} =
+      Chat.create_invite(
+        payload |> Map.take(["code", "max_uses"]) |> Map.put("channel_id", channel.id),
+        owner_user!()
+      )
+
+    %{invite: %{code: invite.code, id: invite.id, channel_id: channel.id}}
+  end
+
   defp execute("get_server_branding", _payload) do
     settings = Chat.get_server_settings()
     %{server: %{name: settings.name, icon_url: Chat.server_icon_url(settings)}}

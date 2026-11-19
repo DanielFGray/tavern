@@ -1,54 +1,72 @@
 const { test, expect } = require('@playwright/test')
 
-const baseURL = 'http://127.0.0.1:4001'
-const owner = { email: 'e2e@example.com', username: 'e2e_user', password: 'supersecurepass' }
-
-async function login(page) {
-  const url = new URL('/api/testing/command', baseURL)
-  url.searchParams.set('command', 'login')
-  url.searchParams.set('payload', JSON.stringify({ ...owner, next: '/' }))
-  await page.goto(url.toString())
-  await expect(page.locator('#server-shell[data-hydrated="true"]')).toBeVisible({ timeout: 60_000 })
-  await expect(page.locator('[data-phx-main]')).toHaveClass(/phx-connected/, { timeout: 60_000 })
-}
+const { login, openSidebar, unique } = require('./support')
 
 // Drags by the handle in steps, so the hook sees moves between down and up. On a phone in
 // Chromium it sends real touch events through CDP; elsewhere the mouse makes pointer events.
+//
+// Other specs add channels, so the category and the handle can be further apart than the screen
+// is tall. Like a person, the drag then holds the pointer at the edge of the scrolling pane until
+// the hook's autoscroll brings the target into view.
 async function drag(page, handle, target, { touch }) {
-  const from = await handle.boundingBox()
-  const to = await target.boundingBox()
-  const start = { x: from.x + from.width / 2, y: from.y + from.height / 2 }
-  const end = { x: to.x + to.width / 2, y: to.y + to.height / 2 }
-  const steps = 8
-  const at = (i) => ({
-    x: start.x + ((end.x - start.x) * i) / steps,
-    y: start.y + ((end.y - start.y) * i) / steps,
+  await handle.scrollIntoViewIfNeeded()
+  const viewportHeight = page.viewportSize().height
+  const pane = await handle.evaluate((el) => {
+    const r = el.closest('.overflow-y-auto').getBoundingClientRect()
+    return { top: r.top, bottom: r.bottom }
   })
+  const top = Math.max(pane.top, 0) + 8
+  const bottom = Math.min(pane.bottom, viewportHeight) - 8
+  const center = async (locator) => {
+    const b = await locator.boundingBox()
+    return { x: b.x + b.width / 2, y: b.y + b.height / 2 }
+  }
 
+  let down, move, up
   if (touch) {
     const cdp = await page.context().newCDPSession(page)
     const send = (type, p) =>
       cdp.send('Input.dispatchTouchEvent', { type, touchPoints: p ? [{ ...p, id: 1 }] : [] })
-    await send('touchStart', start)
-    for (let i = 1; i <= steps; i++) await send('touchMove', at(i))
-    await send('touchEnd')
+    down = (p) => send('touchStart', p)
+    move = (p) => send('touchMove', p)
+    up = () => send('touchEnd')
   } else {
-    await page.mouse.move(start.x, start.y)
-    await page.mouse.down()
-    for (let i = 1; i <= steps; i++) await page.mouse.move(at(i).x, at(i).y)
-    await page.mouse.up()
+    down = async (p) => {
+      await page.mouse.move(p.x, p.y)
+      await page.mouse.down()
+    }
+    move = (p) => page.mouse.move(p.x, p.y)
+    up = () => page.mouse.up()
   }
+
+  let at = await center(handle)
+  await down(at)
+  for (let tick = 0; tick < 400; tick++) {
+    const to = await center(target)
+    if (to.y > top + 48 && to.y < bottom - 48) break
+    // The pointer must move for the hook to scroll: a move to the same spot sends no event.
+    const jitter = tick % 2
+    at = { x: at.x, y: to.y <= top + 48 ? top + jitter : bottom - jitter }
+    await move(at)
+  }
+  // The pane keeps scrolling while the pointer is near its edge, so the target moves under the
+  // pointer: aim at where it is now on every step, and once more at the end.
+  const steps = 8
+  const from = at
+  for (let i = 1; i <= steps; i++) {
+    const end = await center(target)
+    await move({ x: from.x + ((end.x - from.x) * i) / steps, y: from.y + ((end.y - from.y) * i) / steps })
+  }
+  await move(await center(target))
+  await up()
 }
 
 test('an owner edits the channel list in place', async ({ page, browserName, isMobile }, testInfo) => {
-  const tag = `${testInfo.project.name}-${Date.now()}`.replace(/[^a-z0-9]+/gi, '-').toLowerCase()
+  const tag = unique(testInfo)
   const shot = (name) => page.screenshot({ path: testInfo.outputPath(`${name}.png`) })
 
   await login(page)
-  if (isMobile) {
-    await page.locator('#open-mobile-sidebar').click()
-    await expect(page.locator('#mobile-channel-drawer')).toBeInViewport()
-  }
+  await openSidebar(page)
 
   await page.locator('#toggle-channel-edit').click()
   await expect(page.locator('#channel-edit-list')).toBeVisible()
