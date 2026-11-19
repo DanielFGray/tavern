@@ -62,6 +62,7 @@ defmodule TavernWeb.ServerLive do
       |> assign(:can_manage_thread_messages?, false)
       |> assign(:forum, nil)
       |> assign(:reply_to_message, nil)
+      |> assign(:poll_form, nil)
       |> assign(:editing_message_id, nil)
       |> assign(:editing_form, nil)
       |> assign(:message_count, 0)

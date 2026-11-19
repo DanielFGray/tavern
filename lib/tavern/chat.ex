@@ -18,6 +18,7 @@ defmodule Tavern.Chat do
   alias Tavern.Chat.InviteTree
   alias Tavern.Chat.Invites
   alias Tavern.Chat.Notifications
+  alias Tavern.Chat.Polls
   alias Tavern.Chat.Roles
   alias Tavern.Chat.ServerConfig
   alias Tavern.Chat.ThreadFollows
@@ -41,7 +42,13 @@ defmodule Tavern.Chat do
 
   # What a message read needs to render and serialize. The channel is not here: a read sets it from
   # the decision that allowed the read, so it costs no query.
-  @read_preloads [:author, reactions: [emoji: :asset], reply_to: :author, embeds: :image_asset]
+  @read_preloads [
+    :author,
+    reactions: [emoji: :asset],
+    reply_to: :author,
+    embeds: :image_asset,
+    poll: [:options, ballots: :user]
+  ]
 
   # What a write returns and broadcasts. The mention lists are here because the receiver's
   # notification check reads them from the broadcast; reads do not need them.
@@ -52,7 +59,8 @@ defmodule Tavern.Chat do
     role_mentions: :mentioned_role,
     reactions: [emoji: :asset],
     reply_to: :author,
-    embeds: :image_asset
+    embeds: :image_asset,
+    poll: [:options, ballots: :user]
   ]
 
   def default_reaction_emojis, do: @default_reaction_emojis
@@ -331,6 +339,11 @@ defmodule Tavern.Chat do
   defdelegate follow_thread(scope, thread_id), to: ThreadFollows, as: :follow
   defdelegate unfollow_thread(scope, thread_id), to: ThreadFollows, as: :unfollow
   defdelegate following_thread?(scope, thread_id), to: ThreadFollows, as: :following?
+  defdelegate change_poll(attrs \\ %{}), to: Polls
+  defdelegate create_poll(scope, channel_id, attrs), to: Polls
+  defdelegate vote_in_poll(scope, message_id, choice), to: Polls, as: :vote
+  defdelegate close_poll(scope, message_id), to: Polls
+  defdelegate poll_results(poll, viewer_id), to: Polls, as: :results
 
   def create_user(attrs) do
     %User{}
@@ -353,13 +366,22 @@ defmodule Tavern.Chat do
   may not view is `{:error, :not_found}`; a visible one it may not send to is `{:error,
   :forbidden}`.
   """
-  def create_message(%Scope{} = scope, channel_id, attrs) do
+  def create_message(%Scope{} = scope, channel_id, attrs),
+    do: send_message(scope, channel_id, attrs, &{:ok, &1})
+
+  @doc false
+  # Sends a message under every send rule of `create_message/3`, then runs `extend` on what
+  # `write_message/3` wrote, inside the same transaction. `extend` returns `{:ok, written}`, with
+  # the message reloaded when it added rows to it. A poll (`Tavern.Chat.Polls`) is a message
+  # extended with its poll rows.
+  def send_message(%Scope{} = scope, channel_id, attrs, extend) do
     with {:ok, channel_id} <- cast_id(channel_id),
          {:ok, attrs} <- normalize_message_attrs(attrs) do
       Repo.transact(fn ->
         with :ok <- Visibility.authorize_write(scope, :send_messages, %Channel{id: channel_id}),
              {:ok, reopened} <- enforce_channel_state(scope, channel_id),
-             {:ok, written} <- write_message(scope, channel_id, attrs) do
+             {:ok, written} <- write_message(scope, channel_id, attrs),
+             {:ok, written} <- extend.(written) do
           {:ok, {written, reopened}}
         end
       end)
@@ -757,14 +779,15 @@ defmodule Tavern.Chat do
   Edits a message the scope authored, and broadcasts it. The edit drops the embeds of links it
   removed and fetches previews only for links it added. Editing a thread's starter message takes
   the thread's tags from it again (`Tavern.Chat.Hashtags`). A message the scope may not view is
-  `{:error, :not_found}`. A visible message it may not edit (another author, or a timeout) is
-  `{:error, :forbidden}`.
+  `{:error, :not_found}`. A visible message it may not edit (another author, a timeout, or a
+  poll, whose question stays as voted on) is `{:error, :forbidden}`.
   """
   def update_message(%Scope{} = scope, message_id, attrs) do
     with {:ok, message_id} <- cast_id(message_id),
          {:ok, attrs} <- normalize_message_attrs(attrs) do
       Repo.transact(fn ->
         with {:ok, message} <- authorize_message_write(scope, :edit_message, message_id),
+             :ok <- Polls.refuse_question_edit(message),
              :ok <- authorize_message_mentions(scope, message.channel_id, attrs),
              {:ok, updated_message} <-
                message

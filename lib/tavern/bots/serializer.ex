@@ -7,6 +7,8 @@ defmodule Tavern.Bots.Serializer do
   alias Tavern.Chat.MediaAssets
   alias Tavern.Chat.Message
   alias Tavern.Chat.MessageEmbed
+  alias Tavern.Chat.Poll
+  alias Tavern.Chat.Polls
   alias Tavern.Chat.User
 
   def serialize_bot_user(%User{} = bot_user) do
@@ -46,9 +48,82 @@ defmodule Tavern.Bots.Serializer do
       author: serialize_loaded_user(message.author),
       channel: serialize_channel_summary(message.channel),
       reply_to: serialize_message_reference(message.reply_to),
-      embeds: serialize_embeds(message.embeds)
+      embeds: serialize_embeds(message.embeds),
+      poll: serialize_poll(message.poll)
     }
   end
+
+  @doc """
+  The `poll.voted` payload: the poll after the vote, and the vote itself (who, which options by id
+  and label, and the Other text). An anonymous poll's payload has `vote: nil`, so a reader learns
+  only the new counts.
+  """
+  def serialize_poll_vote(%Message{poll: %Poll{} = poll} = message, vote) do
+    labels = Map.new(poll.options, &{&1.id, &1.label})
+
+    %{
+      message_id: message.id,
+      channel_id: message.channel_id,
+      poll: serialize_poll(poll),
+      vote:
+        unless poll.anonymous do
+          %{
+            user_id: vote.user_id,
+            option_ids: vote.option_ids,
+            options: Enum.map(vote.option_ids, &%{id: &1, label: Map.fetch!(labels, &1)}),
+            other_text: vote.other_text
+          }
+        end
+    }
+  end
+
+  @doc "The `poll.closed` payload: the final results and why it closed (`time`, `max_voters` or `closed_by_hand`)."
+  def serialize_poll_closed(%Message{poll: %Poll{} = poll} = message, reason) do
+    %{
+      message_id: message.id,
+      channel_id: message.channel_id,
+      reason: to_string(reason),
+      poll: serialize_poll(poll)
+    }
+  end
+
+  # Results come from `Polls.results/2`, which leaves voters out of an anonymous poll.
+  defp serialize_poll(%Poll{} = poll) do
+    results = Polls.results(poll, nil)
+
+    %{
+      id: poll.id,
+      multi_select: poll.multi_select,
+      anonymous: poll.anonymous,
+      allow_other: poll.allow_other,
+      closes_at: poll.closes_at,
+      closed_at: poll.closed_at,
+      closed: results.closed?,
+      max_voters: poll.max_voters,
+      voter_user_ids: poll.voter_user_ids,
+      voter_role_ids: poll.voter_role_ids,
+      voter_count: results.voter_count,
+      options:
+        Enum.map(results.options, fn option ->
+          %{
+            id: option.id,
+            label: option.label,
+            count: option.count,
+            voter_ids: option.voters && Enum.map(option.voters, & &1.id)
+          }
+        end),
+      other:
+        results.other &&
+          %{
+            count: results.other.count,
+            answers:
+              Enum.map(results.other.answers, &%{text: &1.text, user_id: &1.user && &1.user.id})
+          }
+    }
+  end
+
+  defp serialize_poll(%NotLoaded{}), do: nil
+  defp serialize_poll(nil), do: nil
 
   def serialize_thread(%Channel{} = thread) do
     serialize_channel_summary(thread)

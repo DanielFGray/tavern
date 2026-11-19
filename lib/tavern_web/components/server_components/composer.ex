@@ -32,13 +32,15 @@ defmodule TavernWeb.ServerComponents.Composer do
 
   @doc """
   The rich composer form. `target` names the conversation it writes to: the open channel or the
-  open thread. One shows at a time, and both share `:reply_to_message` for the reply banner. The
+  open thread. One shows at a time, and both share `:reply_to_message` for the reply banner and
+  `:poll_form` for the poll form above it. The
   DOM ids differ per target because tests and the composer hook address each one.
   """
   def composer(assigns) do
     assigns = assign(assigns, composer_config(assigns.server, assigns.target))
 
     ~H"""
+    <TavernWeb.ServerComponents.Polls.poll_composer :if={@server.poll_form} server={@server} />
     <.form
       for={@form}
       id={@ids.form}
@@ -116,6 +118,18 @@ defmodule TavernWeb.ServerComponents.Composer do
           <div class="flex h-full shrink-0 flex-col items-center justify-end gap-2 pb-0.5">
             <button
               type="button"
+              id={@ids.poll}
+              phx-click="open_poll"
+              aria-label="Create poll"
+              title="Create poll"
+              aria-expanded={to_string(not is_nil(@server.poll_form))}
+              class="inline-flex size-8 items-center justify-center rounded-md border border-base-300 bg-base-200 text-base-content/70 transition hover:border-violet-400/50 hover:text-violet-300 aria-expanded:border-violet-400/60 aria-expanded:text-violet-300"
+            >
+              <.icon name="hero-chart-bar" class="size-4" />
+            </button>
+
+            <button
+              type="button"
               aria-label="Upload attachments"
               title="Upload attachments"
               disabled
@@ -169,7 +183,8 @@ defmodule TavernWeb.ServerComponents.Composer do
         banner: "replying-to-banner",
         shell: "rich-composer-shell",
         toolbar: "rich-composer-toolbar",
-        send: "send-message-button"
+        send: "send-message-button",
+        poll: "open-poll-button"
       }
     }
   end
@@ -185,7 +200,8 @@ defmodule TavernWeb.ServerComponents.Composer do
         banner: "thread-replying-to-banner",
         shell: "thread-rich-composer-shell",
         toolbar: "thread-rich-composer-toolbar",
-        send: "send-thread-message-button"
+        send: "send-thread-message-button",
+        poll: "thread-open-poll-button"
       }
     }
   end

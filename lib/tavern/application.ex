@@ -17,6 +17,9 @@ defmodule Tavern.Application do
       # Link preview fetches (`Tavern.Chat.Embeds`). The cap bounds the outbound requests one
       # burst of messages can start; a write over it gets no embed.
       {Task.Supervisor, name: Tavern.Embeds.TaskSupervisor, max_children: 50},
+      # Closes polls when their end time passes. Tests close polls by calling
+      # `Tavern.Chat.Polls.close_due/1`, so they run without it.
+      Application.get_env(:tavern, :poll_closer, true) && Tavern.Chat.PollCloser,
       # Start a worker by calling: Tavern.Worker.start_link(arg)
       # {Tavern.Worker, arg},
       # Start to serve requests, typically the last entry
@@ -26,7 +29,7 @@ defmodule Tavern.Application do
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Tavern.Supervisor]
-    Supervisor.start_link(children, opts)
+    Supervisor.start_link(Enum.filter(children, & &1), opts)
   end
 
   # Tell Phoenix to update the endpoint configuration

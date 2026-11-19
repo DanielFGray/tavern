@@ -236,12 +236,20 @@ defmodule TavernWeb.ServerComponents.Messages do
                 </div>
               </.form>
             <% else %>
-              <div
-                class={["message-body", message_body_classes()]}
-                data-markdown-source={@message.body}
-              >
-                {@message.body}
-              </div>
+              <%= if poll_message?(@message) do %>
+                <TavernWeb.ServerComponents.Polls.poll_card
+                  message={@message}
+                  server={@server}
+                  rights={@rights}
+                />
+              <% else %>
+                <div
+                  class={["message-body", message_body_classes()]}
+                  data-markdown-source={@message.body}
+                >
+                  {@message.body}
+                </div>
+              <% end %>
             <% end %>
 
             <TavernWeb.ServerComponents.Embeds.message_embeds
@@ -587,7 +595,10 @@ defmodule TavernWeb.ServerComponents.Messages do
         <% end %>
 
         <button
-          :if={own_message?(@message, @server.current_user) and not deleted_message?(@message)}
+          :if={
+            own_message?(@message, @server.current_user) and not deleted_message?(@message) and
+              not poll_message?(@message)
+          }
           type="button"
           phx-click="edit_message"
           phx-value-id={@message.id}

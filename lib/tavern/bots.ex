@@ -357,6 +357,39 @@ defmodule Tavern.Bots do
 
   def create_public_thread(_, _, _), do: {:error, :invalid_params}
 
+  @doc """
+  Sends a poll as the acting bot (`Tavern.Chat.Polls.create_poll/3`). The bot sets every option
+  label, and may narrow the voters and close the poll after N votes: an agent question is a poll
+  with one named voter and `max_voters: 1`. Returns `{:ok, %{message: serialized}}`.
+  """
+  def create_poll(%Scope{} = scope, channel_id, attrs) when is_map(attrs) do
+    with {:ok, _bot_user} <- acting_member(scope),
+         {:ok, message} <- Chat.create_poll(scope, channel_id, attrs) do
+      {:ok, %{message: Serializer.serialize_message(message)}}
+    end
+  end
+
+  def create_poll(_, _, _), do: {:error, :invalid_params}
+
+  @doc "The poll message `message_id` with its results, when the bot may view it."
+  def get_poll(%Scope{} = scope, message_id) do
+    case Chat.get_message(scope, message_id) do
+      %{poll: %Tavern.Chat.Poll{}} = message ->
+        {:ok, %{message: Serializer.serialize_message(message)}}
+
+      _ ->
+        {:error, :not_found}
+    end
+  end
+
+  @doc "Ends the poll on `message_id` (`Tavern.Chat.Polls.close_poll/2`)."
+  def close_poll(%Scope{} = scope, message_id) do
+    with {:ok, _bot_user} <- acting_member(scope),
+         {:ok, message} <- Chat.close_poll(scope, message_id) do
+      {:ok, %{message: Serializer.serialize_message(message)}}
+    end
+  end
+
   def command_timeout_member(%Scope{} = scope, params),
     do: Commands.timeout_member(scope, params)
 
@@ -386,6 +419,11 @@ defmodule Tavern.Bots do
   def serialize_message(message), do: Serializer.serialize_message(message)
 
   def serialize_thread(thread), do: Serializer.serialize_thread(thread)
+
+  def serialize_poll_vote(message, vote), do: Serializer.serialize_poll_vote(message, vote)
+
+  def serialize_poll_closed(message, reason),
+    do: Serializer.serialize_poll_closed(message, reason)
 
   defp fetch_bot_user(user_id) do
     case get_bot_user(user_id) do

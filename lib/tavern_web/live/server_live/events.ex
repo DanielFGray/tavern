@@ -7,6 +7,7 @@ defmodule TavernWeb.ServerLive.Events do
   alias TavernWeb.ServerLive.Events.Mobile
   alias TavernWeb.ServerLive.Events.Navigation
   alias TavernWeb.ServerLive.Events.Notifications
+  alias TavernWeb.ServerLive.Events.Polls
   alias TavernWeb.ServerLive.Events.Reactions
   alias TavernWeb.ServerLive.Events.Threads
 
@@ -43,6 +44,12 @@ defmodule TavernWeb.ServerLive.Events do
              (is_tuple(message) and tuple_size(message) == 3 and
                 elem(message, 0) == :thread_followers_changed) do
     Threads.handle_info(message, socket)
+  end
+
+  def handle_info(message, socket)
+      when is_tuple(message) and tuple_size(message) == 3 and
+             elem(message, 0) in [:poll_voted, :poll_closed] do
+    Polls.handle_info(message, socket)
   end
 
   def handle_event(event, params, socket)
@@ -135,5 +142,21 @@ defmodule TavernWeb.ServerLive.Events do
              "close_reaction_picker"
            ] do
     Reactions.handle_event(event, params, socket)
+  end
+
+  def handle_event(event, params, socket)
+      when event in [
+             "open_poll",
+             "cancel_poll",
+             "validate_poll",
+             "add_poll_option",
+             "remove_poll_option",
+             "create_poll",
+             "vote_poll",
+             "vote_poll_other",
+             "withdraw_poll_vote",
+             "close_poll"
+           ] do
+    Polls.handle_event(event, params, socket)
   end
 end

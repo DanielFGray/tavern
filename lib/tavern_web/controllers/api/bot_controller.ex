@@ -250,6 +250,12 @@ defmodule TavernWeb.API.BotController do
   def dispatch({:message_deleted, message}),
     do: {:emit, "message.deleted", Bots.serialize_message(message)}
 
+  def dispatch({:poll_voted, message, vote}),
+    do: {:emit, "poll.voted", Bots.serialize_poll_vote(message, vote)}
+
+  def dispatch({:poll_closed, message, reason}),
+    do: {:emit, "poll.closed", Bots.serialize_poll_closed(message, reason)}
+
   def dispatch({:channel_created, %{kind: :thread_public} = thread}),
     do: {:thread_created, thread}
 

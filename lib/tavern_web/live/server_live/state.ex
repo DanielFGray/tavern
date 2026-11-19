@@ -498,6 +498,7 @@ defmodule TavernWeb.ServerLive.State do
       Chat.list_typing_users(socket.assigns.current_scope, thread.id)
     )
     |> keep_reply_in(thread.id)
+    |> assign(:poll_form, nil)
     |> assign_thread_controls(thread)
     |> assign(
       :thread_message_count,
@@ -555,6 +556,7 @@ defmodule TavernWeb.ServerLive.State do
     |> assign(:active_thread, nil)
     |> assign(:thread_typing_users, [])
     |> keep_reply_in(socket.assigns.active_channel && socket.assigns.active_channel.id)
+    |> assign(:poll_form, nil)
     |> assign(:can_send_thread_messages?, false)
     |> assign(:can_archive_thread?, false)
     |> assign(:can_lock_thread?, false)
@@ -622,6 +624,7 @@ defmodule TavernWeb.ServerLive.State do
     |> assign(:can_mention_everyone?, false)
     |> assign(:can_create_public_threads?, false)
     |> assign(:reply_to_message, nil)
+    |> assign(:poll_form, nil)
     |> assign(:editing_message_id, nil)
     |> assign(:editing_form, nil)
     |> assign(:message_count, 0)

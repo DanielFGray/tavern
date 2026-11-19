@@ -57,9 +57,9 @@ defmodule Tavern.Chat.Visibility do
 
   Channel bits take a `%Channel{}` target. Server-wide bits take `:server`. `:send_messages`,
   `:send_messages_in_threads` and the rest of the timed actions check the member's timeout
-  first. `:edit_message`, `:delete_message`, `:suppress_embeds` and `:add_reactions` take a
-  `%Message{}` and read only its id: the message and its channel load in the decision's own
-  statement. `{:moderate, bit}` takes the subject's user id. So does `:assign_roles` (giving or taking a member role).
+  first. `:edit_message`, `:delete_message`, `:suppress_embeds`, `:add_reactions`, `:vote_in_poll`
+  and `:close_poll` take a `%Message{}` and read only its id: the message and its channel load in
+  the decision's own statement. `{:moderate, bit}` takes the subject's user id. So does `:assign_roles` (giving or taking a member role).
   `:manage_permissions` (reading a channel's overwrites) takes a `%Channel{}`; so does
   `{:manage_permissions, target}`, which decides a write of the overwrite for `target`
   (`{:role, role_id}` or `{:user, user_id}`) on that channel.
@@ -487,6 +487,19 @@ defmodule Tavern.Chat.Visibility do
 
   defp message_decision(:add_reactions, ctx, _author_id, channel),
     do: channel_decision(:add_reactions, ctx, channel) and not thread_closed?(ctx, channel)
+
+  # A vote needs what a send needs (view, send rights, no timeout, an unlocked thread) and is
+  # refused in a closed thread as a reaction is: a vote never reopens an archived thread.
+  # A poll's own voter list narrows this further (`Tavern.Chat.Polls`).
+  defp message_decision(:vote_in_poll, ctx, _author_id, channel),
+    do: send?(ctx, channel) and not thread_closed?(ctx, channel)
+
+  # Ending a poll by hand: the author, or `manage_messages`. A locked or archived thread does not
+  # block it, as the closer ends due polls there too.
+  defp message_decision(:close_poll, ctx, author_id, channel),
+    do:
+      view?(ctx, channel) and
+        (ctx.member.id == author_id or bit?(ctx, channel, :manage_messages))
 
   defp message_decision(:create_public_threads, ctx, _author_id, channel),
     do: channel_decision(:create_public_threads, ctx, channel)

@@ -30,6 +30,7 @@ defmodule Tavern.Chat.Message do
     has_many(:user_mentions, Tavern.Chat.MessageUserMention)
     has_many(:role_mentions, Tavern.Chat.MessageRoleMention)
     has_many(:embeds, Tavern.Chat.MessageEmbed, preload_order: [asc: :position])
+    has_one(:poll, Tavern.Chat.Poll)
 
     timestamps(type: :utc_datetime_usec, updated_at: false)
   end
