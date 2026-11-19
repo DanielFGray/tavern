@@ -46,7 +46,6 @@ defmodule TavernWeb.SettingsComponents.Shell do
         </section>
       </div>
 
-      <TavernWeb.SettingsComponents.Managers.channel_manager {assigns} />
       <TavernWeb.SettingsComponents.Managers.emoji_manager {assigns} />
     </div>
     """

@@ -72,7 +72,7 @@ defmodule TavernWeb.SessionRevocationTest do
 
       create_channel_through(view, "demoted-owner-channel")
 
-      assert view |> render() =~ "cannot be changed"
+      assert view |> render() =~ "permission to manage channels"
       refute Repo.get_by(Chat.Channel, slug: "demoted-owner-channel")
     end
 
@@ -84,7 +84,7 @@ defmodule TavernWeb.SessionRevocationTest do
 
       create_channel_through(view, "revoked-role-channel")
 
-      assert render(view) =~ "cannot be changed"
+      assert render(view) =~ "permission to manage channels"
       refute Repo.get_by(Chat.Channel, slug: "revoked-role-channel")
     end
   end
@@ -203,9 +203,11 @@ defmodule TavernWeb.SessionRevocationTest do
     conn |> session_for(user) |> live_hydrated(~p"/")
   end
 
+  # The sidebar edit mode with the top-level "+ add channel" form open.
   defp connect_channel_manager(conn, user) do
-    {:ok, view, _html} = conn |> session_for(user) |> live(~p"/settings?tab=server")
-    view |> element("#open-channel-manager") |> render_click()
+    {:ok, view, _html} = connect_server(conn, user)
+    view |> element("#toggle-channel-edit") |> render_click()
+    view |> element("#add-channel-top") |> render_click()
     {:ok, view}
   end
 
@@ -223,7 +225,9 @@ defmodule TavernWeb.SessionRevocationTest do
     view |> form("#message-form", %{message: %{body: body}}) |> render_submit()
   end
 
-  defp create_channel_through(view, slug) do
-    view |> form("#channel-form", %{channel: %{name: slug, slug: slug}}) |> render_submit()
+  defp create_channel_through(view, name) do
+    view
+    |> form("#new-channel-form", %{new_channel: %{name: name, kind: "text"}})
+    |> render_submit()
   end
 end

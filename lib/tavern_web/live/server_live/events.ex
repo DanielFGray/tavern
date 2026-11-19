@@ -1,6 +1,7 @@
 defmodule TavernWeb.ServerLive.Events do
   @moduledoc false
 
+  alias TavernWeb.ServerLive.ChannelEditor
   alias TavernWeb.ServerLive.Events.Forums
   alias TavernWeb.ServerLive.Events.Hydration
   alias TavernWeb.ServerLive.Events.Messages
@@ -10,6 +11,8 @@ defmodule TavernWeb.ServerLive.Events do
   alias TavernWeb.ServerLive.Events.Polls
   alias TavernWeb.ServerLive.Events.Reactions
   alias TavernWeb.ServerLive.Events.Threads
+
+  @channel_editor_events ChannelEditor.events()
 
   def handle_params(params, uri, socket) do
     socket = Phoenix.Component.assign(socket, :url_params, params)
@@ -53,6 +56,10 @@ defmodule TavernWeb.ServerLive.Events do
   end
 
   def handle_event(event, params, socket)
+
+  def handle_event(event, params, socket) when event in @channel_editor_events do
+    ChannelEditor.handle_event(event, params, socket)
+  end
 
   def handle_event(event, params, socket)
       when event in [

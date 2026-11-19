@@ -18,7 +18,6 @@ defmodule TavernWeb.SettingsLive.State do
     channels = Chat.list_channels(socket.assigns.current_scope)
     :ok = Chat.ensure_channel_memberships(socket.assigns.current_scope, channels)
 
-    can_manage_channels? = SharedHelpers.can_manage_channels?(socket.assigns.current_scope)
     can_manage_emojis? = SharedHelpers.can_manage_emojis?(socket.assigns.current_scope)
     can_moderate_members? = SharedHelpers.can_moderate_members?(socket.assigns.current_scope)
     can_view_audit_log? = SharedHelpers.can_view_audit_log?(socket.assigns.current_scope)
@@ -31,7 +30,6 @@ defmodule TavernWeb.SettingsLive.State do
     |> assign(:current_server, server_settings)
     |> assign(:page_title, server_settings.name)
     |> assign(:active_tab, "profile")
-    |> assign(:can_manage_channels?, can_manage_channels?)
     |> assign(:can_manage_emojis?, can_manage_emojis?)
     |> assign(:can_moderate_members?, can_moderate_members?)
     |> assign(:can_view_audit_log?, can_view_audit_log?)
@@ -54,20 +52,15 @@ defmodule TavernWeb.SettingsLive.State do
     |> assign(:invites, [])
     |> assign(:invite_form, to_form(Chat.change_invite(), as: :invite))
     |> maybe_load_invites()
-    |> assign(:manage_channels_open?, false)
     |> assign(:manage_emojis_open?, false)
     |> refresh_member_presence()
     |> assign(:member_action_user_id, nil)
     |> assign(:member_action_form, to_form(Chat.change_moderation_action(%{}), as: :moderation))
     |> assign(:moderation_cases, [])
-    |> assign(:channel_form_mode, :create_text)
-    |> assign(:channel_form_title, "Create text channel")
-    |> assign(:editing_channel_id, nil)
     |> assign(:profile_form, to_form(Accounts.change_profile_user(current_user), as: :user))
     |> assign(:email_form, to_form(Accounts.change_user_email(current_user), as: :email_change))
     |> assign(:server_settings_form, server_settings_form(server_settings))
     |> assign_notification_form()
-    |> SharedHelpers.assign_channel_form()
     |> assign(:emoji_form, to_form(Chat.change_emoji(%Chat.Emoji{}, %{}), as: :emoji))
   end
 
@@ -176,54 +169,6 @@ defmodule TavernWeb.SettingsLive.State do
     socket
     |> assign(:member_presence, Accounts.list_members(scope))
     |> assign(:bans, bans)
-  end
-
-  def save_channel(socket, channel_params) do
-    attrs =
-      SharedHelpers.normalize_channel_params(channel_params, socket.assigns.channel_form_mode)
-
-    case socket.assigns.editing_channel_id do
-      nil ->
-        case Chat.create_channel(socket.assigns.current_scope, attrs) do
-          {:ok, channel} ->
-            {:noreply,
-             socket
-             |> refresh_channels()
-             |> SharedHelpers.assign_channel_form_mode(
-               if(channel.kind == :category, do: :create_category, else: :create_text)
-             )
-             |> SharedHelpers.assign_channel_form()
-             |> Phoenix.LiveView.put_flash(:info, SharedHelpers.creation_flash(channel))}
-
-          {:error, %Ecto.Changeset{} = changeset} ->
-            {:noreply, assign(socket, :channel_form, to_form(changeset, as: :channel))}
-
-          {:error, _reason} ->
-            {:noreply,
-             Phoenix.LiveView.put_flash(socket, :error, "That channel cannot be changed.")}
-        end
-
-      channel_id ->
-        case Chat.update_channel(socket.assigns.current_scope, channel_id, attrs) do
-          {:ok, updated_channel} ->
-            {:noreply,
-             socket
-             |> refresh_channels()
-             |> assign(:editing_channel_id, updated_channel.id)
-             |> SharedHelpers.assign_channel_form_mode(
-               SharedHelpers.edit_mode_for(updated_channel)
-             )
-             |> SharedHelpers.assign_channel_form(updated_channel)
-             |> Phoenix.LiveView.put_flash(:info, "Channel updated.")}
-
-          {:error, %Ecto.Changeset{} = changeset} ->
-            {:noreply, assign(socket, :channel_form, to_form(changeset, as: :channel))}
-
-          {:error, _reason} ->
-            {:noreply,
-             Phoenix.LiveView.put_flash(socket, :error, "That channel cannot be changed.")}
-        end
-    end
   end
 
   def save_emoji(socket, emoji_params) do

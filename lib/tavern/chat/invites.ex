@@ -69,7 +69,7 @@ defmodule Tavern.Chat.Invites do
 
   defp starting_channel_id do
     from(channel in Channel,
-      where: channel.kind == :text and is_nil(channel.archived_at),
+      where: channel.kind == :text and is_nil(channel.archived_at) and is_nil(channel.deleted_at),
       order_by: [desc: channel.slug == "general", asc: channel.position, asc: channel.inserted_at],
       limit: 1,
       select: channel.id

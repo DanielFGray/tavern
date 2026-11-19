@@ -94,7 +94,7 @@ defmodule Tavern.TestSupport do
 
   defp execute("list_channels", _payload) do
     channels =
-      Repo.all(Channel)
+      Repo.all(from(channel in Channel, where: is_nil(channel.deleted_at)))
       |> Enum.filter(&(&1.kind in [:text, :announcement]))
       |> Enum.map(fn channel ->
         %{id: channel.id, name: channel.name, slug: channel.slug, kind: channel.kind}
@@ -108,7 +108,7 @@ defmodule Tavern.TestSupport do
     slug = payload["slug"] || raise "slug is required"
 
     channel =
-      case Repo.get_by(Channel, slug: slug) do
+      case Repo.one(from(c in Channel, where: c.slug == ^slug and is_nil(c.deleted_at))) do
         %Channel{} = channel ->
           channel
 
@@ -159,7 +159,9 @@ defmodule Tavern.TestSupport do
     username = payload["username"] || raise "username is required"
     body = payload["body"] || raise "body is required"
 
-    channel = Repo.get_by!(Channel, slug: channel_slug)
+    channel =
+      Repo.one!(from(c in Channel, where: c.slug == ^channel_slug and is_nil(c.deleted_at)))
+
     user = Repo.get_by!(User, username: username)
 
     {:ok, message} = Chat.create_message(Accounts.user_scope(user), channel.id, %{"body" => body})

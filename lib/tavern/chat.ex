@@ -160,10 +160,11 @@ defmodule Tavern.Chat do
   defdelegate get_channel(scope, id), to: Channels
   defdelegate get_channel_by_slug(scope, slug), to: Channels
   defdelegate create_channel(scope, attrs), to: Channels
-  defdelegate change_channel(channel, attrs \\ %{}), to: Channels
   defdelegate update_channel(scope, channel_id, attrs), to: Channels
+  defdelegate place_channel(scope, channel_id, parent_id, before_id), to: Channels
   defdelegate delete_channel(scope, channel_id), to: Channels
-  defdelegate move_channel(scope, channel_id, direction), to: Channels
+  defdelegate list_deleted_channels(scope), to: Channels
+  defdelegate restore_channel(scope, channel_id), to: Channels
   defdelegate get_user_notification_setting(user), to: Notifications
   defdelegate update_user_notification_setting(user, attrs), to: Notifications
   defdelegate update_channel_membership_notification(user, channel_id, attrs), to: Notifications

@@ -7,18 +7,8 @@ defmodule TavernWeb.SettingsComponents.Helpers do
     setting.desktop_enabled && setting.notify_on_mentions
   end
 
-  def manageable_categories(sections) do
-    sections
-    |> Enum.map(& &1.category)
-    |> Enum.reject(&is_nil/1)
-  end
-
-  def section_dom_id(nil), do: "channel-section-uncategorized"
-  def section_dom_id(category), do: "channel-section-#{category.slug}"
-
   def section_label(nil), do: "Text channels"
   def section_label(category), do: category.name
-
   def channel_kind_badge(:forum), do: "forum"
   def channel_kind_badge(:announcement), do: "news"
   def channel_kind_badge(:voice), do: "voice"

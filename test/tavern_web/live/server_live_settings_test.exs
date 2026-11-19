@@ -23,135 +23,6 @@ defmodule TavernWeb.ServerLiveSettingsTest do
     assert render(view) =~ "Orbit HQ"
   end
 
-  test "owners can open server settings and create a category plus child channel", %{conn: conn} do
-    Bootstrap.ensure_seed_data!()
-    conn = log_in_owner_user(conn)
-    {:ok, view, _html} = live(conn, ~p"/settings?tab=server")
-
-    view |> element("#open-channel-manager") |> render_click()
-
-    assert has_element?(view, "#channel-manager-panel.translate-x-0")
-
-    view |> element("#new-category") |> render_click()
-
-    view
-    |> form("#channel-form", %{channel: %{name: "Product", slug: "product"}})
-    |> render_submit()
-
-    assert has_element?(view, "#manager-channel-section-product")
-
-    view |> element("#new-text-channel") |> render_click()
-
-    view
-    |> form("#channel-form", %{
-      channel: %{name: "Roadmap", slug: "roadmap", parent_channel_id: category_id("product")}
-    })
-    |> render_submit()
-
-    assert has_element?(view, "#manage-channel-roadmap")
-    assert has_element?(view, "#manager-channel-section-product", "Roadmap")
-  end
-
-  test "owners can edit and reorder channels from server settings", %{conn: conn} do
-    Bootstrap.ensure_seed_data!()
-    conn = log_in_owner_user(conn)
-    {:ok, view, _html} = live(conn, ~p"/settings?tab=server")
-
-    view |> element("#open-channel-manager") |> render_click()
-    view |> element("#edit-channel-engineering") |> render_click()
-
-    assert has_element?(view, "#channel-form")
-
-    view
-    |> form("#channel-form", %{
-      channel: %{name: "Platform", slug: "platform", topic: "Platform work"}
-    })
-    |> render_submit()
-
-    assert has_element?(view, "#manage-channel-platform")
-    refute has_element?(view, "#manage-channel-engineering")
-
-    view |> element("#move-channel-down-general") |> render_click()
-
-    general = channel_by_slug!("general")
-    platform = channel_by_slug!("platform")
-
-    assert general.position > platform.position
-  end
-
-  test "non-managers do not see server management controls", %{conn: conn} do
-    Bootstrap.ensure_seed_data!()
-    conn = log_in_member_user(conn)
-    {:ok, view, _html} = live(conn, ~p"/settings?tab=server")
-
-    refute has_element?(view, "#open-channel-manager")
-    refute has_element?(view, "#channel-manager-panel")
-  end
-
-  test "a manager's channel panel omits channels they cannot view", %{conn: conn} do
-    %{default_role: default_role} = Bootstrap.ensure_seed_data!()
-    hidden = channel_fixture(%{name: "Private", slug: unique_slug()})
-
-    channel_permission_overwrite_fixture(hidden, %{
-      role_id: default_role.id,
-      deny_permissions: PermissionBits.combine([:view_channel])
-    })
-
-    manager =
-      channel_manager_fixture(%{
-        email: "settings-channel-manager@example.com",
-        username: "settings_channel_manager"
-      })
-
-    token = Tavern.Accounts.generate_user_session_token(manager)
-
-    conn =
-      conn
-      |> Phoenix.ConnTest.init_test_session(%{})
-      |> Plug.Conn.put_session(:user_token, token)
-      |> Plug.Conn.put_session(:live_socket_id, "users_sessions:settings-channel-manager")
-
-    {:ok, view, _html} = live(conn, ~p"/settings?tab=server")
-    view |> element("#open-channel-manager") |> render_click()
-
-    refute has_element?(view, "#manage-channel-#{hidden.slug}")
-  end
-
-  test "saving a channel that became hidden while its form was open is refused", %{conn: conn} do
-    %{default_role: default_role} = Bootstrap.ensure_seed_data!()
-    channel = channel_fixture(%{name: "Soon Hidden", slug: unique_slug()})
-
-    manager =
-      channel_manager_fixture(%{
-        email: "settings-hidden-edit@example.com",
-        username: "settings_hidden_edit"
-      })
-
-    token = Tavern.Accounts.generate_user_session_token(manager)
-
-    conn =
-      conn
-      |> Phoenix.ConnTest.init_test_session(%{})
-      |> Plug.Conn.put_session(:user_token, token)
-      |> Plug.Conn.put_session(:live_socket_id, "users_sessions:settings-hidden-edit")
-
-    {:ok, view, _html} = live(conn, ~p"/settings?tab=server")
-    view |> element("#open-channel-manager") |> render_click()
-    view |> element("#edit-channel-#{channel.slug}") |> render_click()
-
-    channel_permission_overwrite_fixture(channel, %{
-      role_id: default_role.id,
-      deny_permissions: PermissionBits.combine([:view_channel])
-    })
-
-    view
-    |> form("#channel-form", %{channel: %{name: "Renamed", slug: channel.slug}})
-    |> render_submit()
-
-    assert has_element?(view, "#channel-form")
-    assert channel_by_slug!(channel.slug).name == "Soon Hidden"
-  end
-
   test "administrator role surfaces server management controls", %{conn: conn} do
     Bootstrap.ensure_seed_data!()
 
@@ -179,7 +50,7 @@ defmodule TavernWeb.ServerLiveSettingsTest do
 
     {:ok, view, _html} = live(conn, ~p"/settings?tab=server")
 
-    assert has_element?(view, "#open-channel-manager")
+    assert has_element?(view, "#open-emoji-manager")
   end
 
   test "manage_bots permission surfaces bot registry in server settings", %{conn: conn} do

@@ -67,7 +67,7 @@ defmodule Tavern.Chat.ChannelWriteLockTest do
 
     move =
       start(fn ->
-        Chat.update_channel(scope_for(owner), channel.id, %{parent_channel_id: hidden.id})
+        Chat.place_channel(scope_for(owner), channel.id, hidden.id, nil)
       end)
 
     await_waiters(1)
@@ -88,12 +88,12 @@ defmodule Tavern.Chat.ChannelWriteLockTest do
     {channel, category} = adjacent_channel_and_category(channel_id_first: true)
 
     holder = hold_open(fn -> lock_channel_row(channel.id) end)
-    reorder = start(fn -> Chat.move_channel(scope_for(owner), channel.id, :down) end)
+    reorder = start(fn -> Chat.place_channel(scope_for(owner), channel.id, nil, nil) end)
     await_waiters(1)
 
     reparent =
       start(fn ->
-        Chat.update_channel(scope_for(owner), channel.id, %{parent_channel_id: category.id})
+        Chat.place_channel(scope_for(owner), channel.id, category.id, nil)
       end)
 
     await_waiters(2)

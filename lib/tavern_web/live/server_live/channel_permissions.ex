@@ -1,7 +1,9 @@
-defmodule TavernWeb.SettingsLive.ChannelPermissions do
+defmodule TavernWeb.ServerLive.ChannelPermissions do
   @moduledoc """
-  The Permissions section of the channel editor in SettingsLive: the overwrites on the channel or
-  category being edited. The context decides every write; a refusal becomes a flash.
+  The Permissions section of the sidebar's channel settings popover: the overwrites on the channel
+  or category the popover is open for (`:channel_settings_id`). It shows only to a member who may
+  manage that channel's permissions (`manage_roles` there). The context decides every write; a
+  refusal becomes a flash.
 
   The section holds one row per overwrite, and always a row for the default role. Each row saves on
   its own. A permission control the actor may not change is disabled, and a disabled control
@@ -14,8 +16,7 @@ defmodule TavernWeb.SettingsLive.ChannelPermissions do
 
   alias Tavern.Chat
   alias Tavern.Chat.PermissionBits
-  alias TavernWeb.SettingsLive.Roles
-  alias TavernWeb.SettingsLive.State
+  alias TavernWeb.ServerLive.State
 
   @events ~w(toggle_overwrite add_overwrite save_overwrite delete_overwrite)
 
@@ -45,6 +46,7 @@ defmodule TavernWeb.SettingsLive.ChannelPermissions do
 
   def init(socket) do
     socket
+    |> assign(:roles, [])
     |> assign(:channel_permissions, nil)
     |> assign(:open_overwrite_key, nil)
     |> assign(:overwrite_role_form, to_form(%{"target" => ""}, as: :overwrite_role))
@@ -52,27 +54,27 @@ defmodule TavernWeb.SettingsLive.ChannelPermissions do
   end
 
   @doc """
-  Re-reads the section for the channel being edited. It is empty when no channel is being edited
-  or the scope may not manage that channel's permissions.
+  Re-reads the section, and the roles it names, for the channel the popover is open for. It is
+  empty when no popover is open or the scope may not manage that channel's permissions.
   """
   def refresh(socket) do
     scope = socket.assigns.current_scope
 
-    permissions =
-      with channel_id when is_binary(channel_id) <- socket.assigns.editing_channel_id,
-           {:ok, overwrites} <- Chat.list_overwrites(scope, channel_id) do
-        controls = Chat.overwrite_controls(scope, channel_id)
+    with channel_id when is_binary(channel_id) <- socket.assigns.channel_settings_id,
+         {:ok, overwrites} <- Chat.list_overwrites(scope, channel_id) do
+      controls = Chat.overwrite_controls(scope, channel_id)
+      roles = Chat.list_roles(scope)
 
-        %{
-          channel_id: channel_id,
-          rows: rows(overwrites, socket.assigns.roles, controls),
-          controls: controls
-        }
-      else
-        _none -> nil
-      end
-
-    assign(socket, :channel_permissions, permissions)
+      socket
+      |> assign(:roles, roles)
+      |> assign(:channel_permissions, %{
+        channel_id: channel_id,
+        rows: rows(overwrites, roles, controls),
+        controls: controls
+      })
+    else
+      _none -> socket |> assign(:channel_permissions, nil) |> assign(:open_overwrite_key, nil)
+    end
   end
 
   def handle_event("toggle_overwrite", %{"key" => key}, socket) do
@@ -155,13 +157,10 @@ defmodule TavernWeb.SettingsLive.ChannelPermissions do
     end
   end
 
-  # Other views hear `:roles_changed`; this one wrote it, so it re-reads what that event re-reads.
-  defp after_write(socket) do
-    socket
-    |> Roles.refresh()
-    |> State.refresh_channels()
-    |> refresh()
-  end
+  # An overwrite write broadcasts `:roles_changed`, which every view, this one too, answers by
+  # re-reading its channels. Re-reading here as well shows the result before that message lands.
+  # `State.refresh_channels/1` re-reads this section.
+  defp after_write(socket), do: State.refresh_channels(socket)
 
   defp set_bit({allow, deny}, bit, "allow"), do: {allow ||| bit, band(deny, bnot(bit))}
   defp set_bit({allow, deny}, bit, "deny"), do: {band(allow, bnot(bit)), deny ||| bit}

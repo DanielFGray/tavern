@@ -6,6 +6,7 @@ defmodule TavernWeb.ServerLive do
   alias Tavern.Chat
   alias Tavern.Chat.Topics
   alias Tavern.Chat.UserNotificationSetting
+  alias TavernWeb.ServerLive.ChannelEditor
   alias TavernWeb.ServerLive.Events
   alias TavernWeb.ServerLive.State
   alias TavernWeb.Live.SharedHelpers
@@ -78,6 +79,7 @@ defmodule TavernWeb.ServerLive do
       |> assign(:thread_messages_empty?, true)
       |> State.assign_message_form()
       |> State.assign_thread_message_form()
+      |> ChannelEditor.init()
       |> stream(:messages, [], reset: true)
       |> stream(:thread_messages, [], reset: true)
 

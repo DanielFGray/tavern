@@ -95,11 +95,13 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
     {:noreply, socket |> State.refresh_channels() |> State.refresh_active_thread(channel.id)}
   end
 
+  # The active channel is read before the refresh, which drops a channel that is no longer visible.
   def handle_info({:channel_deleted, channel}, socket) do
+    viewing? = match?(%{id: id} when id == channel.id, socket.assigns.active_channel)
     socket = State.refresh_channels(socket)
 
     cond do
-      socket.assigns.active_channel && socket.assigns.active_channel.id == channel.id ->
+      viewing? ->
         {:noreply,
          socket
          |> put_flash(:info, "Channel deleted.")

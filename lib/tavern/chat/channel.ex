@@ -32,6 +32,9 @@ defmodule Tavern.Chat.Channel do
     field(:default_auto_archive_minutes, :integer, default: 1440)
     field(:archived_at, :utc_datetime_usec)
     field(:locked_at, :utc_datetime_usec)
+    # Set when a manager deletes the channel. A deleted channel is hidden from everyone, with its
+    # threads and messages, until it is restored (docs/design/channel-management.md).
+    field(:deleted_at, :utc_datetime_usec)
     # A thread's tags, set from its title and starter message by `Tavern.Chat.Hashtags`.
     field(:hashtags, {:array, :string}, default: [])
 
@@ -60,9 +63,15 @@ defmodule Tavern.Chat.Channel do
 
   def forum?(%__MODULE__{kind: kind}), do: kind == :forum
 
+  # The kinds a manager may create. Voice and stage are not built.
+  @managed_kinds [:text, :announcement, :forum, :category]
+
+  def managed_kinds, do: @managed_kinds
+
   @doc """
-  A changeset for a channel or category that a channel manager creates or edits. A thread is
-  not one: its kind, parent, starter message and creator are fixed when it is created (see
+  A changeset for a new channel or category. `Tavern.Chat.Channels` sets the slug and position
+  when the attrs do not carry them; only provisioning and fixtures pass them. A thread is not
+  made here: its kind, parent, starter message and creator are fixed when it is created (see
   `thread_changeset/2`), because a thread's visibility comes from its parent.
   """
   def changeset(channel, attrs) do
@@ -79,8 +88,39 @@ defmodule Tavern.Chat.Channel do
       :default_auto_archive_minutes
     ])
     |> validate_not_thread()
+    |> validate_inclusion(:kind, @managed_kinds)
     |> validate_settings()
   end
+
+  @doc """
+  A changeset for a manager's edit of a channel or category. The slug, kind, parent and position
+  are not edited here: the slug keeps the value it was created with, so links to the channel
+  stay valid after a rename, and a move goes through `Tavern.Chat.Channels.place_channel/4`.
+  """
+  def settings_changeset(channel, attrs) do
+    channel
+    |> cast(attrs, [:name, :topic, :nsfw, :slowmode_seconds, :default_auto_archive_minutes])
+    |> validate_not_thread()
+    |> validate_settings()
+  end
+
+  @doc """
+  The slug a name gives: lowercase letters, digits and single hyphens, at most 40 characters.
+  A name with none of those gives `"channel"`.
+  """
+  def slugify(name) when is_binary(name) do
+    name
+    |> String.downcase()
+    |> String.replace(~r/[^a-z0-9]+/u, "-")
+    |> String.slice(0, 40)
+    |> String.trim("-")
+    |> case do
+      "" -> "channel"
+      slug -> slug
+    end
+  end
+
+  def slugify(_name), do: "channel"
 
   @doc """
   A changeset for a new thread. The caller sets the kind, slug, position, parent channel,
@@ -126,7 +166,7 @@ defmodule Tavern.Chat.Channel do
       message: "must contain only lowercase letters, numbers, and hyphens"
     )
     |> validate_category_parenting()
-    |> unique_constraint(:slug)
+    |> unique_constraint(:slug, name: :channels_live_slug_index)
   end
 
   defp normalize_text(value) when is_binary(value), do: String.trim(value)

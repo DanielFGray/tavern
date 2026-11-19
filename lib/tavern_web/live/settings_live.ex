@@ -12,7 +12,6 @@ defmodule TavernWeb.SettingsLive do
   alias TavernWeb.Plugs.ClientIp
   alias Tavern.Chat.Topics
   alias TavernWeb.SettingsLive.Audit
-  alias TavernWeb.SettingsLive.ChannelPermissions
   alias TavernWeb.SettingsLive.InviteRequests
   alias TavernWeb.SettingsLive.InviteTree
   alias TavernWeb.SettingsLive.Roles
@@ -29,7 +28,6 @@ defmodule TavernWeb.SettingsLive do
     "invites_tree"
   ]
   @role_events Roles.events()
-  @channel_permission_events ChannelPermissions.events()
   @audit_events Audit.events()
   @invite_request_events InviteRequests.events()
   @invite_tree_events InviteTree.events()
@@ -52,7 +50,6 @@ defmodule TavernWeb.SettingsLive do
       |> State.init()
       |> Roles.init()
       |> Audit.init()
-      |> ChannelPermissions.init()
       |> InviteRequests.init()
       |> InviteTree.init()
 
@@ -90,10 +87,6 @@ defmodule TavernWeb.SettingsLive do
     if tab_allowed?(socket, "audit"),
       do: Audit.handle_event(event, params, socket),
       else: {:noreply, socket}
-  end
-
-  def handle_event(event, params, socket) when event in @channel_permission_events do
-    ChannelPermissions.handle_event(event, params, socket)
   end
 
   def handle_event(event, params, socket) when event in @invite_tree_events do
@@ -319,20 +312,6 @@ defmodule TavernWeb.SettingsLive do
   end
 
   @impl true
-  def handle_event("toggle_manage_channels", _params, socket) do
-    if socket.assigns.can_manage_channels? do
-      {:noreply, assign(socket, :manage_channels_open?, !socket.assigns.manage_channels_open?)}
-    else
-      {:noreply, put_flash(socket, :error, "You do not have permission to manage channels.")}
-    end
-  end
-
-  @impl true
-  def handle_event("close_manage_channels", _params, socket) do
-    {:noreply, assign(socket, :manage_channels_open?, false)}
-  end
-
-  @impl true
   def handle_event("toggle_manage_emojis", _params, socket) do
     if socket.assigns.can_manage_emojis? do
       {:noreply, assign(socket, :manage_emojis_open?, !socket.assigns.manage_emojis_open?)}
@@ -429,94 +408,6 @@ defmodule TavernWeb.SettingsLive do
     {:noreply, assign(socket, :manage_emojis_open?, false)}
   end
 
-  @impl true
-  def handle_event("new_channel_form", %{"mode" => mode}, socket) do
-    if socket.assigns.can_manage_channels? do
-      {:noreply,
-       socket
-       |> SharedHelpers.assign_channel_form_mode(mode)
-       |> SharedHelpers.assign_channel_form()}
-    else
-      {:noreply, put_flash(socket, :error, "You do not have permission to manage channels.")}
-    end
-  end
-
-  @impl true
-  def handle_event("edit_channel", %{"id" => channel_id}, socket) do
-    if socket.assigns.can_manage_channels? do
-      case Chat.get_channel(socket.assigns.current_scope, channel_id) do
-        nil ->
-          {:noreply, put_flash(socket, :error, "That channel does not exist.")}
-
-        channel ->
-          {:noreply,
-           socket
-           |> assign(:manage_channels_open?, true)
-           |> assign(:editing_channel_id, channel.id)
-           |> assign(:open_overwrite_key, nil)
-           |> ChannelPermissions.refresh()
-           |> SharedHelpers.assign_channel_form_mode(SharedHelpers.edit_mode_for(channel))
-           |> SharedHelpers.assign_channel_form(channel)}
-      end
-    else
-      {:noreply, put_flash(socket, :error, "You do not have permission to manage channels.")}
-    end
-  end
-
-  @impl true
-  def handle_event("cancel_channel_edit", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:editing_channel_id, nil)
-     |> ChannelPermissions.refresh()
-     |> SharedHelpers.assign_channel_form_mode(:create_text)
-     |> SharedHelpers.assign_channel_form()}
-  end
-
-  @impl true
-  def handle_event("save_channel", %{"channel" => channel_params}, socket) do
-    if socket.assigns.can_manage_channels? do
-      State.save_channel(socket, channel_params)
-    else
-      {:noreply, put_flash(socket, :error, "You do not have permission to manage channels.")}
-    end
-  end
-
-  @impl true
-  def handle_event("delete_channel", %{"id" => channel_id}, socket) do
-    if socket.assigns.can_manage_channels? do
-      case Chat.delete_channel(socket.assigns.current_scope, channel_id) do
-        {:ok, _channel} ->
-          {:noreply,
-           socket
-           |> State.refresh_channels()
-           |> assign(:editing_channel_id, nil)
-           |> ChannelPermissions.refresh()
-           |> SharedHelpers.assign_channel_form_mode(:create_text)
-           |> SharedHelpers.assign_channel_form()
-           |> put_flash(:info, "Channel deleted.")}
-
-        {:error, _changeset} ->
-          {:noreply, put_flash(socket, :error, "Could not delete that channel.")}
-      end
-    else
-      {:noreply, put_flash(socket, :error, "You do not have permission to manage channels.")}
-    end
-  end
-
-  @impl true
-  def handle_event("move_channel", %{"id" => channel_id, "direction" => direction}, socket) do
-    if socket.assigns.can_manage_channels? do
-      case Chat.move_channel(socket.assigns.current_scope, channel_id, direction) do
-        {:ok, _} -> {:noreply, State.refresh_channels(socket)}
-        _ -> {:noreply, put_flash(socket, :error, "Could not reorder that channel.")}
-      end
-    else
-      {:noreply, put_flash(socket, :error, "You do not have permission to manage channels.")}
-    end
-  end
-
-  @impl true
   def handle_event("change_emoji", %{"emoji" => emoji_params}, socket) do
     form = to_form(Chat.change_emoji(%Chat.Emoji{}, emoji_params), as: :emoji)
     {:noreply, assign(socket, :emoji_form, form)}
@@ -715,13 +606,12 @@ defmodule TavernWeb.SettingsLive do
     {:noreply,
      socket
      |> State.refresh_channels()
-     |> State.refresh_member_presence()
-     |> ChannelPermissions.refresh()}
+     |> State.refresh_member_presence()}
   end
 
   def handle_info({event, _channel}, socket)
       when event in [:channel_created, :channel_updated, :channel_deleted],
-      do: {:noreply, socket |> State.refresh_channels() |> ChannelPermissions.refresh()}
+      do: {:noreply, State.refresh_channels(socket)}
 
   def handle_info(:channels_reordered, socket), do: {:noreply, State.refresh_channels(socket)}
 

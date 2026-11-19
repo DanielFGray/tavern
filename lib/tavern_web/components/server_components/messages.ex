@@ -48,9 +48,7 @@ defmodule TavernWeb.ServerComponents.Messages do
             <h1 class="truncate text-[15px] font-semibold text-base-content">
               {@server.active_channel.name}
             </h1>
-            <p class="mt-0.5 truncate text-xs text-base-content/65">
-              {@server.active_channel.topic || "No topic set for this channel yet."}
-            </p>
+            <TavernWeb.ServerComponents.ChannelEditor.channel_topic server={@server} />
           </div>
         </div>
       </div>

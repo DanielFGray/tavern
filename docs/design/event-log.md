@@ -170,6 +170,8 @@ The envelope keeps `v`, `kind` and `id`. The federation design can choose to sig
 
 ## Deleted channels
 
+Superseded in part: channels are now soft-deleted (channel-management.md). This section still describes hard delete and must be revised before the log is built.
+
 Channels stay hard-deleted, as they are today. A deleted category moves its channels to the root level in the same transaction and deletes none of them. A deleted channel takes its threads (the foreign key cascades). The delete transaction:
 
 1. locks the deleted set, one level at a time: it locks the channel row `FOR UPDATE`, then runs `select ... where parent_id = any(<locked ids>) order by id for update` until a level returns no rows. A level waits for any creation that still holds its parent, and the next statement then sees the new row, so no child escapes the set;

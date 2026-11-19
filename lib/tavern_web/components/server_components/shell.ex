@@ -64,31 +64,24 @@ defmodule TavernWeb.ServerComponents.Shell do
           <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-base-content/50">
             Channels
           </p>
-          <span class="rounded bg-base-300 px-1.5 py-0.5 text-[10px] font-semibold text-base-content/60">
-            {length(@server.channels)}
-          </span>
+          <div class="flex items-center gap-1">
+            <span class="rounded bg-base-300 px-1.5 py-0.5 text-[10px] font-semibold text-base-content/60">
+              {length(@server.channels)}
+            </span>
+            <TavernWeb.ServerComponents.ChannelEditor.edit_toggle server={@server} />
+          </div>
         </div>
 
-        <%= if @server.navigation_ready? do %>
-          <%= if @server.channel_sections == [] do %>
-            <p id="no-visible-channels" class="px-2 py-3 text-xs text-base-content/55">
-              No channels you can view yet.
-            </p>
-          <% else %>
-            <nav class="space-y-3" aria-label="Server channels">
-              <TavernWeb.ServerComponents.Navigation.channel_nav_section
-                :for={section <- @server.channel_sections}
-                section={section}
-                server={@server}
-                show_label={length(@server.channel_sections) > 1}
-              />
-            </nav>
-          <% end %>
-        <% else %>
-          <div class="space-y-2 px-2 py-1 text-xs text-base-content/55">
-            <p class="font-semibold uppercase tracking-[0.16em]">Loading channels...</p>
-            <div :for={_ <- 1..4} class="h-8 rounded-md bg-base-100/70 animate-pulse" />
-          </div>
+        <%= cond do %>
+          <% @server.navigation_ready? and @server.channel_edit_mode? -> %>
+            <TavernWeb.ServerComponents.ChannelEditor.edit_nav server={@server} />
+          <% @server.navigation_ready? -> %>
+            <.channel_nav server={@server} />
+          <% true -> %>
+            <div class="space-y-2 px-2 py-1 text-xs text-base-content/55">
+              <p class="font-semibold uppercase tracking-[0.16em]">Loading channels...</p>
+              <div :for={_ <- 1..4} class="h-8 rounded-md bg-base-100/70 animate-pulse" />
+            </div>
         <% end %>
       </div>
 
@@ -209,6 +202,27 @@ defmodule TavernWeb.ServerComponents.Shell do
         <% end %>
       </div>
     </aside>
+    """
+  end
+
+  attr :server, :map, required: true
+
+  defp channel_nav(assigns) do
+    ~H"""
+    <%= if @server.channel_sections == [] do %>
+      <p id="no-visible-channels" class="px-2 py-3 text-xs text-base-content/55">
+        No channels you can view yet.
+      </p>
+    <% else %>
+      <nav class="space-y-3" aria-label="Server channels">
+        <TavernWeb.ServerComponents.Navigation.channel_nav_section
+          :for={section <- @server.channel_sections}
+          section={section}
+          server={@server}
+          show_label={length(@server.channel_sections) > 1}
+        />
+      </nav>
+    <% end %>
     """
   end
 end

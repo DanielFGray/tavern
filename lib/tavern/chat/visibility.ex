@@ -62,7 +62,8 @@ defmodule Tavern.Chat.Visibility do
   the decision's own statement. `{:moderate, bit}` takes the subject's user id. So does `:assign_roles` (giving or taking a member role).
   `:manage_permissions` (reading a channel's overwrites) takes a `%Channel{}`; so does
   `{:manage_permissions, target}`, which decides a write of the overwrite for `target`
-  (`{:role, role_id}` or `{:user, user_id}`) on that channel.
+  (`{:role, role_id}` or `{:user, user_id}`) on that channel. `:restore_channel` takes a
+  `%Channel{}` and is the one decision that answers yes for a deleted channel.
   """
   def can?(%Scope{} = scope, action, target) do
     ctx = load_for(scope, action, target)
@@ -190,6 +191,22 @@ defmodule Tavern.Chat.Visibility do
   the struct as loaded, with its overwrites.
   """
   def visible_channels(%Scope{} = scope) do
+    filter_all_channels(scope, &view?/2)
+  end
+
+  @doc """
+  The deleted channels and categories the scope may restore (`:restore_channel`), most recently
+  deleted first.
+  """
+  def restorable_channels(%Scope{} = scope) do
+    scope
+    |> filter_all_channels(&channel_decision(:restore_channel, &1, &2))
+    |> Enum.sort_by(& &1.deleted_at, {:desc, DateTime})
+  end
+
+  # Every channel row, with overwrites, that `keep?` accepts for the scope's member. Each decision
+  # reads its parents from the same rows.
+  defp filter_all_channels(scope, keep?) do
     ctx = load(scope, [])
 
     if is_nil(ctx.member) do
@@ -204,7 +221,7 @@ defmodule Tavern.Chat.Visibility do
         )
 
       ctx = %{ctx | channels: Map.new(channels, &{&1.id, &1})}
-      Enum.filter(channels, &view?(ctx, &1))
+      Enum.filter(channels, &keep?.(ctx, &1))
     end
   end
 
@@ -518,6 +535,17 @@ defmodule Tavern.Chat.Visibility do
   defp channel_decision(:manage_channels, ctx, channel),
     do: view?(ctx, channel) and Authorization.has_permission?(server_bits(ctx), :manage_channels)
 
+  # Restoring a deleted channel or category: server `manage_channels`, and the scope could view
+  # the channel once it is restored. So a manager never learns of a deleted channel that was
+  # hidden from them.
+  defp channel_decision(:restore_channel, ctx, %Channel{deleted_at: %DateTime{}} = channel),
+    do:
+      not Channel.thread?(channel) and
+        Authorization.has_permission?(server_bits(ctx), :manage_channels) and
+        view?(ctx, %{channel | deleted_at: nil})
+
+  defp channel_decision(:restore_channel, _ctx, _channel), do: false
+
   defp channel_decision(:add_reactions, ctx, channel),
     do: not acting_timed_out?(ctx) and view?(ctx, channel) and bit?(ctx, channel, :add_reactions)
 
@@ -596,8 +624,11 @@ defmodule Tavern.Chat.Visibility do
     end
   end
 
-  # A channel is visible when it grants view and its parent is visible: a thread needs its
-  # channel, and a channel needs its category. A thread always has a parent.
+  # A channel is visible when it is not deleted, grants view and its parent is visible: a thread
+  # needs its channel, and a channel needs its category. A thread always has a parent. So a
+  # deleted channel hides its threads and their messages with it.
+  defp view?(_ctx, %Channel{deleted_at: %DateTime{}}), do: false
+
   defp view?(ctx, %Channel{parent_channel_id: nil} = channel),
     do: not Channel.thread?(channel) and bit?(ctx, channel, :view_channel)
 

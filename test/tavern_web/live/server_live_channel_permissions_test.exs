@@ -1,4 +1,4 @@
-defmodule TavernWeb.SettingsChannelPermissionsTest do
+defmodule TavernWeb.ServerLiveChannelPermissionsTest do
   use TavernWeb.ConnCase, async: false
 
   import Ecto.Query
@@ -50,9 +50,11 @@ defmodule TavernWeb.SettingsChannelPermissionsTest do
     |> Plug.Conn.put_session(:live_socket_id, "users_sessions:#{user.id}")
   end
 
+  # The sidebar's edit mode, with the channel's ⚙ popover open.
   defp open_channel_editor(conn, user, channel) do
-    {:ok, view, _html} = live(log_in_as(conn, user), ~p"/settings")
-    view |> element("#edit-channel-#{channel.slug}") |> render_click()
+    {:ok, view, _html} = live_hydrated(log_in_as(conn, user), ~p"/")
+    view |> element("#toggle-channel-edit") |> render_click()
+    view |> element("#channel-settings-#{channel.id}") |> render_click()
     view
   end
 
@@ -60,7 +62,7 @@ defmodule TavernWeb.SettingsChannelPermissionsTest do
     Repo.get_by(ChannelPermissionOverwrite, channel_id: channel.id, role_id: role_id)
   end
 
-  test "the owner denies @everyone a channel from the editor", %{conn: conn} = ctx do
+  test "the owner denies @everyone a channel from the settings popover", %{conn: conn} = ctx do
     view = open_channel_editor(conn, ctx.owner, ctx.channel)
     everyone = key(:role, ctx.everyone.id)
 
@@ -172,7 +174,7 @@ defmodule TavernWeb.SettingsChannelPermissionsTest do
        %{conn: conn} = ctx do
     view = open_channel_editor(conn, channel_manager_fixture(), ctx.channel)
 
-    assert has_element?(view, "#channel-form")
+    assert has_element?(view, "#channel-settings-form")
     refute has_element?(view, "#channel-permissions")
   end
 

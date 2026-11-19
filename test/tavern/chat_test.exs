@@ -80,7 +80,7 @@ defmodule Tavern.ChatTest do
       assert Chat.get_channel(scope, hidden.id) == Chat.get_channel(scope, Ecto.UUID.generate())
       assert {:error, :not_found} = Chat.update_channel(scope, hidden.id, %{name: "changed"})
       assert {:error, :not_found} = Chat.delete_channel(scope, hidden.id)
-      assert {:error, :not_found} = Chat.move_channel(scope, hidden.id, :up)
+      assert {:error, :not_found} = Chat.place_channel(scope, hidden.id, nil, nil)
     end
 
     test "a hidden category hides its channels and their threads, even where they allow view" do
@@ -119,35 +119,13 @@ defmodule Tavern.ChatTest do
                Chat.create_message(scope, child.id, %{body: "into the hidden channel"})
     end
 
-    test "moving a visible channel skips a hidden sibling and leaves its position intact" do
+    test "placing a channel renumbers every sibling, hidden ones too, in their old order" do
       %{default_role: default_role} = Bootstrap.ensure_seed_data!()
       manager = channel_manager_fixture()
       category = channel_fixture(%{name: "Move group", slug: unique_slug(), kind: :category})
-
-      first =
-        channel_fixture(%{
-          name: "First",
-          slug: unique_slug(),
-          position: 1,
-          parent_channel_id: category.id
-        })
-
-      hidden =
-        channel_fixture(%{
-          name: "Hidden",
-          slug: unique_slug(),
-          position: 2,
-          parent_channel_id: category.id
-        })
-
-      last =
-        channel_fixture(%{
-          name: "Last",
-          slug: unique_slug(),
-          position: 3,
-          parent_channel_id: category.id
-        })
-
+      first = channel_fixture(%{position: 1, parent_channel_id: category.id})
+      hidden = channel_fixture(%{position: 2, parent_channel_id: category.id})
+      last = channel_fixture(%{position: 3, parent_channel_id: category.id})
       scope = scope_for(manager)
 
       channel_permission_overwrite_fixture(hidden, %{
@@ -168,27 +146,33 @@ defmodule Tavern.ChatTest do
       end)
 
       assert_receive :subscribed
-      assert {:ok, %Tavern.Chat.Channel{position: 3}} = Chat.move_channel(scope, first.id, :down)
+
+      assert {:ok, %Tavern.Chat.Channel{position: 2}} =
+               Chat.place_channel(scope, first.id, category.id, nil)
+
       assert_receive {:server_event, :channels_reordered}
-      assert Repo.get!(Tavern.Chat.Channel, first.id).position == 3
-      assert Repo.get!(Tavern.Chat.Channel, hidden.id).position == 2
+      assert Repo.get!(Tavern.Chat.Channel, hidden.id).position == 0
       assert Repo.get!(Tavern.Chat.Channel, last.id).position == 1
+      assert Repo.get!(Tavern.Chat.Channel, first.id).position == 2
     end
 
-    test "moving at either end is a no-op and a visible channel without permission is forbidden" do
+    test "placing refuses a missing channel or anchor, and a member without manage_channels" do
       Bootstrap.ensure_seed_data!()
       category = channel_fixture(%{kind: :category})
       first = channel_fixture(%{position: 1, parent_channel_id: category.id})
-      last = channel_fixture(%{position: 2, parent_channel_id: category.id})
+      elsewhere = channel_fixture()
       manager = scope_for(channel_manager_fixture())
-      assert {:ok, unchanged} = Chat.move_channel(manager, first.id, :up)
-      assert unchanged.id == first.id
-      assert {:ok, unchanged} = Chat.move_channel(manager, last.id, :down)
-      assert unchanged.id == last.id
-      assert {:error, :not_found} = Chat.move_channel(manager, "invalid-id", :up)
+
+      assert {:error, :not_found} = Chat.place_channel(manager, "invalid-id", nil, nil)
+
+      assert {:error, :not_found} =
+               Chat.place_channel(manager, first.id, category.id, elsewhere.id)
+
       assert {:error, :not_found} = Chat.update_channel(manager, "invalid-id", %{name: "bad"})
       assert {:error, :not_found} = Chat.delete_channel(manager, "invalid-id")
-      assert {:error, :forbidden} = Chat.move_channel(scope_for(user_fixture()), first.id, :up)
+
+      assert {:error, :forbidden} =
+               Chat.place_channel(scope_for(user_fixture()), first.id, nil, nil)
     end
 
     test "a parent the manager cannot view is refused as missing, never as a validation error" do
@@ -212,7 +196,7 @@ defmodule Tavern.ChatTest do
                  })
 
         assert {:error, :not_found} =
-                 Chat.update_channel(scope, child.id, %{parent_channel_id: parent_id})
+                 Chat.place_channel(scope, child.id, parent_id, nil)
       end
     end
 

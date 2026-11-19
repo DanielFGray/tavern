@@ -12,6 +12,7 @@ defmodule TavernWeb.ServerLive.State do
   alias Tavern.Chat
   alias Tavern.Chat.Message
   alias Tavern.Chat.Topics
+  alias TavernWeb.ServerLive.ChannelEditor
   alias TavernWeb.ServerLive.ForumNav
   alias TavernWeb.ServerLive.ThreadNav
 
@@ -49,6 +50,7 @@ defmodule TavernWeb.ServerLive.State do
     |> sync_active_channel(channels)
     |> sync_channel_subscriptions()
     |> ThreadNav.refresh_followed_threads()
+    |> ChannelEditor.refresh()
   end
 
   @doc """
@@ -240,6 +242,7 @@ defmodule TavernWeb.ServerLive.State do
     |> sync_channel_subscriptions()
     |> ThreadNav.reload()
     |> ForumNav.reload()
+    |> ChannelEditor.refresh()
   end
 
   def maybe_insert_message(socket, message) do

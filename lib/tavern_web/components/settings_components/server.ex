@@ -100,16 +100,6 @@ defmodule TavernWeb.SettingsComponents.Server do
 
       <div class="mt-5 flex flex-wrap gap-2">
         <button
-          :if={@can_manage_channels?}
-          type="button"
-          phx-click="toggle_manage_channels"
-          id="open-channel-manager"
-          class="rounded-md bg-violet-500 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-violet-400"
-        >
-          Manage channels
-        </button>
-
-        <button
           :if={@can_manage_emojis?}
           type="button"
           phx-click="toggle_manage_emojis"

@@ -33,7 +33,7 @@ async function choose(page, rowKey, flag, state) {
 test('an owner makes a channel private to one role', async ({ page, browser, request }, testInfo) => {
   // The desktop sidebar shows the channel links; the mobile project would also repeat the flow
   // against the same database.
-  test.skip(testInfo.project.name !== 'desktop-chromium', 'desktop-only settings flow')
+  test.skip(testInfo.project.name !== 'desktop-chromium', 'desktop-only edit-mode flow')
   const owner = { email: 'e2e@example.com', username: 'e2e_user', password: 'supersecurepass' }
   const member = {
     email: 'e2e-perms-member@example.com',
@@ -56,9 +56,11 @@ test('an owner makes a channel private to one role', async ({ page, browser, req
   await expect(roleRow).toHaveCount(1)
   const roleId = (await roleRow.getAttribute('id')).replace('role-row-', '')
 
-  await page.locator('#settings-tab-server').click()
-  await page.locator('#open-channel-manager').click()
-  await page.locator('#edit-channel-random').click()
+  await page.goto('/')
+  await connected(page)
+  await page.locator('#toggle-channel-edit').click()
+  const randomId = await page.locator('input[data-original="Random"]').getAttribute('data-id')
+  await page.locator(`#channel-settings-${randomId}`).click()
   await expect(page.locator('#channel-permissions')).toBeVisible()
 
   // @everyone loses view_channel.

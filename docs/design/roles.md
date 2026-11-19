@@ -6,7 +6,7 @@ How a member manages roles and gives roles to members, and why.
 
 - `Tavern.Chat.Roles` holds every role operation. Each takes a `%Scope{}` first and decides inside its own transaction: `list_roles/1`, `role_controls/1`, `member_roles/2`, `create_role/2`, `update_role/3`, `delete_role/2`, `move_role/3`, `add_member_role/3`, `remove_member_role/3`. `Tavern.Chat` delegates to it.
 - `Tavern.Chat.RoleAuthority` holds the one rule for which roles an actor may change or give. People (through `Roles`) and bot management (through `Tavern.Bots.Authority`) both use it.
-- `Tavern.Chat.ChannelOverwrites` holds the channel and category permission overwrites: `list_overwrites/2`, `overwrite_controls/2`, `put_overwrite/5`, `delete_overwrite/3`. The channel editor in Settings has a Permissions section (see "Channel overwrites").
+- `Tavern.Chat.ChannelOverwrites` holds the channel and category permission overwrites: `list_overwrites/2`, `overwrite_controls/2`, `put_overwrite/5`, `delete_overwrite/3`. The channel ⚙ popover in the sidebar edit mode has a Permissions section (see "Channel overwrites" and channel-management.md).
 - The Settings page has a Roles tab for members who hold `manage_roles`, and the member list has role controls.
 
 Terms:
@@ -96,7 +96,7 @@ A role change does not lock every member who holds the role. A write that loaded
 
 ## Known gaps
 
-- A role write decides from several statements (the membership decision, the actor's authority, the role's overwrites, the bits in those channels). The role-list lock freezes roles, member roles and the overwrites that `ChannelOverwrites` writes. Two deletes still remove overwrite rows under one advisory lock only: deleting a channel cascades its overwrites under the channel-tree lock, and deleting a role cascades its overwrites under the role-list lock. Each removes rows only for the channel or role it deletes, so a concurrent write decides from one coherent earlier state (scoped-reads.md, question 4).
-- The channel editor, and with it the Permissions section, opens only for a member with server `manage_channels`. A member with `manage_roles` alone cannot reach it, as in Discord, where channel settings need Manage Channels.
-- SettingsLive refreshes its role controls on `:roles_changed`, but not its other permission flags (`can_manage_channels?` and the rest), which are read at mount.
+- A role write decides from several statements (the membership decision, the actor's authority, the role's overwrites, the bits in those channels). The role-list lock freezes roles, member roles and the overwrites that `ChannelOverwrites` writes. Deleting a role still removes overwrite rows under one advisory lock only: it cascades its overwrites under the role-list lock. A channel delete is soft and removes no overwrite rows (channel-management.md). The role delete removes rows only for the role it deletes, so a concurrent write decides from one coherent earlier state (scoped-reads.md, question 4).
+- The channel ⚙ popover, and with it the Permissions section, opens only for a member with server `manage_channels`. A member with `manage_roles` alone cannot reach it, as in Discord, where channel settings need Manage Channels.
+- SettingsLive refreshes its role controls on `:roles_changed`, but not its other permission flags, which are read at mount.
 - Bot role grants do not broadcast `:roles_changed`.

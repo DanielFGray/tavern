@@ -129,7 +129,8 @@ defmodule Tavern.Bootstrap do
           updated_at: now
         ]
       ],
-      conflict_target: :slug,
+      # Only a live channel holds its slug (the partial index `channels_live_slug_index`).
+      conflict_target: {:unsafe_fragment, "(slug) WHERE deleted_at IS NULL"},
       returning: true
     )
   end

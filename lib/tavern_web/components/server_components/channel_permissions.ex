@@ -1,6 +1,6 @@
-defmodule TavernWeb.SettingsComponents.ChannelPermissions do
+defmodule TavernWeb.ServerComponents.ChannelPermissions do
   @moduledoc """
-  The Permissions section of the channel editor: one row per overwrite, a three-way control (deny,
+  The Permissions section of the channel settings popover: one row per overwrite, a three-way control (deny,
   inherit, allow) per channel permission, and pickers that add a role or member override.
   """
 
@@ -9,7 +9,7 @@ defmodule TavernWeb.SettingsComponents.ChannelPermissions do
   import Bitwise
 
   alias Tavern.Chat.PermissionBits
-  alias TavernWeb.SettingsLive.ChannelPermissions
+  alias TavernWeb.ServerLive.ChannelPermissions
 
   attr :permissions, :map, required: true
   attr :open_key, :string, default: nil
@@ -46,7 +46,7 @@ defmodule TavernWeb.SettingsComponents.ChannelPermissions do
     ~H"""
     <section
       id="channel-permissions"
-      class="mt-4 rounded-xl border border-base-300 bg-base-200 p-4"
+      class="mt-4 border-t border-base-300 pt-4"
       aria-labelledby="channel-permissions-title"
     >
       <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-base-content/50">
