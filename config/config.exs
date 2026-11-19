@@ -26,6 +26,10 @@ config :tavern, Tavern.Chat.InviteRequests,
     mails_per_day: 100
   ]
 
+# A bot streaming a reply edits one message many times. Edits to one message beyond this many in
+# a second answer 429 with Retry-After.
+config :tavern, Tavern.Bots, message_edits_per_second: 2
+
 # Configure the endpoint
 config :tavern, TavernWeb.Endpoint,
   url: [host: "localhost"],

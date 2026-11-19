@@ -228,35 +228,49 @@ defmodule TavernWeb.API.BotController do
   # same bot or when a write to the client fails.
   defp stream_events(conn, state) do
     receive do
-      {:message_created, message} ->
-        emit(conn, "message.created", Bots.serialize_message(message), state)
+      message -> act(dispatch(message), conn, state)
+    end
+  end
 
-      {:message_updated, message} ->
-        emit(conn, "message.updated", Bots.serialize_message(message), state)
+  @doc """
+  Decides what one mailbox message asks of the stream, without doing it:
 
-      {:message_deleted, message} ->
-        emit(conn, "message.deleted", Bots.serialize_message(message), state)
+    * `{:emit, event_name, payload}` writes an event to the client;
+    * `:resync` recomputes the subscribed channels;
+    * `{:thread_created, thread}` resyncs, then emits `thread.created` if the bot now views it;
+    * `:reauthorize` re-checks the token;
+    * `:ignore` is a message the stream does not use.
+  """
+  def dispatch({:message_created, message}),
+    do: {:emit, "message.created", Bots.serialize_message(message)}
 
-      {:channel_created, channel} ->
-        state = resync(state)
+  def dispatch({:message_updated, message}),
+    do: {:emit, "message.updated", Bots.serialize_message(message)}
 
-        if channel.kind == :thread_public and MapSet.member?(state.subscribed, channel.id) do
-          emit(conn, "thread.created", Bots.serialize_thread(channel), state)
-        else
-          stream_events(conn, state)
-        end
+  def dispatch({:message_deleted, message}),
+    do: {:emit, "message.deleted", Bots.serialize_message(message)}
 
-      {event, _channel} when event in [:channel_updated, :channel_deleted] ->
-        stream_events(conn, resync(state))
+  def dispatch({:channel_created, %{kind: :thread_public} = thread}),
+    do: {:thread_created, thread}
 
-      :roles_changed ->
-        stream_events(conn, resync(state))
+  def dispatch({:channel_created, _channel}), do: :resync
+  def dispatch({event, _channel}) when event in [:channel_updated, :channel_deleted], do: :resync
+  def dispatch(:roles_changed), do: :resync
+  def dispatch(:reauthorize), do: :reauthorize
+  def dispatch(_other), do: :ignore
 
-      :reauthorize ->
-        reauthorize(conn, state)
+  defp act({:emit, event_name, payload}, conn, state), do: emit(conn, event_name, payload, state)
+  defp act(:resync, conn, state), do: stream_events(conn, resync(state))
+  defp act(:reauthorize, conn, state), do: reauthorize(conn, state)
+  defp act(:ignore, conn, state), do: stream_events(conn, state)
 
-      _other ->
-        stream_events(conn, state)
+  defp act({:thread_created, thread}, conn, state) do
+    state = resync(state)
+
+    if MapSet.member?(state.subscribed, thread.id) do
+      emit(conn, "thread.created", Bots.serialize_thread(thread), state)
+    else
+      stream_events(conn, state)
     end
   end
 

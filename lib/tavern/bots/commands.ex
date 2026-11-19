@@ -3,6 +3,7 @@ defmodule Tavern.Bots.Commands do
 
   alias Tavern.Accounts.Scope
   alias Tavern.Bots
+  alias Tavern.Bots.EditLimit
   alias Tavern.Bots.Params
   alias Tavern.Bots.Serializer
   alias Tavern.Chat
@@ -44,12 +45,57 @@ defmodule Tavern.Bots.Commands do
     limit = Params.parse_limit(Map.get(params, "limit"))
 
     with {:ok, channel_id} <- Params.channel_id(channel_id),
-         {:ok, messages} <- Chat.list_messages(scope, channel_id, limit: limit) do
+         {:ok, after_id} <- Params.message_id(Map.get(params, "after")),
+         {:ok, before_id} <- Params.message_id(Map.get(params, "before")),
+         {:ok, messages} <-
+           Chat.list_messages(scope, channel_id, limit: limit, after: after_id, before: before_id) do
       {:ok, %{messages: Enum.map(messages, &Serializer.serialize_message/1)}}
     end
   end
 
   def list_messages(_, _), do: {:error, :invalid_params}
+
+  @doc """
+  Edits a message of the acting bot in `channel_id`. A message in another channel is not found.
+  Only the author's edits count against `Tavern.Bots.EditLimit`, so a refused edit by someone
+  else spends none of the author's budget.
+  """
+  def edit_message(
+        %Scope{} = scope,
+        %{"channel_id" => channel_id, "message_id" => message_id, "body" => body}
+      ) do
+    with {:ok, _bot_user} <- Bots.acting_member(scope),
+         {:ok, channel_id} <- Params.channel_id(channel_id),
+         {:ok, message_id} <- Params.message_id(message_id),
+         {:ok, message} <- message_in_channel(scope, channel_id, message_id),
+         :ok <- own_message(scope, message),
+         :ok <- EditLimit.admit(message.id),
+         {:ok, message} <- Chat.update_message(scope, message.id, %{"body" => body}) do
+      {:ok, %{message: Serializer.serialize_message(message)}}
+    end
+  end
+
+  def edit_message(_, _), do: {:error, :invalid_params}
+
+  @doc "Shows the acting bot as typing in a channel or thread, the way a member typing does."
+  def typing(%Scope{} = scope, %{"channel_id" => channel_id}) do
+    with {:ok, _bot_user} <- Bots.acting_member(scope),
+         {:ok, channel_id} <- Params.channel_id(channel_id) do
+      Chat.announce_typing(scope, channel_id)
+    end
+  end
+
+  def typing(_, _), do: {:error, :invalid_params}
+
+  defp message_in_channel(scope, channel_id, message_id) do
+    case Chat.get_message(scope, message_id) do
+      %{channel_id: ^channel_id} = message -> {:ok, message}
+      _other -> {:error, :not_found}
+    end
+  end
+
+  defp own_message(%Scope{user_id: user_id}, %{author_id: user_id}), do: :ok
+  defp own_message(_scope, _message), do: {:error, :forbidden}
 
   def timeout_member(%Scope{} = scope, %{"user_id" => user_id} = params) do
     with {:ok, _bot_user} <- Bots.acting_member(scope),

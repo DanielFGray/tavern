@@ -233,30 +233,81 @@ defmodule Tavern.Chat do
   end
 
   @doc """
-  The newest `:limit` messages (default 50) in a channel the scope may view, oldest first, as
-  `{:ok, messages}`. A missing channel and a hidden one are both `{:error, :not_found}`.
+  A page of up to `:limit` messages (default 50) in a channel the scope may view, oldest first,
+  as `{:ok, messages}`. Without a cursor it is the newest page. `after: message_id` is the page
+  that starts just after that message; `before: message_id` is the page that ends just before
+  it. A cursor names a message of this channel, deleted or not, or the call is
+  `{:error, :invalid_cursor}`; both cursors at once are `{:error, :invalid_cursor}` too. A
+  missing channel and a hidden one are both `{:error, :not_found}`.
   """
   def list_messages(%Scope{} = scope, channel_id, opts \\ []) do
     with {:ok, channel_id} <- cast_id(channel_id),
          %Channel{} = channel <- Visibility.visible_channel(scope, channel_id) do
-      limit = Keyword.get(opts, :limit, 50)
+      with {:ok, cursor} <- message_cursor(channel_id, opts) do
+        limit = Keyword.get(opts, :limit, 50)
 
-      messages =
-        Message
-        |> where([message], message.channel_id == ^channel_id)
-        |> where([message], is_nil(message.deleted_at))
-        |> order_by([message], desc: message.inserted_at, desc: message.id)
-        |> limit(^limit)
-        |> preload(^@read_preloads)
-        |> Repo.all()
-        |> Enum.reverse()
-        |> Enum.map(&%{&1 | channel: channel})
+        messages =
+          Message
+          |> where([message], message.channel_id == ^channel_id)
+          |> where([message], is_nil(message.deleted_at))
+          |> page_from(cursor)
+          |> limit(^limit)
+          |> preload(^@read_preloads)
+          |> Repo.all()
+          |> chronological(cursor)
+          |> Enum.map(&%{&1 | channel: channel})
 
-      {:ok, messages}
+        {:ok, messages}
+      end
     else
       _ -> {:error, :not_found}
     end
   end
+
+  defp message_cursor(channel_id, opts) do
+    case {Keyword.get(opts, :after), Keyword.get(opts, :before)} do
+      {nil, nil} -> {:ok, nil}
+      {id, nil} -> find_cursor(:after, channel_id, id)
+      {nil, id} -> find_cursor(:before, channel_id, id)
+      {_after, _before} -> {:error, :invalid_cursor}
+    end
+  end
+
+  defp find_cursor(direction, channel_id, message_id) do
+    with {:ok, message_id} <- cast_id(message_id),
+         %Message{} = message <- Repo.get_by(Message, id: message_id, channel_id: channel_id) do
+      {:ok, {direction, message.inserted_at, message.id}}
+    else
+      _ -> {:error, :invalid_cursor}
+    end
+  end
+
+  defp page_from(query, nil),
+    do: order_by(query, [message], desc: message.inserted_at, desc: message.id)
+
+  defp page_from(query, {:after, inserted_at, id}) do
+    query
+    |> where(
+      [message],
+      message.inserted_at > ^inserted_at or
+        (message.inserted_at == ^inserted_at and message.id > ^id)
+    )
+    |> order_by([message], asc: message.inserted_at, asc: message.id)
+  end
+
+  defp page_from(query, {:before, inserted_at, id}) do
+    query
+    |> where(
+      [message],
+      message.inserted_at < ^inserted_at or
+        (message.inserted_at == ^inserted_at and message.id < ^id)
+    )
+    |> order_by([message], desc: message.inserted_at, desc: message.id)
+  end
+
+  # `page_from/2` reads every page except an `after` page newest first, so those rows are turned back.
+  defp chronological(messages, {:after, _inserted_at, _id}), do: messages
+  defp chronological(messages, _cursor), do: Enum.reverse(messages)
 
   defdelegate thread_summaries_for_channel(scope, channel_id), to: Threads
   defdelegate get_thread_for_starter_message(scope, starter_message_id), to: Threads

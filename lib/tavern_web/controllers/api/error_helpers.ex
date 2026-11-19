@@ -35,6 +35,20 @@ defmodule TavernWeb.API.ErrorHelpers do
     })
   end
 
+  @doc "429 for more edits of one message than the cap allows, with the wait in `retry_after` seconds."
+  def render_rate_limited(conn, seconds_left) do
+    conn
+    |> put_resp_header("retry-after", Integer.to_string(seconds_left))
+    |> put_status(:too_many_requests)
+    |> json(%{
+      error: %{
+        code: "rate_limited",
+        message: "Too many edits of this message. Wait #{seconds_left}s.",
+        retry_after: seconds_left
+      }
+    })
+  end
+
   def render_changeset_error(conn, status, code, changeset, message \\ "Validation failed.") do
     conn
     |> put_status(status)

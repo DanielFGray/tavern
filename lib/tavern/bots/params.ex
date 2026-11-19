@@ -22,6 +22,16 @@ defmodule Tavern.Bots.Params do
 
   def parse_positive_integer(_), do: {:error, :invalid_params}
 
+  @doc "A message id, or nil for an absent cursor. A malformed id is an invalid request, not a missing message."
+  def message_id(nil), do: {:ok, nil}
+
+  def message_id(value) do
+    case Ecto.UUID.cast(value) do
+      {:ok, id} -> {:ok, id}
+      :error -> {:error, :invalid_params}
+    end
+  end
+
   @doc "A malformed channel id is an invalid request; a well-formed one goes to the scoped operation."
   def channel_id(value) do
     case Ecto.UUID.cast(value) do

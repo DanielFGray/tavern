@@ -321,6 +321,14 @@ defmodule Tavern.Bots do
 
   def command_list_messages(_, _), do: {:error, :invalid_params}
 
+  def command_edit_message(%Scope{} = scope, params), do: Commands.edit_message(scope, params)
+
+  def command_edit_message(_, _), do: {:error, :invalid_params}
+
+  def command_typing(%Scope{} = scope, params), do: Commands.typing(scope, params)
+
+  def command_typing(_, _), do: {:error, :invalid_params}
+
   def get_thread_for_starter_message(%Scope{} = scope, starter_message_id) do
     case Ecto.UUID.cast(starter_message_id) do
       {:ok, starter_id} ->

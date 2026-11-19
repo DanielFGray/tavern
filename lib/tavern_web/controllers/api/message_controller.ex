@@ -5,7 +5,10 @@ defmodule TavernWeb.API.MessageController do
   alias TavernWeb.API.ErrorHelpers
 
   def index(conn, %{"channel_id" => channel_id} = params) do
-    command_params = %{"channel_id" => channel_id, "limit" => Map.get(params, "limit")}
+    command_params =
+      params
+      |> Map.take(["limit", "after", "before"])
+      |> Map.put("channel_id", channel_id)
 
     case Bots.command_list_messages(conn.assigns.current_bot_scope, command_params) do
       {:ok, %{messages: messages}} ->
@@ -70,6 +73,76 @@ defmodule TavernWeb.API.MessageController do
   end
 
   def create(conn, _params), do: ErrorHelpers.render_invalid_body(conn)
+
+  def update(conn, %{"channel_id" => channel_id, "message_id" => message_id, "body" => body}) do
+    params = %{"channel_id" => channel_id, "message_id" => message_id, "body" => body}
+
+    case Bots.command_edit_message(conn.assigns.current_bot_scope, params) do
+      {:ok, %{message: message}} ->
+        render(conn, :show, message: message)
+
+      {:error, :forbidden} ->
+        ErrorHelpers.render_error(conn, :forbidden, "forbidden", "Bot cannot edit that message.")
+
+      {:error, :not_found} ->
+        ErrorHelpers.render_error(conn, :not_found, "not_found", "Message not found.")
+
+      {:error, {:rate_limited, seconds}} ->
+        ErrorHelpers.render_rate_limited(conn, seconds)
+
+      {:error, :unavailable} ->
+        ErrorHelpers.render_error(
+          conn,
+          :service_unavailable,
+          "unavailable",
+          "Edit limits are unavailable. Try again."
+        )
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        ErrorHelpers.render_changeset_error(
+          conn,
+          :unprocessable_entity,
+          "invalid_message",
+          changeset
+        )
+
+      {:error, _} ->
+        ErrorHelpers.render_error(
+          conn,
+          :unprocessable_entity,
+          "invalid_message",
+          "Invalid message edit."
+        )
+    end
+  end
+
+  def update(conn, _params), do: ErrorHelpers.render_invalid_body(conn)
+
+  def typing(conn, %{"channel_id" => channel_id}) do
+    case Bots.command_typing(conn.assigns.current_bot_scope, %{"channel_id" => channel_id}) do
+      :ok ->
+        send_resp(conn, :no_content, "")
+
+      {:error, :forbidden} ->
+        ErrorHelpers.render_error(
+          conn,
+          :forbidden,
+          "forbidden",
+          "Bot cannot send to that channel."
+        )
+
+      {:error, :not_found} ->
+        ErrorHelpers.render_error(conn, :not_found, "not_found", "Channel not found.")
+
+      {:error, _} ->
+        ErrorHelpers.render_error(
+          conn,
+          :unprocessable_entity,
+          "invalid_params",
+          "Invalid typing request."
+        )
+    end
+  end
 
   def thread(conn, %{"message_id" => message_id}) do
     case Bots.get_thread_for_starter_message(conn.assigns.current_bot_scope, message_id) do
