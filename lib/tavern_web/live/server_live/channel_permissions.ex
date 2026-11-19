@@ -10,12 +10,11 @@ defmodule TavernWeb.ServerLive.ChannelPermissions do
   submits nothing, so a save keeps the stored value of every bit that was not submitted.
   """
 
-  import Bitwise
   import Phoenix.Component, only: [assign: 3, to_form: 2]
   import Phoenix.LiveView, only: [put_flash: 3]
 
   alias Tavern.Chat
-  alias Tavern.Chat.PermissionBits
+  alias TavernWeb.PermissionControls
   alias TavernWeb.ServerLive.State
 
   @events ~w(toggle_overwrite add_overwrite save_overwrite delete_overwrite)
@@ -37,9 +36,6 @@ defmodule TavernWeb.ServerLive.ChannelPermissions do
     :mention_everyone,
     :manage_messages
   ]
-
-  # Form keys to flag atoms, so input never creates atoms.
-  @flags_by_name Map.new(@channel_flags, &{to_string(&1), &1})
 
   def events, do: @events
   def channel_flags, do: @channel_flags
@@ -136,14 +132,8 @@ defmodule TavernWeb.ServerLive.ChannelPermissions do
   The `{allow, deny}` a row's save stores: the stored bits, with each submitted channel bit set to
   allow, inherit or deny. A bit that was not submitted keeps its stored value.
   """
-  def submitted_bits(%{allow: allow, deny: deny}, submitted) when is_map(submitted) do
-    Enum.reduce(submitted, {allow, deny}, fn {name, state}, {allow, deny} ->
-      case Map.fetch(@flags_by_name, name) do
-        {:ok, flag} -> set_bit({allow, deny}, PermissionBits.flag(flag), state)
-        :error -> {allow, deny}
-      end
-    end)
-  end
+  def submitted_bits(%{allow: allow, deny: deny}, submitted) when is_map(submitted),
+    do: PermissionControls.apply_states({allow, deny}, submitted, @channel_flags)
 
   # --- Helpers -----------------------------------------------------------------------------------
 
@@ -161,14 +151,6 @@ defmodule TavernWeb.ServerLive.ChannelPermissions do
   # re-reading its channels. Re-reading here as well shows the result before that message lands.
   # `State.refresh_channels/1` re-reads this section.
   defp after_write(socket), do: State.refresh_channels(socket)
-
-  defp set_bit({allow, deny}, bit, "allow"), do: {allow ||| bit, band(deny, bnot(bit))}
-  defp set_bit({allow, deny}, bit, "deny"), do: {band(allow, bnot(bit)), deny ||| bit}
-
-  defp set_bit({allow, deny}, bit, "inherit"),
-    do: {band(allow, bnot(bit)), band(deny, bnot(bit))}
-
-  defp set_bit(bits, _bit, _state), do: bits
 
   # The default role's row comes first and is shown even when nothing is stored for it.
   defp rows(overwrites, roles, controls) do

@@ -6,6 +6,7 @@ defmodule TavernWeb.SettingsComponents.Roles do
   import Bitwise
 
   alias Tavern.Chat.PermissionBits
+  alias TavernWeb.PermissionControls
   import TavernWeb.SettingsComponents.Helpers
 
   @permission_groups [
@@ -177,7 +178,9 @@ defmodule TavernWeb.SettingsComponents.Roles do
     assigns =
       assigns
       |> assign(:groups, @permission_groups)
-      |> assign(:permissions, Phoenix.HTML.Form.input_value(assigns.form, :permissions) || 0)
+      |> assign(:allow, Phoenix.HTML.Form.input_value(assigns.form, :permissions) || 0)
+      |> assign(:deny, Phoenix.HTML.Form.input_value(assigns.form, :deny_permissions) || 0)
+      |> assign(:unavailable, if(assigns.role && assigns.role.is_default, do: ["deny"], else: []))
 
     ~H"""
     <.form
@@ -212,25 +215,44 @@ defmodule TavernWeb.SettingsComponents.Roles do
         <.input field={@form[:hoist]} type="checkbox" label="Show separately in member list" />
       </div>
 
+      <p id="role-permission-help" class="text-xs text-base-content/60">
+        <%= if @role && @role.is_default do %>
+          Every member starts with what @everyone allows. Other roles can deny these bits.
+        <% else %>
+          Deny takes away what @everyone allows. Allow wins: a member who holds another role that allows the permission keeps it.
+        <% end %>
+      </p>
+
       <div id="role-permission-grid" class="space-y-3">
         <fieldset
           :for={{group, flags} <- @groups}
           id={"role-permission-group-#{String.downcase(group)}"}
-          class="rounded-lg border border-base-300 bg-base-100 p-3"
+          class="rounded-lg border border-base-300 bg-base-100 px-3 pb-1 pt-2"
         >
           <legend class="px-1 text-[10px] font-bold uppercase tracking-[0.18em] text-base-content/50">
             {group}
           </legend>
-          <div class="grid gap-x-4 sm:grid-cols-2">
-            <.input
+          <div class="grid gap-x-6 sm:grid-cols-2">
+            <div
               :for={flag <- flags}
-              type="checkbox"
-              id={"role-permission-#{flag}"}
-              name={"role[permissions][#{flag}]"}
-              label={permission_label(flag)}
-              checked={bit?(@permissions, flag)}
-              disabled={not bit?(@grantable, flag)}
-            />
+              id={"role-permission-row-#{flag}"}
+              class="flex items-center justify-between gap-3 rounded-md px-1 py-1 transition-colors hover:bg-base-200/60"
+            >
+              <span class={[
+                "text-xs",
+                if(bit?(@grantable, flag), do: "text-base-content/85", else: "text-base-content/40")
+              ]}>
+                {permission_label(flag)}
+              </span>
+              <PermissionControls.tri_state
+                id={"role-permission-#{flag}"}
+                name={"role[bits][#{flag}]"}
+                label={permission_label(flag)}
+                state={PermissionControls.state(@allow, @deny, flag)}
+                disabled={not bit?(@grantable, flag)}
+                unavailable={@unavailable}
+              />
+            </div>
           </div>
         </fieldset>
       </div>

@@ -8,7 +8,8 @@ defmodule Tavern.Chat.RoleAuthority do
 
   - the actor holds `manage_roles` (an administrator holds every bit);
   - the role sits below the actor's highest role;
-  - the role grants no server bit the actor lacks, and never `administrator`;
+  - the role allows or denies no server bit the actor lacks, and never `administrator`: a member
+    cannot deny what they could not grant;
   - each channel overwrite on the role allows no bit the actor lacks in that channel.
 
   The server owner passes all four. An administrator holds every bit in every channel, so the
@@ -82,7 +83,7 @@ defmodule Tavern.Chat.RoleAuthority do
 
     Enum.filter(roles, fn role ->
       below?(authority, role) and
-        band(role.permissions, bnot(grantable_bits(authority))) == 0 and
+        band(role.permissions ||| role.deny_permissions, bnot(grantable_bits(authority))) == 0 and
         channel_overwrites_within?(authority, Map.get(overwrites_by_role, role.id, []))
     end)
   end

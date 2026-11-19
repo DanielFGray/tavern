@@ -49,7 +49,8 @@ defmodule Tavern.Chat.AuditLogLine do
     do: "#{actor} created role #{role_name(meta)}"
 
   defp line("role_updated", actor, _subject, meta, _entry) do
-    "#{actor} changed role #{role_name(meta)}" <> permissions_suffix(meta["permissions"])
+    "#{actor} changed role #{role_name(meta)}" <>
+      permissions_suffix(meta["permissions"], meta["deny_permissions"] || 0)
   end
 
   defp line("role_moved", actor, _subject, meta, _entry) do
@@ -118,14 +119,15 @@ defmodule Tavern.Chat.AuditLogLine do
   defp overwrite_target(_meta, %AuditLogEntry{subject_user: user}), do: handle(user)
 
   # A role update records the role's permissions after the change, not the change itself.
-  defp permissions_suffix(bits) when is_integer(bits) do
-    case flags_text(bits, "") do
-      "" -> " (no permissions)"
-      text -> " (now: #{text})"
+  # A role's denied bits follow its allowed ones, each marked with a minus.
+  defp permissions_suffix(allow, deny) when is_integer(allow) and is_integer(deny) do
+    case [flags_text(allow, ""), flags_text(deny, "-")] |> Enum.reject(&(&1 == "")) do
+      [] -> " (no permissions)"
+      text -> " (now: #{Enum.join(text, " ")})"
     end
   end
 
-  defp permissions_suffix(_bits), do: ""
+  defp permissions_suffix(_allow, _deny), do: ""
 
   defp overwrite_suffix(%{"allow" => allow, "deny" => deny})
        when is_integer(allow) and is_integer(deny) do

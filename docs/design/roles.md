@@ -14,6 +14,28 @@ Terms:
 - **Top role**: the member's role with the highest position. A member with no roles has the default role's position, 0.
 - **Default role**: `@everyone` (`is_default`). Every member has its permissions without a `member_roles` row.
 - **Managed role**: a role with `managed` set. The system owns it.
+- **Allow bits** and **deny bits**: each role stores `permissions` (the bits it allows) and `deny_permissions` (the bits it denies). A bit is allowed, denied or neither (neutral), never both: `Role` validates it and the `role_bits_allowed_or_denied` check enforces it. The default role denies nothing (`default_role_denies_nothing`): it is the base that the other roles' denies subtract from.
+
+## Server permissions
+
+A member's server bits come from one function, `Authorization.server_permissions/2`:
+
+1. Start with the default role's allow bits.
+2. Remove the union of the deny bits of every role the member holds.
+3. Add the union of the allow bits of every role the member holds.
+
+So allow wins. A role's deny removes a bit only when the default role grants it and no other role the member holds allows it. A deny on a bit the default role lacks changes nothing. Both unions are taken before they combine, so role order and position do not matter. The owner holds every bit, and `administrator` expands to every bit, after this sum, so neither is subject to a deny. Channel overwrites then apply to the result as described under "Channel overwrites".
+
+Example. `@everyone` allows `view_channel` and `send_messages`. The Unverified role denies `send_messages`, and the Speaker role allows it.
+
+| Member holds | Server bits | Sends? |
+|---|---|---|
+| `@everyone` only | view, send | yes |
+| `@everyone`, Unverified | view | no |
+| `@everyone`, Unverified, Speaker | view, send | yes: Speaker's allow wins |
+| `@everyone`, Unverified, and a role overwrite on #help that allows `send_messages` for Unverified | view | in #help only |
+
+Channel overwrites apply to every active member, even one whose server bits are 0 because denies removed them all or the default role grants nothing: an overwrite that allows a bit grants it in that channel. An account with no membership, or whose membership is deactivated (removed or banned), holds no bits anywhere, whatever an overwrite allows (`Authorization.channel_permissions/3`).
 
 ## The rule
 
@@ -21,7 +43,7 @@ An actor has authority over a role when all four hold:
 
 1. The actor holds `manage_roles`.
 2. The role sits below the actor's top role.
-3. The role grants no server bit the actor lacks, and does not grant `administrator`.
+3. The role allows or denies no server bit the actor lacks, and neither allows nor denies `administrator`. An actor cannot deny a bit they could not grant.
 4. Each channel overwrite on the role allows no bit the actor lacks in that channel.
 
 The server owner passes all four. An administrator holds every bit in every channel, so 1 and 4 pass; 2 still binds, and 3 still keeps `administrator` back. Only the owner sets or gives `administrator`.
@@ -47,7 +69,7 @@ Refusals: a hidden or missing role or member answers `{:error, :not_found}`; a v
 
 Why rule 4: a role is part of what its holder may do, and a bot token acts with its bot's roles. Without rule 4 an actor could give a role whose overwrite opens a channel the actor cannot read. The security review found that bug in bot grants.
 
-Why edit checks both states: the settings form disables the checkboxes for bits the actor cannot set, and a disabled checkbox submits nothing. A check on the new state alone would let a rename silently strip such a bit.
+Why edit checks both states: a role that allows or denies a bit the actor cannot set would otherwise let the actor change that bit, or rename away a restriction set above them. The settings form shows each permission as an allow / neutral / deny control (`TavernWeb.PermissionControls`, the same control as the channel overwrite editor) and disables the controls for bits the actor cannot set. A disabled control submits nothing, so the save starts from the stored bits and changes only the submitted ones. On the default role the deny choice is disabled.
 
 ## Positions
 

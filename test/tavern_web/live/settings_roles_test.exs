@@ -56,25 +56,54 @@ defmodule TavernWeb.SettingsRolesTest do
     assert has_element?(view, "#role-edit-form")
   end
 
-  test "a manager edits a role's permissions; bits they lack are disabled", %{conn: conn} = ctx do
+  test "a manager allows and denies a role's permissions; bits they lack are disabled",
+       %{conn: conn} = ctx do
     {:ok, view, _html} = live(log_in_as(conn, ctx.manager), ~p"/settings?tab=roles")
 
     view |> element("#edit-role-#{ctx.low_role.id}") |> render_click()
-    assert has_element?(view, "#role-permission-ban_members[disabled]")
-    refute has_element?(view, "#role-permission-view_channel[disabled]")
+
+    for state <- ~w(deny inherit allow) do
+      assert has_element?(view, "#role-permission-ban_members-#{state}[disabled]")
+      refute has_element?(view, "#role-permission-view_channel-#{state}[disabled]")
+    end
+
+    assert has_element?(view, "#role-permission-send_messages-allow[checked]")
+    assert has_element?(view, "#role-permission-view_channel-inherit[checked]")
 
     view
     |> form("#role-edit-form",
       role: %{
         name: "Lower",
-        permissions: %{send_messages: "true", view_channel: "true"}
+        bits: %{send_messages: "deny", view_channel: "allow"}
       }
     )
     |> render_submit()
 
     role = Repo.get!(Role, ctx.low_role.id)
     assert role.name == "Lower"
-    assert role.permissions == PermissionBits.combine([:send_messages, :view_channel])
+    assert role.permissions == PermissionBits.combine([:view_channel])
+    assert role.deny_permissions == PermissionBits.combine([:send_messages])
+    assert has_element?(view, "#role-permission-send_messages-deny[checked]")
+
+    view
+    |> form("#role-edit-form", role: %{bits: %{send_messages: "inherit"}})
+    |> render_submit()
+
+    role = Repo.get!(Role, ctx.low_role.id)
+    assert role.permissions == PermissionBits.combine([:view_channel])
+    assert role.deny_permissions == 0
+  end
+
+  test "the @everyone editor offers no deny", %{conn: conn} do
+    owner = owner_fixture()
+    default = Tavern.Chat.default_role()
+    {:ok, view, _html} = live(log_in_as(conn, owner), ~p"/settings?tab=roles")
+
+    view |> element("#edit-role-#{default.id}") |> render_click()
+
+    assert has_element?(view, "#role-permission-send_messages-deny[disabled]")
+    refute has_element?(view, "#role-permission-send_messages-allow[disabled]")
+    refute has_element?(view, "#role-permission-send_messages-inherit[disabled]")
   end
 
   test "a manager reorders roles below them", %{conn: conn} = ctx do

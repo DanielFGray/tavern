@@ -324,6 +324,7 @@ defmodule Tavern.Chat.Roles do
       metadata: %{
         "role_name" => role.name,
         "permissions" => role.permissions,
+        "deny_permissions" => role.deny_permissions,
         "position" => role.position
       }
     })

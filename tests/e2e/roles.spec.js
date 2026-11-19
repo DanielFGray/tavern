@@ -25,6 +25,12 @@ async function roleId(page, name) {
   return (await row.getAttribute('id')).replace('role-row-', '')
 }
 
+// The radio inputs are visually hidden inside their labels, so a click goes to the label.
+async function choose(page, flag, state) {
+  await page.locator(`label:has(#role-permission-${flag}-${state})`).click()
+  await expect(page.locator(`#role-permission-${flag}-${state}`)).toBeChecked()
+}
+
 async function createRole(page, name) {
   await page.getByLabel('New role name').fill(name)
   await page.locator('#create-role-button').click()
@@ -53,11 +59,23 @@ test('an owner creates, edits, moves, gives and deletes a role', async ({ page, 
   expect((await rowIds()).indexOf(`role-row-${beta}`)).toBeGreaterThan((await rowIds()).indexOf(`role-row-${alpha}`))
 
   await page.locator(`#edit-role-${beta}`).click()
-  await page.locator('#role-permission-kick_members').check()
+  await choose(page, 'kick_members', 'allow')
+  await choose(page, 'send_messages', 'deny')
   await page.locator('#save-role-button').click()
   await expect(page.locator('#flash-group')).toContainText("Role E2E Beta saved.")
   await page.locator(`#edit-role-${beta}`).click()
-  await expect(page.locator('#role-permission-kick_members')).toBeChecked()
+  await expect(page.locator('#role-permission-kick_members-allow')).toBeChecked()
+  await expect(page.locator('#role-permission-send_messages-deny')).toBeChecked()
+  await expect(page.locator('#role-permission-view_channel-inherit')).toBeChecked()
+  await page.locator('#role-edit-form').screenshot({ path: testInfo.outputPath('role-editor-tri-state.png') })
+  await page.locator('#cancel-role-edit').click()
+
+  // The default role is the base the other roles deny from, so it offers no deny.
+  const everyone = await roleId(page, '@everyone')
+  await page.locator(`#edit-role-${everyone}`).click()
+  await expect(page.locator('#role-permission-send_messages-deny')).toBeDisabled()
+  await expect(page.locator('#role-permission-send_messages-allow')).toBeEnabled()
+  await page.locator('#role-edit-form').screenshot({ path: testInfo.outputPath('role-editor-everyone.png') })
   await page.locator('#cancel-role-edit').click()
 
   await page.locator(`#move-role-up-${beta}`).click()

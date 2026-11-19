@@ -3,6 +3,7 @@ defmodule Tavern.Chat.Authorization do
 
   import Bitwise
 
+  alias Tavern.Accounts
   alias Tavern.Chat.Channel
   alias Tavern.Chat.ChannelPermissionOverwrite
   alias Tavern.Chat.PermissionBits
@@ -25,11 +26,13 @@ defmodule Tavern.Chat.Authorization do
     |> expand_administrator()
   end
 
+  # Overwrites apply to every active member, even one whose server bits are all denied or whose
+  # default role grants nothing: a channel overwrite can still grant them bits there.
   def channel_permissions(%User{} = user, %Channel{} = channel, default_role) do
     server_permissions = server_permissions(user, default_role)
 
     cond do
-      server_permissions == 0 ->
+      not active_member?(user) ->
         0
 
       administrator?(server_permissions) ->
@@ -61,27 +64,31 @@ defmodule Tavern.Chat.Authorization do
     band(permissions, permission_bit) == permission_bit
   end
 
-  defp do_server_permissions(%User{membership: membership}, _default_permissions)
-       when is_nil(membership) do
-    0
-  end
-
-  defp do_server_permissions(
-         %User{membership: %{deactivated_at: deactivated_at}},
-         _default_permissions
-       )
-       when not is_nil(deactivated_at) do
-    0
-  end
-
-  defp do_server_permissions(%User{membership: %{is_owner: true}}, _default_permissions),
-    do: @all_permissions
-
+  # A removed or banned account holds nothing. Allow wins: a role's deny removes only bits the
+  # default role grants, and any held role's allow restores them. Both unions are taken before they
+  # combine, so role order never matters. The default role holds no `member_roles` row and denies
+  # nothing.
   defp do_server_permissions(%User{} = user, default_permissions) do
-    Enum.reduce(user.member_roles || [], default_permissions, fn member_role, permissions ->
-      permissions ||| member_role.role.permissions
-    end)
+    cond do
+      not active_member?(user) ->
+        0
+
+      user.membership.is_owner ->
+        @all_permissions
+
+      true ->
+        {allow, deny} =
+          Enum.reduce(user.member_roles || [], {0, 0}, fn %{role: role}, {allow, deny} ->
+            {allow ||| role.permissions, deny ||| role.deny_permissions}
+          end)
+
+        default_permissions
+        |> drop_permissions(deny)
+        |> add_permissions(allow)
+    end
   end
+
+  defp active_member?(%User{} = user), do: Accounts.membership_state(user) == :active
 
   defp expand_administrator(permissions) do
     if administrator?(permissions), do: @all_permissions, else: permissions

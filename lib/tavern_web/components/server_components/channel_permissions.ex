@@ -9,6 +9,7 @@ defmodule TavernWeb.ServerComponents.ChannelPermissions do
   import Bitwise
 
   alias Tavern.Chat.PermissionBits
+  alias TavernWeb.PermissionControls
   alias TavernWeb.ServerLive.ChannelPermissions
 
   attr :permissions, :map, required: true
@@ -134,9 +135,11 @@ defmodule TavernWeb.ServerComponents.ChannelPermissions do
                 class="flex items-center justify-between gap-3 py-1.5"
               >
                 <span class="text-xs text-base-content/85">{permission_label(flag)}</span>
-                <.tri_state
-                  row={row}
-                  flag={flag}
+                <PermissionControls.tri_state
+                  id={"overwrite-#{row.key}-#{flag}"}
+                  name={"overwrite[bits][#{flag}]"}
+                  label={permission_label(flag)}
+                  state={PermissionControls.state(row.allow, row.deny, flag)}
                   disabled={!row.editable? or not bit?(@permissions.controls.changeable_bits, flag)}
                 />
               </div>
@@ -227,69 +230,6 @@ defmodule TavernWeb.ServerComponents.ChannelPermissions do
       </div>
     </section>
     """
-  end
-
-  attr :row, :map, required: true
-  attr :flag, :atom, required: true
-  attr :disabled, :boolean, required: true
-
-  # Three radio buttons in one segmented control. A disabled control submits nothing; the save keeps
-  # the stored value of that bit.
-  defp tri_state(assigns) do
-    assigns = assign(assigns, :current, state(assigns.row, assigns.flag))
-
-    ~H"""
-    <div
-      role="radiogroup"
-      aria-label={permission_label(@flag)}
-      class={[
-        "inline-flex shrink-0 overflow-hidden rounded-md border border-base-300 bg-base-200",
-        @disabled && "opacity-50"
-      ]}
-    >
-      <label
-        :for={{value, icon, tone, title} <- states()}
-        title={title}
-        class={["relative", if(@disabled, do: "cursor-not-allowed", else: "cursor-pointer")]}
-      >
-        <input
-          type="radio"
-          id={"overwrite-#{@row.key}-#{@flag}-#{value}"}
-          name={"overwrite[bits][#{@flag}]"}
-          value={value}
-          checked={@current == value}
-          disabled={@disabled}
-          class="peer sr-only"
-        />
-        <span class={[
-          "flex size-7 items-center justify-center text-base-content/40 transition-colors duration-150",
-          "peer-focus-visible:ring-2 peer-focus-visible:ring-inset peer-focus-visible:ring-violet-400",
-          !@disabled && "hover:bg-base-300 hover:text-base-content",
-          tone
-        ]}>
-          <.icon name={icon} class="size-3.5" />
-          <span class="sr-only">{title}</span>
-        </span>
-      </label>
-    </div>
-    """
-  end
-
-  defp states do
-    [
-      {"deny", "hero-x-mark", "peer-checked:bg-rose-500 peer-checked:text-white", "Deny"},
-      {"inherit", "hero-slash", "peer-checked:bg-base-300 peer-checked:text-base-content",
-       "Inherit"},
-      {"allow", "hero-check", "peer-checked:bg-emerald-500 peer-checked:text-white", "Allow"}
-    ]
-  end
-
-  defp state(row, flag) do
-    cond do
-      bit?(row.allow, flag) -> "allow"
-      bit?(row.deny, flag) -> "deny"
-      true -> "inherit"
-    end
   end
 
   defp bit?(bits, flag) do

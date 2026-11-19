@@ -10,12 +10,10 @@ defmodule TavernWeb.SettingsLive.Roles do
   alias Tavern.Chat
   alias Tavern.Chat.PermissionBits
   alias Tavern.Chat.Role
+  alias TavernWeb.PermissionControls
 
   @events ~w(create_role edit_role cancel_role_edit save_role move_role delete_role
              toggle_member_roles add_member_role remove_member_role)
-
-  # Form keys to flag atoms, so input never creates atoms.
-  @flags_by_name Map.new(PermissionBits.flags(), fn {name, _bit} -> {to_string(name), name} end)
 
   def events, do: @events
 
@@ -48,7 +46,7 @@ defmodule TavernWeb.SettingsLive.Roles do
   end
 
   def handle_event("create_role", %{"role_create" => params}, socket) do
-    case Chat.create_role(socket.assigns.current_scope, role_attrs(params)) do
+    case Chat.create_role(socket.assigns.current_scope, role_attrs(params, %Role{})) do
       {:ok, role} ->
         {:noreply,
          socket
@@ -83,9 +81,7 @@ defmodule TavernWeb.SettingsLive.Roles do
   end
 
   def handle_event("save_role", %{"role" => params}, socket) do
-    scope = socket.assigns.current_scope
-
-    case Chat.update_role(scope, socket.assigns.editing_role_id, role_attrs(params)) do
+    case save_editing_role(socket, params) do
       {:ok, role} ->
         {:noreply, socket |> refresh() |> put_flash(:info, "Role #{role.name} saved.")}
 
@@ -147,14 +143,15 @@ defmodule TavernWeb.SettingsLive.Roles do
 
   @doc """
   Turns submitted role params into context attrs: the color from `#rrggbb` to an integer, and
-  the permission checkboxes to bits. A checkbox that was disabled submits nothing and reads as
-  unset; the context refuses an edit that would drop a bit the actor cannot set.
+  each permission's allow, inherit or deny state onto the bits `role` stores. A control that was
+  disabled submits nothing, so its bit keeps its stored state; the context decides whether the
+  actor may set the result.
   """
-  def role_attrs(params) do
+  def role_attrs(params, %Role{} = role) do
     params
     |> Map.take(["name", "mentionable", "hoist"])
     |> put_color(Map.get(params, "color"))
-    |> put_permissions(Map.get(params, "permissions"))
+    |> put_bits(role, Map.get(params, "bits"))
   end
 
   defp put_color(attrs, "#" <> hex) do
@@ -166,14 +163,29 @@ defmodule TavernWeb.SettingsLive.Roles do
 
   defp put_color(attrs, _color), do: attrs
 
-  defp put_permissions(attrs, checked) when is_map(checked) do
-    names =
-      for {name, "true"} <- checked, flag = Map.get(@flags_by_name, name), flag != nil, do: flag
+  defp put_bits(attrs, role, submitted) when is_map(submitted) do
+    {allow, deny} =
+      PermissionControls.apply_states(
+        {role.permissions, role.deny_permissions},
+        submitted,
+        Map.keys(PermissionBits.flags())
+      )
 
-    Map.put(attrs, "permissions", PermissionBits.combine(names))
+    Map.merge(attrs, %{"permissions" => allow, "deny_permissions" => deny})
   end
 
-  defp put_permissions(attrs, _checked), do: attrs
+  defp put_bits(attrs, _role, _submitted), do: attrs
+
+  # The editor's submitted states apply to the role as this view last read it.
+  defp save_editing_role(socket, params) do
+    case Enum.find(socket.assigns.roles, &(&1.id == socket.assigns.editing_role_id)) do
+      %Role{} = role ->
+        Chat.update_role(socket.assigns.current_scope, role.id, role_attrs(params, role))
+
+      nil ->
+        {:error, :not_found}
+    end
+  end
 
   defp role_form(changeset), do: to_form(changeset, as: :role)
 

@@ -148,6 +148,35 @@ defmodule Tavern.Chat.RolesTest do
                })
     end
 
+    test "a manager denies only bits they could grant", ctx do
+      assert {:error, :forbidden} =
+               Chat.update_role(scope_for(ctx.manager), ctx.low_role.id, %{
+                 "deny_permissions" => bits([:kick_members])
+               })
+
+      assert Repo.get!(Role, ctx.low_role.id).deny_permissions == 0
+
+      assert {:ok, role} =
+               Chat.update_role(scope_for(ctx.manager), ctx.low_role.id, %{
+                 "permissions" => 0,
+                 "deny_permissions" => bits([:send_messages])
+               })
+
+      assert role.deny_permissions == bits([:send_messages])
+    end
+
+    test "a lower role denying a bit the actor lacks cannot be edited at all", ctx do
+      no_kick = role_fixture(%{position: 20, deny_permissions: bits([:kick_members])})
+
+      assert {:error, :forbidden} =
+               Chat.update_role(scope_for(ctx.manager), no_kick.id, %{"name" => "Renamed"})
+
+      refute MapSet.member?(
+               Chat.role_controls(scope_for(ctx.manager)).manageable_role_ids,
+               no_kick.id
+             )
+    end
+
     test "a lower role holding a bit the actor lacks cannot be edited at all", ctx do
       kickers = role_fixture(%{position: 20, permissions: bits([:kick_members])})
 
