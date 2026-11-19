@@ -11,7 +11,7 @@ defmodule Tavern.Chat.Moderation do
   alias Tavern.Accounts
   alias Tavern.Accounts.DeletionNotice
   alias Tavern.Accounts.Scope
-  alias Tavern.Chat.AuditLogEntry
+  alias Tavern.Chat.AuditLog
   alias Tavern.Chat.Ids
   alias Tavern.Chat.Invites
   alias Tavern.Chat.MemberRole
@@ -69,10 +69,10 @@ defmodule Tavern.Chat.Moderation do
           details: %{"duration_minutes" => duration_minutes}
         )
 
-      record_audit_log!(scope.user_id, subject_id, "timeout_member", reason, %{
-        "duration_minutes" => duration_minutes,
-        "timeout_until" => timeout_until
-      })
+      AuditLog.record!(scope.user_id, "timeout_member", subject_id, {"user", subject_id},
+        reason: reason,
+        metadata: %{"duration_minutes" => duration_minutes, "timeout_until" => timeout_until}
+      )
 
       {membership, moderation_case}
     end)
@@ -107,9 +107,14 @@ defmodule Tavern.Chat.Moderation do
 
           membership = membership |> Membership.deletion_changeset(deletion_at) |> Repo.update!()
 
-          record_audit_log!(scope.user_id, subject_id, "account_deletion_scheduled", reason, %{
-            "deletion_scheduled_at" => deletion_at
-          })
+          AuditLog.record!(
+            scope.user_id,
+            "account_deletion_scheduled",
+            subject_id,
+            {"user", subject_id},
+            reason: reason,
+            metadata: %{"deletion_scheduled_at" => deletion_at}
+          )
 
           {membership, moderation_case}
 
@@ -262,7 +267,9 @@ defmodule Tavern.Chat.Moderation do
         moderation_case =
           record_moderation_case(scope.user_id, subject_id, :unban, reason, executed_at: now)
 
-        record_audit_log!(scope.user_id, subject_id, "unban_member", reason, %{})
+        AuditLog.record!(scope.user_id, "unban_member", subject_id, {"user", subject_id},
+          reason: reason
+        )
 
         {membership, moderation_case}
       else
@@ -297,9 +304,9 @@ defmodule Tavern.Chat.Moderation do
 
         membership = reactivate_membership!(membership, user_id)
 
-        record_audit_log!(user_id, user_id, "member_rejoined", nil, %{
-          "invite_code" => invite.code
-        })
+        AuditLog.record!(user_id, "member_rejoined", user_id, {"user", user_id},
+          metadata: %{"invite_code" => invite.code}
+        )
 
         {:ok, membership}
       else
@@ -355,7 +362,10 @@ defmodule Tavern.Chat.Moderation do
         details: flags
       )
 
-    record_audit_log!(scope.user_id, subject_id, "#{action_type}_member", reason, flags)
+    AuditLog.record!(scope.user_id, "#{action_type}_member", subject_id, {"user", subject_id},
+      reason: reason,
+      metadata: flags
+    )
 
     {membership, moderation_case}
   end
@@ -378,9 +388,13 @@ defmodule Tavern.Chat.Moderation do
        do: membership
 
   defp cancel_scheduled_deletion!(%Membership{} = membership, actor_id) do
-    record_audit_log!(actor_id, membership.user_id, "account_deletion_canceled", nil, %{
-      "deletion_scheduled_at" => membership.deletion_scheduled_at
-    })
+    AuditLog.record!(
+      actor_id,
+      "account_deletion_canceled",
+      membership.user_id,
+      {"user", membership.user_id},
+      metadata: %{"deletion_scheduled_at" => membership.deletion_scheduled_at}
+    )
 
     membership |> Membership.deletion_changeset(nil) |> Repo.update!()
   end
@@ -463,20 +477,6 @@ defmodule Tavern.Chat.Moderation do
       {:case_number, _details} -> true
       _other -> false
     end)
-  end
-
-  defp record_audit_log!(actor_id, subject_id, action_type, reason, metadata) do
-    %AuditLogEntry{}
-    |> AuditLogEntry.changeset(%{
-      action_type: action_type,
-      actor_user_id: actor_id,
-      subject_user_id: subject_id,
-      target_type: "user",
-      target_id: subject_id,
-      reason: reason,
-      metadata: metadata
-    })
-    |> Repo.insert!()
   end
 
   defp next_case_number do

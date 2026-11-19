@@ -9,7 +9,7 @@ defmodule Tavern.Accounts do
   alias Tavern.Accounts.LoginRateLimiter
   alias Tavern.Accounts.Scope
   alias Tavern.Accounts.VerificationMail
-  alias Tavern.Chat.AuditLogEntry
+  alias Tavern.Chat.AuditLog
   alias Tavern.Chat.BotToken
   alias Tavern.Chat.ChannelMembership
   alias Tavern.Chat.ChannelNotificationOverride
@@ -899,15 +899,7 @@ defmodule Tavern.Accounts do
       )
       |> Repo.delete_all()
 
-    %AuditLogEntry{}
-    |> AuditLogEntry.changeset(%{
-      action_type: "account_deleted",
-      actor_user_id: actor_id,
-      subject_user_id: user.id,
-      target_type: "user",
-      target_id: user.id
-    })
-    |> Repo.insert!()
+    AuditLog.record!(actor_id, "account_deleted", user.id, {"user", user.id})
 
     {deleted_user, %{session_hashes: session_hashes, asset_ids: asset_ids}}
   end

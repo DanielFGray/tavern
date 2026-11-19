@@ -8,7 +8,7 @@ defmodule Tavern.Chat.Channels do
 
   import Ecto.Query, warn: false
 
-  alias Tavern.Chat.AuditLogEntry
+  alias Tavern.Chat.AuditLog
   alias Tavern.Chat.Channel
   alias Tavern.Accounts.Scope
   alias Tavern.Chat.ChannelMembership
@@ -219,7 +219,13 @@ defmodule Tavern.Chat.Channels do
     with {:ok, thread_id} <- Ecto.UUID.cast(thread_id) do
       write_channel(scope, :delete_thread, thread_id, :channel_deleted, fn thread ->
         with {:ok, thread} <- soft_delete(thread) do
-          record_thread_deleted!(scope, thread)
+          AuditLog.record!(scope.user_id, "thread_deleted", nil, {"channel", thread.id},
+            metadata: %{
+              "channel_name" => thread.name,
+              "parent_channel_id" => thread.parent_channel_id
+            }
+          )
+
           {:ok, thread}
         end
       end)
@@ -412,19 +418,6 @@ defmodule Tavern.Chat.Channels do
     |> Repo.all()
     |> Enum.with_index(start)
     |> Enum.each(fn {child, position} -> set_place(child.id, nil, position) end)
-  end
-
-  defp record_thread_deleted!(%Scope{user_id: actor_id}, thread) do
-    %AuditLogEntry{}
-    |> AuditLogEntry.changeset(%{
-      action_type: "thread_deleted",
-      actor_user_id: actor_id,
-      channel_id: thread.id,
-      target_type: "channel",
-      target_id: thread.id,
-      metadata: %{"channel_name" => thread.name, "parent_channel_id" => thread.parent_channel_id}
-    })
-    |> Repo.insert!()
   end
 
   defp soft_delete(channel) do

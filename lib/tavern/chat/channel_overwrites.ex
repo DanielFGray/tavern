@@ -31,7 +31,7 @@ defmodule Tavern.Chat.ChannelOverwrites do
   import Ecto.Query, warn: false
 
   alias Tavern.Accounts.Scope
-  alias Tavern.Chat.AuditLogEntry
+  alias Tavern.Chat.AuditLog
   alias Tavern.Chat.Channel
   alias Tavern.Chat.ChannelPermissionOverwrite
   alias Tavern.Chat.Channels
@@ -176,7 +176,14 @@ defmodule Tavern.Chat.ChannelOverwrites do
         end
 
       with {:ok, overwrite} <- result do
-        record_audit_log!(scope, channel, target, desired, bits(existing))
+        {action_type, metadata} = audit_fields(channel, target, desired, bits(existing))
+
+        AuditLog.record!(
+          scope.user_id,
+          action_type,
+          target_id(target, :user),
+          {"channel", channel.id}, metadata: metadata)
+
         {:ok, {:changed, overwrite}}
       end
     end
@@ -230,31 +237,23 @@ defmodule Tavern.Chat.ChannelOverwrites do
   defp where_target(query, {:user, user_id}),
     do: where(query, [overwrite], overwrite.user_id == ^user_id)
 
-  defp record_audit_log!(%Scope{user_id: actor_id}, channel, target, desired, before) do
+  # The audit action and metadata for a write to `target`. `before` is the stored bits before it.
+  defp audit_fields(channel, target, desired, before) do
     {allow, deny} = bits(desired)
     {previous_allow, previous_deny} = before
 
     action_type =
       if desired == :delete, do: "channel_overwrite_deleted", else: "channel_overwrite_updated"
 
-    %AuditLogEntry{}
-    |> AuditLogEntry.changeset(%{
-      action_type: action_type,
-      actor_user_id: actor_id,
-      subject_user_id: target_id(target, :user),
-      channel_id: channel.id,
-      target_type: "channel",
-      target_id: channel.id,
-      metadata: %{
-        "channel_name" => channel.name,
-        "role_id" => target_id(target, :role),
-        "allow" => allow,
-        "deny" => deny,
-        "previous_allow" => previous_allow,
-        "previous_deny" => previous_deny
-      }
-    })
-    |> Repo.insert!()
+    {action_type,
+     %{
+       "channel_name" => channel.name,
+       "role_id" => target_id(target, :role),
+       "allow" => allow,
+       "deny" => deny,
+       "previous_allow" => previous_allow,
+       "previous_deny" => previous_deny
+     }}
   end
 
   # --- Helpers -----------------------------------------------------------------------------------

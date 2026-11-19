@@ -26,7 +26,7 @@ defmodule Tavern.Chat.Roles do
 
   alias Tavern.Accounts
   alias Tavern.Accounts.Scope
-  alias Tavern.Chat.AuditLogEntry
+  alias Tavern.Chat.AuditLog
   alias Tavern.Chat.MemberRole
   alias Tavern.Chat.Membership
   alias Tavern.Chat.Role
@@ -242,7 +242,15 @@ defmodule Tavern.Chat.Roles do
 
       case change.() do
         {:ok, role} ->
-          record_audit_log!(scope, action_type, role, subject_id)
+          AuditLog.record!(scope.user_id, action_type, subject_id, {"role", role.id},
+            metadata: %{
+              "role_name" => role.name,
+              "permissions" => role.permissions,
+              "deny_permissions" => role.deny_permissions,
+              "position" => role.position
+            }
+          )
+
           {:ok, {:changed, role}}
 
         {:unchanged, role} ->
@@ -323,24 +331,6 @@ defmodule Tavern.Chat.Roles do
       %Role{} = role -> {:ok, role}
       nil -> {:error, :not_found}
     end
-  end
-
-  defp record_audit_log!(%Scope{user_id: actor_id}, action_type, %Role{} = role, subject_id) do
-    %AuditLogEntry{}
-    |> AuditLogEntry.changeset(%{
-      action_type: action_type,
-      actor_user_id: actor_id,
-      subject_user_id: subject_id,
-      target_type: "role",
-      target_id: role.id,
-      metadata: %{
-        "role_name" => role.name,
-        "permissions" => role.permissions,
-        "deny_permissions" => role.deny_permissions,
-        "position" => role.position
-      }
-    })
-    |> Repo.insert!()
   end
 
   # --- Helpers -----------------------------------------------------------------------------------

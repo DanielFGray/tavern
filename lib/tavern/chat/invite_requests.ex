@@ -16,7 +16,7 @@ defmodule Tavern.Chat.InviteRequests do
 
   alias Ecto.Changeset
   alias Tavern.Accounts.Scope
-  alias Tavern.Chat.AuditLogEntry
+  alias Tavern.Chat.AuditLog
   alias Tavern.Chat.Invite
   alias Tavern.Chat.InviteRequest
   alias Tavern.Chat.InviteRequestLimits
@@ -140,7 +140,12 @@ defmodule Tavern.Chat.InviteRequests do
         )
         |> Repo.update!()
 
-      record_audit_log!(scope, "invite_request_approved", request)
+      AuditLog.record!(
+        scope.user_id,
+        "invite_request_approved",
+        nil,
+        {"invite_request", request.id}, metadata: %{"email" => request.email})
+
       %{request | invite: invite}
     end)
     |> case do
@@ -157,7 +162,12 @@ defmodule Tavern.Chat.InviteRequests do
         |> Changeset.change(status: :denied, decided_at: now, decided_by_id: scope.user_id)
         |> Repo.update!()
 
-      record_audit_log!(scope, "invite_request_denied", request)
+      AuditLog.record!(
+        scope.user_id,
+        "invite_request_denied",
+        nil,
+        {"invite_request", request.id}, metadata: %{"email" => request.email})
+
       request
     end)
   end
@@ -179,10 +189,11 @@ defmodule Tavern.Chat.InviteRequests do
             set: [status: :denied, decided_at: now, decided_by_id: scope.user_id]
           )
 
-        insert_audit_log!(scope, "invite_requests_denied_by_ip", nil, %{
-          "ip_address" => ip_address,
-          "count" => count
-        })
+        AuditLog.record!(
+          scope.user_id,
+          "invite_requests_denied_by_ip",
+          nil,
+          {"invite_request", nil}, metadata: %{"ip_address" => ip_address, "count" => count})
 
         {:ok, count}
       end
@@ -300,22 +311,6 @@ defmodule Tavern.Chat.InviteRequests do
   end
 
   defp escape(text), do: text |> Phoenix.HTML.html_escape() |> Phoenix.HTML.safe_to_string()
-
-  defp record_audit_log!(scope, action_type, %InviteRequest{} = request) do
-    insert_audit_log!(scope, action_type, request.id, %{"email" => request.email})
-  end
-
-  defp insert_audit_log!(%Scope{user_id: actor_id}, action_type, target_id, metadata) do
-    %AuditLogEntry{}
-    |> AuditLogEntry.changeset(%{
-      action_type: action_type,
-      actor_user_id: actor_id,
-      target_type: "invite_request",
-      target_id: target_id,
-      metadata: metadata
-    })
-    |> Repo.insert!()
-  end
 
   defp expiry_days do
     :tavern |> Application.fetch_env!(__MODULE__) |> Keyword.fetch!(:invite_expiry_days)

@@ -1,8 +1,8 @@
 defmodule Tavern.Chat.AuditLog do
   @moduledoc """
-  Reads the audit log. This is the only reader of the audit log. The event log design
-  (`docs/design/event-log.md`) moves the log into the events table, and that change touches this
-  module alone.
+  Writes and reads the audit log. These are the only functions that touch `audit_log_entries`.
+  The event log design (`docs/design/event-log.md`) moves the log into the events table, and that
+  change touches this module alone.
   """
 
   import Ecto.Query, warn: false
@@ -62,6 +62,30 @@ defmodule Tavern.Chat.AuditLog do
     else
       {:error, :forbidden}
     end
+  end
+
+  @doc """
+  Writes one audit entry and returns it. Callers run it inside the transaction of the change it
+  records, so the entry commits or rolls back with that change.
+
+  `actor_id` is who acted and may be `nil` for a system action. `subject_user_id` is the member the
+  action concerns, or `nil`. `target` is `{target_type, target_id}`, the thing the action was done
+  to. Options: `:metadata` (a map, default `%{}`) and `:reason`. A channel target also sets the
+  entry's `channel_id`, which the reader uses to name the channel.
+  """
+  def record!(actor_id, action_type, subject_user_id, {target_type, target_id}, opts \\ []) do
+    %AuditLogEntry{}
+    |> AuditLogEntry.changeset(%{
+      action_type: action_type,
+      actor_user_id: actor_id,
+      subject_user_id: subject_user_id,
+      channel_id: if(target_type == "channel", do: target_id),
+      target_type: target_type,
+      target_id: target_id,
+      reason: Keyword.get(opts, :reason),
+      metadata: Keyword.get(opts, :metadata, %{})
+    })
+    |> Repo.insert!()
   end
 
   defp cursor_of(%AuditLogEntry{inserted_at: inserted_at, id: id}), do: {inserted_at, id}

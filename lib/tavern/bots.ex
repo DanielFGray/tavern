@@ -9,7 +9,7 @@ defmodule Tavern.Bots do
   alias Tavern.Bots.Commands
   alias Tavern.Bots.Serializer
   alias Tavern.Chat
-  alias Tavern.Chat.AuditLogEntry
+  alias Tavern.Chat.AuditLog
   alias Tavern.Chat.BotToken
   alias Tavern.Chat.Channel
   alias Tavern.Chat.MemberRole
@@ -82,7 +82,10 @@ defmodule Tavern.Bots do
         |> Repo.insert!()
 
       assign_roles!(scope, bot_user, roles)
-      record_bot_audit_log!(scope, bot_user, "bot_created", %{"role_ids" => role_ids(roles)})
+
+      AuditLog.record!(scope.user_id, "bot_created", bot_user.id, {"bot", bot_user.id},
+        metadata: %{"role_ids" => role_ids(roles)}
+      )
 
       {:ok,
        bot_user
@@ -157,7 +160,10 @@ defmodule Tavern.Bots do
           %{"role_ids" => role_ids(roles)}
         end
 
-      record_bot_audit_log!(scope, updated_bot, "bot_updated", metadata)
+      AuditLog.record!(scope.user_id, "bot_updated", updated_bot.id, {"bot", updated_bot.id},
+        metadata: metadata
+      )
+
       {:ok, Repo.preload(updated_bot, @bot_preloads, force: true)}
     end
   end
@@ -189,7 +195,7 @@ defmodule Tavern.Bots do
       |> Ecto.Changeset.change(deleted_at: now)
       |> Repo.update!()
 
-    record_bot_audit_log!(scope, revoked_bot, "bot_revoked", %{})
+    AuditLog.record!(scope.user_id, "bot_revoked", revoked_bot.id, {"bot", revoked_bot.id})
     Repo.preload(revoked_bot, @bot_preloads, force: true)
   end
 
@@ -237,7 +243,10 @@ defmodule Tavern.Bots do
              expires_at: expires_at
            })
            |> Repo.insert() do
-      record_bot_audit_log!(scope, bot_user, "bot_token_created", %{"token_id" => bot_token.id})
+      AuditLog.record!(scope.user_id, "bot_token_created", bot_user.id, {"bot", bot_user.id},
+        metadata: %{"token_id" => bot_token.id}
+      )
+
       {:ok, %{token: token, bot_token: bot_token, bot: bot_user}}
     end
   end
@@ -256,9 +265,9 @@ defmodule Tavern.Bots do
              bot_token
              |> BotToken.changeset(%{revoked_at: DateTime.utc_now()})
              |> Repo.update() do
-        record_bot_audit_log!(scope, bot_user, "bot_token_revoked", %{
-          "token_id" => revoked_token.id
-        })
+        AuditLog.record!(scope.user_id, "bot_token_revoked", bot_user.id, {"bot", bot_user.id},
+          metadata: %{"token_id" => revoked_token.id}
+        )
 
         {:ok, revoked_token}
       end
@@ -508,19 +517,6 @@ defmodule Tavern.Bots do
       where: is_nil(token.last_used_at) or token.last_used_at < ^threshold
     )
     |> Repo.update_all(set: [last_used_at: DateTime.utc_now()])
-  end
-
-  defp record_bot_audit_log!(%Scope{} = scope, %User{} = bot_user, action_type, metadata) do
-    %AuditLogEntry{}
-    |> AuditLogEntry.changeset(%{
-      action_type: action_type,
-      actor_user_id: scope.user_id,
-      subject_user_id: bot_user.id,
-      target_type: "bot",
-      target_id: bot_user.id,
-      metadata: metadata
-    })
-    |> Repo.insert!()
   end
 
   # Only the `expires_in_days` key is read. Absent or blank means the token never expires.
