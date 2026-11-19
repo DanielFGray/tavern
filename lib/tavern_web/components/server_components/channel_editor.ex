@@ -559,7 +559,12 @@ defmodule TavernWeb.ServerComponents.ChannelEditor do
         maxlength="160"
         placeholder="Add a topic"
         aria-label="Channel topic"
-        class="mt-0.5 w-full min-w-0 truncate rounded border border-transparent bg-transparent px-1 -mx-1 text-xs text-base-content/65 outline-none transition placeholder:text-base-content/40 hover:border-base-300 focus:border-violet-400 focus:bg-base-100 focus:text-base-content"
+        class={[
+          "mt-0.5 w-full min-w-0 truncate rounded-md border-0 bg-transparent px-1 -mx-1 py-0.5 text-xs text-base-content/65 shadow-none outline-none transition",
+          "placeholder:text-transparent hover:bg-base-200/60 hover:placeholder:text-base-content/40",
+          "focus:bg-base-100 focus:text-base-content focus:ring-1 focus:ring-violet-400 focus:placeholder:text-base-content/40",
+          @server.channel_edit_mode? && "placeholder:text-base-content/40"
+        ]}
       />
     <% else %>
       <p id="channel-topic" class="mt-0.5 truncate text-xs text-base-content/65">

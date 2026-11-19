@@ -32,6 +32,36 @@ defmodule TavernWeb.ServerComponents.Helpers do
     end
   end
 
+  def thread_latest_reply(message, thread_summaries) do
+    case thread_summary_for(message, thread_summaries) do
+      %{latest_reply: reply} -> reply
+      _ -> nil
+    end
+  end
+
+  @preview_length 80
+
+  @doc """
+  A one-line plain-text excerpt of a message body: code fences, inline-code ticks, emphasis marks,
+  heading and quote markers are dropped, links keep their label, and whitespace collapses.
+  """
+  def body_preview(body) do
+    body
+    |> String.replace(~r/```[^\n`]*/, " ")
+    |> String.replace(~r/!?\[([^\]]*)\]\([^)]*\)/, "\\1")
+    |> String.replace(~r/^\s*(?:>|[#]{1,6})\s+/m, "")
+    |> String.replace(~r/[`*_~|]/, "")
+    |> String.split()
+    |> Enum.join(" ")
+    |> truncate_preview()
+  end
+
+  defp truncate_preview(text) do
+    if String.length(text) > @preview_length,
+      do: String.slice(text, 0, @preview_length) <> "…",
+      else: text
+  end
+
   def thread_open_for_message?(message, active_thread) do
     active_thread && active_thread.starter_message_id == message.id
   end

@@ -226,13 +226,29 @@ defmodule Tavern.Chat.Threads do
         |> Map.new()
       end
 
+    latest_replies = latest_replies(thread_ids)
+
     Enum.into(threads, %{}, fn thread ->
       {thread.starter_message_id,
        %{
          thread: thread,
-         reply_count: Map.get(reply_counts, thread.id, 0)
+         reply_count: Map.get(reply_counts, thread.id, 0),
+         latest_reply: Map.get(latest_replies, thread.id)
        }}
     end)
+  end
+
+  # The newest live reply of each thread, with its author, in one query.
+  defp latest_replies([]), do: %{}
+
+  defp latest_replies(thread_ids) do
+    from(message in replies_query(thread_ids),
+      distinct: message.channel_id,
+      order_by: [asc: message.channel_id, desc: message.inserted_at, desc: message.id],
+      preload: [:author]
+    )
+    |> Repo.all()
+    |> Map.new(&{&1.channel_id, &1})
   end
 
   def get_thread_for_starter_message(%Scope{} = scope, starter_message_id) do

@@ -16,7 +16,11 @@ defmodule TavernWeb.ServerComponents.Forums do
     ~H"""
     <div id="forum-view" class={["flex-1 overflow-y-auto", scrollbar_classes()]}>
       <%= if @server.active_thread && @server.active_thread.starter_message do %>
-        <div class="mx-auto w-full max-w-4xl py-4 pr-3 pl-1 sm:pr-5 sm:pl-3">
+        <div
+          id={"forum-post-#{@server.active_thread.id}"}
+          phx-hook=".ForumPostOpen"
+          class="mx-auto w-full max-w-4xl py-4 pr-3 pl-1 sm:pr-5 sm:pl-3"
+        >
           <TavernWeb.ServerComponents.Threads.thread_panel
             server={@server}
             message={@server.active_thread.starter_message}
@@ -31,6 +35,15 @@ defmodule TavernWeb.ServerComponents.Forums do
         </div>
       <% end %>
     </div>
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".ForumPostOpen">
+      export default {
+        // A forum post fills the view and reads like a chat, newest reply last, so opening one
+        // shows its latest replies and its composer. The id names the post, so each post mounts anew.
+        mounted() {
+          requestAnimationFrame(() => this.el.scrollIntoView({block: "end"}))
+        }
+      }
+    </script>
     """
   end
 

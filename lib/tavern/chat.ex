@@ -1449,5 +1449,7 @@ defmodule Tavern.Chat do
 
   defp broadcast_message(event, %Message{} = message) do
     Topics.broadcast_channel(message.channel_id, {event, message})
+    if event == :message_deleted, do: ThreadFollows.broadcast_message_deleted(message)
+    :ok
   end
 end

@@ -40,13 +40,21 @@ defmodule TavernWeb.ServerLiveThreadsTest do
     |> render_submit()
 
     assert has_element?(view, "#thread-panel-#{starter.id}", "thread reply body")
-    # The open thread's header carries the title and count, so the starter's chip hides.
     assert has_element?(view, "#thread-reply-count-#{starter.id}", "1 reply")
-    refute has_element?(view, "#thread-summary-#{starter.id}")
+
+    # The pill stays while its thread is open, and its patch target closes the thread.
+    assert has_element?(
+             view,
+             "#thread-summary-#{starter.id}[aria-expanded=true][data-phx-link=patch][href='/?channel=general']"
+           )
 
     view |> element("#close-thread-#{starter.id}") |> render_click()
 
-    assert has_element?(view, "#thread-summary-#{starter.id}", "1 reply")
+    assert has_element?(
+             view,
+             "#thread-summary-#{starter.id}[aria-expanded=false][href='/?channel=general&thread=#{thread.id}']",
+             "1 reply"
+           )
   end
 
   test "a thread URL opens the thread inline, with the thread composer as the only one", %{
@@ -207,6 +215,52 @@ defmodule TavernWeb.ServerLiveThreadsTest do
 
     view |> element("#toggle-lock-thread-#{starter.id}") |> render_click()
     refute has_element?(view, "#thread-locked-badge-#{starter.id}")
+  end
+
+  describe "the chip of a closed thread" do
+    setup %{conn: conn} do
+      Bootstrap.ensure_seed_data!()
+      conn = log_in_member_user(conn)
+      general = channel_by_slug!("general")
+      other = user_fixture()
+      starter = message_fixture(general, other, %{body: "chip starter"})
+      thread = thread_fixture(general, starter, other, %{name: "chip thread"})
+      {:ok, view, _html} = live_hydrated(conn, ~p"/?channel=general")
+
+      %{view: view, other: other, starter: starter, thread: thread}
+    end
+
+    test "counts a reply and previews it as plain text, without the starter's text", ctx do
+      %{view: view, other: other, starter: starter, thread: thread} = ctx
+      assert has_element?(view, "#thread-summary-#{starter.id}", "0 replies")
+
+      message_fixture(thread, other, %{body: "```elixir\nIO.puts(:hi)\n```\nsecond **line**"})
+      _ = :sys.get_state(view.pid)
+
+      assert has_element?(view, "#thread-summary-#{starter.id}", "1 reply")
+      preview = view |> element("#thread-latest-reply-#{starter.id}") |> render()
+      assert preview =~ other.display_name
+      assert preview =~ "IO.puts(:hi) second line"
+      refute preview =~ "```"
+      refute preview =~ "chip thread"
+    end
+
+    test "shows the newest live reply, and a deleted newest reply lowers the count", ctx do
+      %{view: view, other: other, starter: starter, thread: thread} = ctx
+      message_fixture(thread, other, %{body: "first reply"})
+      newest = message_fixture(thread, other, %{body: "newest reply"})
+      _ = :sys.get_state(view.pid)
+
+      assert has_element?(view, "#thread-summary-#{starter.id}", "2 replies")
+      assert has_element?(view, "#thread-latest-reply-#{starter.id}", "newest reply")
+
+      {:ok, _} = Chat.delete_message(scope_for(other), newest.id)
+      _ = :sys.get_state(view.pid)
+
+      assert has_element?(view, "#thread-summary-#{starter.id}", "1 reply")
+      assert has_element?(view, "#thread-latest-reply-#{starter.id}", "first reply")
+      refute has_element?(view, "#thread-latest-reply-#{starter.id}", "newest reply")
+    end
   end
 
   describe "a thread reply renders as a channel message row" do

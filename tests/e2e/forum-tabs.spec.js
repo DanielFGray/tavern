@@ -82,3 +82,24 @@ test('the forum toolbar fits the viewport without horizontal scrolling', async (
     expect(box.right, box.id).toBeLessThanOrEqual(viewport)
   }
 })
+
+test('opening a long post shows its newest end and its composer', async ({ page, request }) => {
+  const stamp = Date.now()
+  const title = `Long ${stamp}`
+  await openForum(page, request, `forum-long-${stamp}`)
+
+  await page.locator('#new-forum-post').click()
+  await page.locator('#forum-post-form input[name="post[title]"]').fill(title)
+  const lines = Array.from({ length: 80 }, (_, i) => `line ${i} of ${title}`)
+  await page.locator('#forum-post-form textarea[name="post[body]"]').fill(lines.join('\n\n'))
+  await page.locator('#submit-forum-post').click()
+  await page.locator('[id^="close-thread-"]').click()
+
+  await page.locator('#forum-posts > li', { hasText: title }).locator('a').first().click()
+  await expect(page.locator('#thread-message-form')).toBeInViewport()
+  const scrolls = await page.evaluate(() => {
+    const view = document.querySelector('#forum-view')
+    return view.scrollHeight > view.clientHeight && view.scrollTop > 0
+  })
+  expect(scrolls).toBe(true)
+})

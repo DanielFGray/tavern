@@ -27,7 +27,6 @@ defmodule TavernWeb.ServerComponents.Threads do
     ~H"""
     <section
       id={"thread-panel-#{@message.id}"}
-      phx-hook=".ThreadRegion"
       aria-label={"Thread: #{thread_title(@thread)}"}
       class="border-l-2 border-base-300 pl-1 sm:pl-2"
     >
@@ -181,17 +180,6 @@ defmodule TavernWeb.ServerComponents.Threads do
         <% end %>
       </div>
     </section>
-    <script :type={Phoenix.LiveView.ColocatedHook} name=".ThreadRegion">
-      export default {
-        // Opening a thread brings its region, composer included, into view. The message list
-        // scrolls to its bottom one animation frame after it changes, so this waits a frame more.
-        mounted() {
-          requestAnimationFrame(() =>
-            requestAnimationFrame(() => this.el.scrollIntoView({block: "end"}))
-          )
-        }
-      }
-    </script>
     """
   end
 

@@ -307,15 +307,74 @@ const MessageListHook = {
     requestAnimationFrame(() => this.scrollToBottom())
   },
 
+  beforeUpdate() {
+    this.anchor = this.measureAnchor()
+  },
+
   updated() {
     const grew = this.el.scrollHeight > this.lastScrollHeight
     this.renderMarkdownBodies()
+    const list = this.messageList()
 
-    if(grew && this.shouldStickToBottom) {
+    if(!list) {
+      // A thread's own list is not a scroll box; only the channel list anchors.
+      if(grew && this.shouldStickToBottom) requestAnimationFrame(() => this.scrollToBottom())
+    } else if(this.anchor && list.lastElementChild?.id !== this.anchor.tailId && this.shouldStickToBottom) {
+      // A message arrived at the end of the channel while the view was at the bottom: follow it.
       requestAnimationFrame(() => this.scrollToBottom())
+    } else {
+      // Anything else that changes the height (a thread panel opening, closing or taking a reply)
+      // must not move what the reader is looking at.
+      this.restoreAnchor()
+      this.revealOpenedThread()
     }
 
     this.lastScrollHeight = this.el.scrollHeight
+  },
+
+  // The first channel row that reaches into the viewport, with its distance from the viewport top.
+  measureAnchor() {
+    const list = this.messageList()
+    if(!list) return null
+
+    const top = this.el.getBoundingClientRect().top
+    const row = Array.from(list.children).find(child => child.getBoundingClientRect().bottom > top)
+    return {
+      tailId: list.lastElementChild?.id,
+      rowId: row?.id,
+      offset: row ? row.getBoundingClientRect().top - top : 0,
+      threadId: this.openThreadId(),
+    }
+  },
+
+  restoreAnchor() {
+    if(!this.anchor?.rowId) return
+    const row = document.getElementById(this.anchor.rowId)
+    if(!row) return
+
+    const offset = row.getBoundingClientRect().top - this.el.getBoundingClientRect().top
+    this.el.scrollTop += offset - this.anchor.offset
+    this.shouldStickToBottom = this.isNearBottom()
+  },
+
+  // A thread that just opened scrolls into view only as far as its header, never to the composer.
+  revealOpenedThread() {
+    const id = this.openThreadId()
+    if(!id || id === this.anchor?.threadId) return
+
+    const header = document.getElementById(id)?.querySelector("header")
+    if(!header) return
+
+    const hidden = header.getBoundingClientRect().bottom - this.el.getBoundingClientRect().bottom
+    if(hidden > 0) this.el.scrollTop += hidden
+  },
+
+  messageList() {
+    return this.el.querySelector(":scope > #message-list")
+  },
+
+  openThreadId() {
+    return this.messageList()?.querySelector('[id^="thread-panel-"]')?.id
   },
 
   destroyed() {

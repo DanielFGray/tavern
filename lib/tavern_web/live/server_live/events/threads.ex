@@ -16,8 +16,12 @@ defmodule TavernWeb.ServerLive.Events.Threads do
     {:noreply,
      socket
      |> ThreadNav.apply_thread_message(message)
+     |> refresh_closed_thread_chip(message)
      |> ForumNav.reload_for_post(message.channel)}
   end
+
+  def handle_info({:thread_message_deleted, message}, socket),
+    do: {:noreply, refresh_closed_thread_chip(socket, message)}
 
   def handle_info({:thread_followers_changed, _thread_id, user_ids}, socket),
     do: {:noreply, ThreadNav.apply_follow_change(socket, user_ids)}
@@ -170,4 +174,13 @@ defmodule TavernWeb.ServerLive.Events.Threads do
   defp change_thread("unarchive_thread", scope, id), do: Chat.unarchive_thread(scope, id)
   defp change_thread("lock_thread", scope, id), do: Chat.lock_thread(scope, id)
   defp change_thread("unlock_thread", scope, id), do: Chat.unlock_thread(scope, id)
+
+  # The open thread's own events already refresh its chip; a closed thread's chip, which shows the
+  # reply count and the latest reply, learns of a change only from the parent-channel event.
+  defp refresh_closed_thread_chip(socket, message) do
+    case socket.assigns.active_thread do
+      %{id: id} when id == message.channel_id -> socket
+      _ -> State.maybe_refresh_thread_summaries(socket, message.channel)
+    end
+  end
 end

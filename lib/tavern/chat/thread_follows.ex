@@ -94,6 +94,18 @@ defmodule Tavern.Chat.ThreadFollows do
     :ok
   end
 
+  @doc """
+  Announces a deleted thread message on its parent channel's topic, as
+  `{:thread_message_deleted, message}`, so a session that lists the channel but has the thread
+  closed lowers the reply count its chip shows. A message outside a thread announces nothing.
+  """
+  def broadcast_message_deleted(%Message{channel: %Channel{} = channel} = message) do
+    if Channel.thread?(channel),
+      do: Topics.broadcast_channel(channel.parent_channel_id, {:thread_message_deleted, message})
+
+    :ok
+  end
+
   @doc "Broadcasts a follow change to the parent channel's topic. Call it after the commit."
   def broadcast_changes(_thread, []), do: :ok
 

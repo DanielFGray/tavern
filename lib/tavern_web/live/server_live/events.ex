@@ -44,7 +44,7 @@ defmodule TavernWeb.ServerLive.Events do
 
   def handle_info(message, socket)
       when (is_tuple(message) and tuple_size(message) == 2 and
-              elem(message, 0) == :thread_message_created) or
+              elem(message, 0) in [:thread_message_created, :thread_message_deleted]) or
              (is_tuple(message) and tuple_size(message) == 3 and
                 elem(message, 0) == :thread_followers_changed) do
     Threads.handle_info(message, socket)

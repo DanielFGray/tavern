@@ -105,7 +105,7 @@ defmodule TavernWeb.ServerComponents.Messages do
         </p>
         <p class="mt-2 text-sm leading-6 text-base-content/80">
           This is the beginning of the
-          <span class="font-semibold text-base-content">##{@server.active_channel.name}</span>
+          <span class="font-semibold text-base-content">#{@server.active_channel.name}</span>
           channel. Drop a message to get the conversation moving.
         </p>
       </div>
@@ -277,18 +277,39 @@ defmodule TavernWeb.ServerComponents.Messages do
               server={@server}
             />
 
-            <%!-- An open thread's header shows the same title and count, so the chip hides. --%>
+            <%!-- The pill toggles the thread: it opens it, and closes it again while it is open. --%>
             <.link
-              :if={@thread && !thread_open_for_message?(@message, @server.active_thread)}
-              patch={thread_path(@server.active_channel, @thread)}
+              :if={@thread}
+              patch={
+                if thread_open_for_message?(@message, @server.active_thread),
+                  do: channel_path(@server.active_channel),
+                  else: thread_path(@server.active_channel, @thread)
+              }
               id={"thread-summary-#{@message.id}"}
+              aria-expanded={
+                if(thread_open_for_message?(@message, @server.active_thread),
+                  do: "true",
+                  else: "false"
+                )
+              }
               class="mt-3 inline-flex max-w-full items-center gap-2 rounded-full border border-base-300 bg-base-100 px-3 py-1 text-[11px] font-semibold text-base-content/75 transition hover:border-base-content/20 hover:text-base-content"
             >
               <.icon name="hero-chat-bubble-left-right" class="size-3.5 shrink-0" />
               <span class="shrink-0">
                 {reply_count_label(thread_reply_count(@message, @server.thread_summaries))}
               </span>
-              <span class="truncate text-base-content/45">{thread_title(@thread)}</span>
+              <% latest = thread_latest_reply(@message, @server.thread_summaries) %>
+              <span
+                :if={latest}
+                id={"thread-latest-reply-#{@message.id}"}
+                class="min-w-0 truncate font-normal text-base-content/55"
+              >
+                <span class="font-semibold text-base-content/75">{latest.author.display_name}</span>
+                {body_preview(latest.body)}
+              </span>
+              <span :if={!latest} class="truncate text-base-content/45">
+                {thread_title(@thread)}
+              </span>
             </.link>
 
             <p :if={!@rights.react?} class="mt-2 text-[11px] text-base-content/50">
