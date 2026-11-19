@@ -34,6 +34,10 @@ defmodule TavernWeb.ServerLive.Events.Threads do
        |> State.close_message_ui()
        |> State.refresh_thread_summaries_for_active_channel()
        |> State.open_thread(thread)
+       |> State.push_entered([
+         State.thread_panel_dom_id(thread),
+         "thread-summary-#{thread.starter_message_id}"
+       ])
        |> ThreadNav.refresh_followed_threads()}
     else
       :error ->
@@ -50,8 +54,14 @@ defmodule TavernWeb.ServerLive.Events.Threads do
 
   def handle_event("open_thread", %{"id" => thread_id}, socket) do
     case Chat.get_thread(socket.assigns.current_scope, thread_id) do
-      %{} = thread -> {:noreply, State.open_thread(socket, thread)}
-      nil -> {:noreply, put_flash(socket, :error, "That thread no longer exists.")}
+      %{} = thread ->
+        {:noreply,
+         socket
+         |> State.open_thread(thread)
+         |> State.push_entered([State.thread_panel_dom_id(thread)])}
+
+      nil ->
+        {:noreply, put_flash(socket, :error, "That thread no longer exists.")}
     end
   end
 

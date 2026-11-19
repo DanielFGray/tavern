@@ -287,8 +287,32 @@ const RichComposerHook = {
   },
 }
 
+// The server pushes "entered" with the DOM ids of things that arrived while the reader watches (a
+// live message, an opened thread panel, a new thread pill). Loads, channel switches and restored
+// threads never send it. Only transform and opacity change, so layout and scroll anchoring stay
+// as they are. The channel list and the thread list hooks both receive the event, so a node is
+// animated once.
+const ENTER_MS = 180
+const entered = new WeakSet()
+
+function animateEntered(ids) {
+  if(window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
+
+  ids.forEach(id => {
+    const node = document.getElementById(id)
+    if(!node || entered.has(node)) return
+
+    entered.add(node)
+    node.animate(
+      [{opacity: 0, transform: "translateY(6px)"}, {opacity: 1, transform: "none"}],
+      {duration: ENTER_MS, easing: "ease-out"},
+    )
+  })
+}
+
 const MessageListHook = {
   mounted() {
+    this.handleEvent("entered", ({ids}) => animateEntered(ids))
     this.autoscrollThreshold = 96
     this.shouldStickToBottom = true
     this.lastScrollHeight = this.el.scrollHeight

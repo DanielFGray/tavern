@@ -12,6 +12,10 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
     if not socket.assigns.navigation_ready? do
       {:noreply, socket}
     else
+      # A panel animates only when the reader opens a thread in the channel already on screen.
+      watching = socket.assigns.active_channel
+      already_open = socket.assigns.active_thread
+
       socket =
         case params do
           %{"channel" => slug} ->
@@ -32,7 +36,10 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
 
       case Chat.get_thread(socket.assigns.current_scope, thread_id) do
         %{} = thread ->
-          {:noreply, State.open_thread(socket, thread)}
+          {:noreply,
+           socket
+           |> State.open_thread(thread)
+           |> push_panel_entered(thread, watching, already_open)}
 
         nil ->
           {:noreply, put_flash(socket, :error, "That thread does not exist.")}
@@ -80,6 +87,7 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
       {:noreply,
        socket
        |> State.maybe_refresh_thread_summaries(channel)
+       |> State.push_entered(["thread-summary-#{channel.starter_message_id}"])
        |> ThreadNav.reload()
        |> ForumNav.reload_for_post(channel)}
     else
@@ -115,6 +123,13 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
   # A role change can show or hide channels for this member.
   def handle_info(:roles_changed, socket) do
     {:noreply, State.refresh_channels(socket)}
+  end
+
+  defp push_panel_entered(socket, thread, watching, already_open) do
+    if watching && watching.id == thread.parent_channel_id &&
+         (is_nil(already_open) or already_open.id != thread.id),
+       do: State.push_entered(socket, [State.thread_panel_dom_id(thread)]),
+       else: socket
   end
 
   defp resolve_channel_for_socket(socket, slug) do

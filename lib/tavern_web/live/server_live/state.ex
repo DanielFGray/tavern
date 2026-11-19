@@ -239,6 +239,15 @@ defmodule TavernWeb.ServerLive.State do
     |> ChannelEditor.refresh()
   end
 
+  @doc """
+  Tells the browser that these DOM ids entered while the member watches (a live message, an
+  opened thread panel, a new thread pill), so it animates them. Loads, channel switches,
+  restored threads and re-renders never call this, so they never animate.
+  """
+  def push_entered(socket, ids), do: push_event(socket, "entered", %{ids: ids})
+
+  def thread_panel_dom_id(thread), do: "thread-panel-#{thread.starter_message_id}"
+
   def maybe_insert_message(socket, message) do
     active_channel = socket.assigns.active_channel
 
@@ -254,6 +263,7 @@ defmodule TavernWeb.ServerLive.State do
         |> assign(:messages_empty?, false)
         |> assign(:message_count, socket.assigns.message_count + 1)
         |> stream_insert(:messages, message)
+        |> push_entered(["messages-#{message.id}"])
     end
   end
 
@@ -276,6 +286,7 @@ defmodule TavernWeb.ServerLive.State do
         |> assign(:thread_messages_empty?, false)
         |> assign(:thread_message_count, socket.assigns.thread_message_count + 1)
         |> stream_insert(:thread_messages, message)
+        |> push_entered(["thread_messages-#{message.id}"])
         |> refresh_thread_summaries_for_active_channel()
         |> rerender_messages([starter_message_id])
     end
