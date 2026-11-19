@@ -142,7 +142,8 @@ defmodule Tavern.Bootstrap do
       nonce: "bootstrap:welcome"
     }
     |> Message.changeset(%{
-      body: "Welcome to Tavern. Register the first account to become this server's owner."
+      body:
+        "Welcome to Tavern. The server operator makes the first owner from a registered account."
     })
     |> Repo.insert!(
       on_conflict: :nothing,
