@@ -49,7 +49,7 @@ defmodule TavernWeb.BannedLiveTest do
        %{conn: conn} do
     owner = owner_fixture()
     channel = channel_fixture()
-    {:ok, invite} = Tavern.Chat.create_invite(%{"channel_id" => channel.id}, owner)
+    {:ok, invite} = Tavern.Chat.create_invite(scope_for(owner), %{"channel_id" => channel.id})
 
     banned_conn = login_excluded_user(conn, "no_field_banned", %{"banned" => true})
     {:ok, banned_view, _html} = live(banned_conn, ~p"/banned")

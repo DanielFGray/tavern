@@ -88,7 +88,10 @@ defmodule TavernWeb.AccountDeletionLiveTest do
   test "the bot API serializes a deleted author as Deleted user", ctx do
     role = role_fixture(%{permissions: PermissionBits.combine([:view_channel])})
     bot = bot_fixture(ctx.owner, %{"role_ids" => [role.id]})
-    {:ok, %{token: token}} = Bots.create_bot_token(bot, %{"label" => "read"}, ctx.owner)
+
+    {:ok, %{token: token}} =
+      Bots.create_bot_token(scope_for(ctx.owner), bot.id, %{"label" => "read"})
+
     message = message_fixture(channel_by_slug!("general"), ctx.member, %{body: "kept"})
     {:ok, deleted} = Accounts.delete_account(ctx.member.id, ctx.owner.id)
 

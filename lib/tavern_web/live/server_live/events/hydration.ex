@@ -6,15 +6,15 @@ defmodule TavernWeb.ServerLive.Events.Hydration do
   alias TavernWeb.Live.SharedHelpers
 
   def handle_info(:hydrate_navigation, socket) do
-    current_user = socket.assigns.current_user
-    custom_emojis = SharedHelpers.emoji_entries_for_picker(current_user)
+    scope = socket.assigns.current_scope
+    custom_emojis = SharedHelpers.emoji_entries_for_picker(scope)
 
     socket =
       socket
       |> State.hydrate_navigation()
       |> Phoenix.Component.assign(
         :notification_setting,
-        Tavern.Chat.get_user_notification_setting(current_user)
+        Tavern.Chat.get_user_notification_setting(scope)
       )
       |> Phoenix.Component.assign(:custom_emojis, custom_emojis)
       |> Phoenix.Component.assign(

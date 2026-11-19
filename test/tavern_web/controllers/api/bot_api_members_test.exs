@@ -19,7 +19,9 @@ defmodule TavernWeb.API.BotApiMembersTest do
     speaker = role_fixture(%{permissions: PermissionBits.combine(@speaker)})
     channel = channel_fixture(%{name: "Mentions", slug: unique_slug()})
     bot = bot_fixture(owner, %{"role_ids" => [speaker.id]})
-    {:ok, %{token: token}} = Bots.create_bot_token(bot, %{"label" => "mentions"}, owner)
+
+    {:ok, %{token: token}} =
+      Bots.create_bot_token(scope_for(owner), bot.id, %{"label" => "mentions"})
 
     %{owner: owner, channel: channel, token: token}
   end

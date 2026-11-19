@@ -17,7 +17,9 @@ defmodule TavernWeb.API.BotApiAgentTest do
     role = role_fixture(%{permissions: PermissionBits.combine(@speaker)})
     channel = channel_fixture(%{name: "Agent Channel", slug: unique_slug()})
     bot = bot_fixture(owner, %{"role_ids" => [role.id]})
-    {:ok, %{token: token}} = Bots.create_bot_token(bot, %{"label" => "agent"}, owner)
+
+    {:ok, %{token: token}} =
+      Bots.create_bot_token(scope_for(owner), bot.id, %{"label" => "agent"})
 
     %{owner: owner, channel: channel, bot: bot, token: token, role: role}
   end
@@ -109,7 +111,10 @@ defmodule TavernWeb.API.BotApiAgentTest do
       %{channel: channel, owner: owner} = ctx
       message = message_fixture(channel, owner, %{body: "owners"})
       other = bot_fixture(owner, %{"role_ids" => [ctx.role.id]})
-      {:ok, %{token: other_token}} = Bots.create_bot_token(other, %{"label" => "o"}, owner)
+
+      {:ok, %{token: other_token}} =
+        Bots.create_bot_token(scope_for(owner), other.id, %{"label" => "o"})
+
       limit = Application.fetch_env!(:tavern, Tavern.Bots)[:message_edits_per_second]
 
       for _ <- 1..(limit + 2) do
@@ -160,7 +165,7 @@ defmodule TavernWeb.API.BotApiAgentTest do
     test "a bot that may view but not send is forbidden", %{owner: owner, channel: channel} do
       viewer = role_fixture(%{permissions: PermissionBits.combine([:view_channel])})
       bot = bot_fixture(owner, %{"role_ids" => [viewer.id]})
-      {:ok, %{token: token}} = Bots.create_bot_token(bot, %{"label" => "v"}, owner)
+      {:ok, %{token: token}} = Bots.create_bot_token(scope_for(owner), bot.id, %{"label" => "v"})
 
       conn = token |> api() |> post(~p"/api/v1/channels/#{channel.id}/typing")
 
@@ -272,7 +277,7 @@ defmodule TavernWeb.API.BotApiAgentTest do
       hidden = channel_fixture(%{name: "Hidden", slug: unique_slug()})
       deny = role_fixture(%{permissions: 0})
       bot = bot_fixture(owner, %{"role_ids" => [deny.id]})
-      {:ok, %{token: token}} = Bots.create_bot_token(bot, %{"label" => "n"}, owner)
+      {:ok, %{token: token}} = Bots.create_bot_token(scope_for(owner), bot.id, %{"label" => "n"})
       conn = token |> api() |> get(~p"/api/v1/channels/#{hidden.id}/messages", %{})
 
       assert %{"error" => %{"code" => "not_found"}} = json_response(conn, 404)
@@ -378,7 +383,9 @@ defmodule TavernWeb.API.BotApiAgentTest do
   end
 
   defp bot_scope(bot, actor) do
-    {:ok, %{token: token}} = Bots.create_bot_token(bot, %{"label" => "scope"}, actor)
+    {:ok, %{token: token}} =
+      Bots.create_bot_token(scope_for(actor), bot.id, %{"label" => "scope"})
+
     {:ok, scope} = Bots.get_bot_scope_by_token(token)
     scope
   end

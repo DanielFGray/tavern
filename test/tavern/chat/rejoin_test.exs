@@ -26,7 +26,7 @@ defmodule Tavern.Chat.RejoinTest do
 
   defp invite!(owner, channel, attrs \\ %{}) do
     {:ok, invite} =
-      Chat.create_invite(Map.merge(%{"channel_id" => channel.id}, attrs), owner)
+      Chat.create_invite(scope_for(owner), Map.merge(%{"channel_id" => channel.id}, attrs))
 
     invite
   end
@@ -86,7 +86,7 @@ defmodule Tavern.Chat.RejoinTest do
 
     test "unknown, revoked, expired and exhausted codes are refused", ctx do
       revoked = invite!(ctx.owner, ctx.channel)
-      {:ok, _} = Chat.revoke_invite(revoked.id, ctx.owner)
+      {:ok, _} = Chat.revoke_invite(scope_for(ctx.owner), revoked.id)
 
       expired = invite!(ctx.owner, ctx.channel)
 
@@ -100,7 +100,7 @@ defmodule Tavern.Chat.RejoinTest do
       {:ok, _} = Chat.rejoin_with_invite(scope_for(other), spent.code)
 
       for code <- ["nosuchcode", revoked.code, expired.code, spent.code] do
-        assert {:error, {:refused, :invalid_invite}} =
+        assert {:error, :invalid_invite} =
                  Chat.rejoin_with_invite(scope_for(ctx.member), code)
       end
 
@@ -126,7 +126,7 @@ defmodule Tavern.Chat.RejoinTest do
         |> Enum.map(fn {:ok, result} -> result end)
 
       assert Enum.count(results, &match?({:ok, _}, &1)) == 1
-      assert Enum.count(results, &match?({:error, {:refused, :invalid_invite}}, &1)) == 1
+      assert Enum.count(results, &match?({:error, :invalid_invite}, &1)) == 1
       assert Repo.reload!(invite).uses == 1
     end
   end

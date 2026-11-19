@@ -274,7 +274,7 @@ defmodule Tavern.ChatFixtures do
         "role_ids" => []
       })
 
-    {:ok, bot_user} = Bots.create_bot(attrs, actor)
+    {:ok, bot_user} = Bots.create_bot(scope_for(actor), attrs)
     bot_user
   end
 end

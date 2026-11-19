@@ -44,7 +44,7 @@ defmodule TavernWeb.BannedLive do
       {:ok, _membership} ->
         {:noreply, push_navigate(socket, to: ~p"/")}
 
-      {:error, {:refused, :invalid_invite}} ->
+      {:error, :invalid_invite} ->
         {:noreply, assign(socket, :rejoin_error, "That invite code does not work.")}
 
       {:error, _reason} ->

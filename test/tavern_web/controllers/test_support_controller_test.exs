@@ -83,6 +83,24 @@ defmodule TavernWeb.TestSupportControllerTest do
     end
   end
 
+  describe "create_bot_with_token" do
+    test "creates a bot as the owner and returns a token that authenticates it", %{conn: conn} do
+      Bootstrap.ensure_seed_data!()
+      owner_fixture(%{email: "test_owner_bot@example.com", username: "test_owner_bot"})
+
+      conn =
+        get(conn, ~p"/api/testing/command", %{
+          command: "create_bot_with_token",
+          payload: Jason.encode!(%{username: "test_bot_cmd"})
+        })
+
+      assert %{"data" => %{"bot" => %{"id" => bot_id}, "token" => token}} =
+               json_response(conn, 200)
+
+      assert {:ok, %{user_id: ^bot_id}} = Tavern.Bots.get_bot_scope_by_token(token)
+    end
+  end
+
   describe "clear_test_users" do
     test "removes test users and their messages", %{conn: conn} do
       Bootstrap.ensure_seed_data!()

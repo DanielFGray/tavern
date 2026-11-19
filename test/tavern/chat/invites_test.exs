@@ -14,10 +14,10 @@ defmodule Tavern.Chat.InvitesTest do
       channel = channel_fixture()
 
       assert {:ok, invite} =
-               Chat.create_invite(
-                 %{"channel_id" => channel.id, "max_uses" => "3"},
-                 owner
-               )
+               Chat.create_invite(scope_for(owner), %{
+                 "channel_id" => channel.id,
+                 "max_uses" => "3"
+               })
 
       assert invite.code != ""
       assert byte_size(invite.code) == 8
@@ -32,8 +32,8 @@ defmodule Tavern.Chat.InvitesTest do
       member = user_fixture()
       channel = channel_fixture()
 
-      assert {:error, {:refused, :forbidden}} =
-               Chat.create_invite(%{"channel_id" => channel.id}, member)
+      assert {:error, :forbidden} =
+               Chat.create_invite(scope_for(member), %{"channel_id" => channel.id})
     end
 
     test "a code shorter than four characters is a changeset error" do
@@ -41,7 +41,7 @@ defmodule Tavern.Chat.InvitesTest do
       channel = channel_fixture()
 
       assert {:error, %Ecto.Changeset{}} =
-               Chat.create_invite(%{"channel_id" => channel.id, "code" => "ab"}, owner)
+               Chat.create_invite(scope_for(owner), %{"channel_id" => channel.id, "code" => "ab"})
     end
   end
 
@@ -49,67 +49,67 @@ defmodule Tavern.Chat.InvitesTest do
     test "a valid code is redeemed once, and the same user cannot redeem it twice" do
       owner = owner_fixture()
       channel = channel_fixture()
-      {:ok, invite} = Chat.create_invite(%{"channel_id" => channel.id}, owner)
+      {:ok, invite} = Chat.create_invite(scope_for(owner), %{"channel_id" => channel.id})
 
       user = user_fixture()
 
-      Repo.transaction(fn ->
-        assert %Chat.Invite{} = Invites.redeem(invite.code, user)
-      end)
+      assert {:ok, %Chat.Invite{}} = Repo.transact(fn -> Invites.redeem(invite.code, user) end)
 
       assert Repo.reload!(invite).uses == 1
 
-      assert Repo.transaction(fn -> Invites.redeem(invite.code, user) end) ==
-               {:error, {:refused, :invalid_invite}}
+      assert Repo.transact(fn -> Invites.redeem(invite.code, user) end) ==
+               {:error, :invalid_invite}
     end
 
     test "a use cap stops later registrations" do
       owner = owner_fixture()
       channel = channel_fixture()
-      {:ok, invite} = Chat.create_invite(%{"channel_id" => channel.id, "max_uses" => "1"}, owner)
+
+      {:ok, invite} =
+        Chat.create_invite(scope_for(owner), %{"channel_id" => channel.id, "max_uses" => "1"})
 
       first = user_fixture()
       second = user_fixture()
 
-      Repo.transaction(fn -> Invites.redeem(invite.code, first) end)
+      Repo.transact(fn -> Invites.redeem(invite.code, first) end)
 
-      assert Repo.transaction(fn -> Invites.redeem(invite.code, second) end) ==
-               {:error, {:refused, :invalid_invite}}
+      assert Repo.transact(fn -> Invites.redeem(invite.code, second) end) ==
+               {:error, :invalid_invite}
     end
 
     test "revoked and expired codes are refused" do
       owner = owner_fixture()
       channel = channel_fixture()
 
-      {:ok, invite} = Chat.create_invite(%{"channel_id" => channel.id}, owner)
-      {:ok, _revoked} = Chat.revoke_invite(invite.id, owner)
+      {:ok, invite} = Chat.create_invite(scope_for(owner), %{"channel_id" => channel.id})
+      {:ok, _revoked} = Chat.revoke_invite(scope_for(owner), invite.id)
 
       user = user_fixture()
 
-      assert Repo.transaction(fn -> Invites.redeem(invite.code, user) end) ==
-               {:error, {:refused, :invalid_invite}}
+      assert Repo.transact(fn -> Invites.redeem(invite.code, user) end) ==
+               {:error, :invalid_invite}
 
       {:ok, expired} =
-        Chat.create_invite(
-          %{"channel_id" => channel.id, "expires_at" => DateTime.add(DateTime.utc_now(), -1)},
-          owner
-        )
+        Chat.create_invite(scope_for(owner), %{
+          "channel_id" => channel.id,
+          "expires_at" => DateTime.add(DateTime.utc_now(), -1)
+        })
 
-      assert Repo.transaction(fn -> Invites.redeem(expired.code, user) end) ==
-               {:error, {:refused, :invalid_invite}}
+      assert Repo.transact(fn -> Invites.redeem(expired.code, user) end) ==
+               {:error, :invalid_invite}
     end
 
     test "an unknown code is refused" do
       user = user_fixture()
 
-      assert Repo.transaction(fn -> Invites.redeem("nocode00", user) end) ==
-               {:error, {:refused, :invalid_invite}}
+      assert Repo.transact(fn -> Invites.redeem("nocode00", user) end) ==
+               {:error, :invalid_invite}
     end
 
     test "redeem outside a transaction raises" do
       owner = owner_fixture()
       channel = channel_fixture()
-      {:ok, invite} = Chat.create_invite(%{"channel_id" => channel.id}, owner)
+      {:ok, invite} = Chat.create_invite(scope_for(owner), %{"channel_id" => channel.id})
       user = user_fixture()
 
       assert_raise ArgumentError, ~r/must run inside a transaction/, fn ->
@@ -122,12 +122,12 @@ defmodule Tavern.Chat.InvitesTest do
     test "an owner revokes; an unknown id answers not_found" do
       owner = owner_fixture()
       channel = channel_fixture()
-      {:ok, invite} = Chat.create_invite(%{"channel_id" => channel.id}, owner)
+      {:ok, invite} = Chat.create_invite(scope_for(owner), %{"channel_id" => channel.id})
 
-      assert {:ok, revoked} = Chat.revoke_invite(invite.id, owner)
+      assert {:ok, revoked} = Chat.revoke_invite(scope_for(owner), invite.id)
       assert revoked.revoked_at
 
-      assert {:error, :not_found} = Chat.revoke_invite(Ecto.UUID.generate(), owner)
+      assert {:error, :not_found} = Chat.revoke_invite(scope_for(owner), Ecto.UUID.generate())
     end
   end
 
@@ -135,7 +135,7 @@ defmodule Tavern.Chat.InvitesTest do
     test "register_user/2 redeems the code and records the use" do
       owner = owner_fixture()
       channel = channel_fixture()
-      {:ok, invite} = Chat.create_invite(%{"channel_id" => channel.id}, owner)
+      {:ok, invite} = Chat.create_invite(scope_for(owner), %{"channel_id" => channel.id})
 
       assert {:ok, user} =
                Accounts.register_user(
@@ -158,9 +158,12 @@ defmodule Tavern.Chat.InvitesTest do
     test "an invalid code rolls back the whole registration" do
       owner = owner_fixture()
       channel = channel_fixture()
-      {:ok, invite} = Chat.create_invite(%{"channel_id" => channel.id, "max_uses" => "1"}, owner)
+
+      {:ok, invite} =
+        Chat.create_invite(scope_for(owner), %{"channel_id" => channel.id, "max_uses" => "1"})
+
       first = user_fixture()
-      Repo.transaction(fn -> Invites.redeem(invite.code, first) end)
+      Repo.transact(fn -> Invites.redeem(invite.code, first) end)
 
       assert {:error, :invalid_invite} =
                Accounts.register_user(

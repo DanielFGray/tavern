@@ -95,7 +95,7 @@ defmodule TavernWeb.SessionRevocationTest do
       upload = %{path: "/nonexistent", client_name: "a.png", client_type: "image/png"}
 
       assert {:error, :forbidden} =
-               Chat.create_custom_emoji_from_upload(%{"name" => "party"}, ctx.member, upload)
+               Chat.create_custom_emoji(scope_for(ctx.member), upload, %{"name" => "party"})
     end
   end
 

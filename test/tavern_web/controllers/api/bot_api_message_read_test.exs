@@ -26,7 +26,7 @@ defmodule TavernWeb.API.BotApiMessageReadTest do
 
     channel = channel_fixture(%{name: "Reads", slug: unique_slug()})
     bot = bot_fixture(owner, %{"role_ids" => [role.id]})
-    {:ok, %{token: token}} = Bots.create_bot_token(bot, %{"label" => "read"}, owner)
+    {:ok, %{token: token}} = Bots.create_bot_token(scope_for(owner), bot.id, %{"label" => "read"})
 
     %{owner: owner, channel: channel, bot: bot, token: token}
   end

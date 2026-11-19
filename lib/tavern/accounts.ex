@@ -126,45 +126,36 @@ defmodule Tavern.Accounts do
   def register_user(attrs, opts) when is_map(attrs) and is_list(opts) do
     invite_code = Keyword.get(opts, :invite_code)
 
-    Repo.transaction(fn ->
+    Repo.transact(fn ->
       # The ownership lock comes first, in the same order `change_ownership/3` takes it, so a
       # first registration and a concurrent ownership transfer never lock each other out.
       lock_ownership!()
-      now = DateTime.utc_now()
-      authorize_registration!(invite_code)
 
-      user =
-        %User{}
-        |> User.registration_changeset(attrs)
-        |> Repo.insert!()
-
-      membership = create_membership!(user, now)
-
-      # The first human member owns the server, as the seeded welcome message says.
-      membership =
-        if owner_exists?() do
-          membership
-        else
-          membership |> Membership.ownership_changeset(true) |> Repo.update!()
-        end
-
-      if invite_code do
-        Invites.redeem(invite_code, user)
+      with :ok <- authorize_registration(invite_code),
+           {:ok, user} <- %User{} |> User.registration_changeset(attrs) |> Repo.insert(),
+           membership = create_first_membership!(user),
+           :ok <- redeem_invite(invite_code, user) do
+        {:ok,
+         user
+         |> Repo.preload([:membership, member_roles: :role])
+         |> Map.put(:membership, membership)}
       end
-
-      user
-      |> Repo.preload([:membership, member_roles: :role])
-      |> Map.put(:membership, membership)
     end)
-    |> case do
-      {:ok, user} -> {:ok, user}
-      {:error, {:refused, :invalid_invite}} -> {:error, :invalid_invite}
-      {:error, :invite_required} -> {:error, :invite_required}
-      {:error, _op, %Changeset{} = changeset, _changes} -> {:error, changeset}
-      {:error, _op, reason, _changes} -> raise reason
-    end
-  rescue
-    error in Ecto.InvalidChangesetError -> {:error, error.changeset}
+  end
+
+  # The first human member owns the server, as the seeded welcome message says.
+  defp create_first_membership!(%User{} = user) do
+    membership = create_membership!(user, DateTime.utc_now())
+
+    if owner_exists?(),
+      do: membership,
+      else: membership |> Membership.ownership_changeset(true) |> Repo.update!()
+  end
+
+  defp redeem_invite(nil, _user), do: :ok
+
+  defp redeem_invite(invite_code, user) do
+    with {:ok, _invite} <- Invites.redeem(invite_code, user), do: :ok
   end
 
   @doc """
@@ -174,12 +165,12 @@ defmodule Tavern.Accounts do
   commands. Existing owners remain owners; transfers use `promote_to_owner/2` instead.
   """
   def promote_first_owner(email) when is_binary(email) do
-    Repo.transaction(fn ->
+    Repo.transact(fn ->
       lock_ownership!()
 
       cond do
         owner_exists?() ->
-          Repo.rollback(:owner_exists)
+          {:error, :owner_exists}
 
         true ->
           case Repo.one(
@@ -197,12 +188,13 @@ defmodule Tavern.Accounts do
                 |> Membership.ownership_changeset(true)
                 |> Repo.update!()
 
-              user
-              |> Repo.preload([:membership, member_roles: :role])
-              |> Map.put(:membership, updated_membership)
+              {:ok,
+               user
+               |> Repo.preload([:membership, member_roles: :role])
+               |> Map.put(:membership, updated_membership)}
 
             nil ->
-              Repo.rollback(:not_found)
+              {:error, :not_found}
           end
       end
     end)
@@ -699,28 +691,25 @@ defmodule Tavern.Accounts do
   end
 
   defp run_change_ownership(%Scope{user_id: actor_id} = scope, subject_id, is_owner) do
-    Repo.transaction(fn ->
+    Repo.transact(fn ->
       lock_ownership!()
 
-      case Visibility.authorize_write(scope, :manage_ownership, subject_id) do
-        :ok -> :ok
-        {:error, reason} -> Repo.rollback(reason)
-      end
+      with :ok <- Visibility.authorize_write(scope, :manage_ownership, subject_id) do
+        subject_membership = current_membership(subject_id)
 
-      subject_membership = current_membership(subject_id)
+        cond do
+          actor_id == subject_id ->
+            {:error, :self}
 
-      cond do
-        actor_id == subject_id ->
-          Repo.rollback(:self)
+          is_nil(subject_membership) or not is_nil(subject_membership.deactivated_at) ->
+            {:error, :not_found}
 
-        is_nil(subject_membership) or not is_nil(subject_membership.deactivated_at) ->
-          Repo.rollback(:not_found)
+          subject_membership.is_owner == is_owner ->
+            {:ok, subject_membership}
 
-        subject_membership.is_owner == is_owner ->
-          subject_membership
-
-        true ->
-          subject_membership |> Membership.ownership_changeset(is_owner) |> Repo.update!()
+          true ->
+            subject_membership |> Membership.ownership_changeset(is_owner) |> Repo.update()
+        end
       end
     end)
   end
@@ -733,15 +722,15 @@ defmodule Tavern.Accounts do
   was promoted, or `{:ok, :none}` when an owner already exists or no member qualifies.
   """
   def ensure_first_owner! do
-    Repo.transaction(fn ->
+    Repo.transact(fn ->
       lock_ownership!()
 
       if owner_exists?() do
-        :none
+        {:ok, :none}
       else
         case oldest_active_human_membership() do
           nil ->
-            :none
+            {:ok, :none}
 
           membership ->
             promoted =
@@ -749,14 +738,10 @@ defmodule Tavern.Accounts do
               |> Membership.ownership_changeset(true)
               |> Repo.update!()
 
-            Repo.get!(User, promoted.user_id)
+            {:ok, Repo.get!(User, promoted.user_id)}
         end
       end
     end)
-    |> case do
-      {:ok, result} -> {:ok, result}
-      {:error, _op, reason, _changes} -> raise reason
-    end
   end
 
   defp oldest_active_human_membership do
@@ -780,18 +765,16 @@ defmodule Tavern.Accounts do
   # The registration mode is decided here, from the settings row locked `FOR SHARE`, so a mode
   # change (which takes the row `FOR UPDATE`) and a registration serialize. A server with no owner
   # lets its first registration through, so a fresh invite-only server can still get an owner.
-  defp authorize_registration!(invite_code) do
+  defp authorize_registration(invite_code) do
     mode =
       ServerSettings
       |> lock("FOR SHARE")
       |> select([settings], settings.registration_mode)
       |> Repo.one()
 
-    if mode == :invite_only and is_nil(invite_code) and owner_exists?() do
-      Repo.rollback(:invite_required)
-    end
-
-    :ok
+    if mode == :invite_only and is_nil(invite_code) and owner_exists?(),
+      do: {:error, :invite_required},
+      else: :ok
   end
 
   defp create_membership!(%User{} = user, now) do

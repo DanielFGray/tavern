@@ -10,7 +10,6 @@ defmodule Tavern.Chat.ServerConfig do
   alias Tavern.Chat.MediaAsset
   alias Tavern.Chat.MediaAssets
   alias Tavern.Chat.ServerSettings
-  alias Tavern.Chat.User
   alias Tavern.Chat.Visibility
   alias Tavern.Repo
 
@@ -32,24 +31,32 @@ defmodule Tavern.Chat.ServerConfig do
 
   @doc """
   Changes the server name, and replaces the icon when attrs hold an `"icon_upload"`.
-  The actor must hold `manage_server` now, in the database; the check runs before an
-  uploaded icon is written to disk. An `"icon_asset_id"` in attrs is ignored.
+  The scope must hold `manage_server` now, in the database: the write transaction decides it
+  first, before an uploaded icon is stored. An `"icon_asset_id"` in attrs is ignored.
   """
-  def update_server_settings(attrs, %User{} = actor) when is_map(attrs) do
-    if manages_server?(actor),
-      do: persist_server_settings(attrs, actor),
-      else: {:error, :forbidden}
+  def update_server_settings(%Scope{} = scope, attrs) when is_map(attrs) do
+    name_attrs = name_attrs(attrs)
+
+    write_settings(scope, fn server_settings ->
+      with {:ok, icon_change} <- resolve_icon_change(scope, attrs) do
+        save_settings(server_settings, name_attrs, icon_change)
+      end
+    end)
   end
 
   @doc """
-  Clears the server icon. Deletes the previous asset only when its kind is `:server_icon`.
+  Clears the server icon. Needs `manage_server`. Deletes the previous asset only when its kind
+  is `:server_icon`.
   """
-  def remove_server_icon(%User{} = actor) do
-    if manages_server?(actor), do: persist_remove_server_icon(), else: {:error, :forbidden}
+  def remove_server_icon(%Scope{} = scope) do
+    write_settings(scope, fn server_settings ->
+      save_settings(
+        server_settings,
+        name_attrs(%{"name" => server_settings.name}),
+        {:replace, nil}
+      )
+    end)
   end
-
-  defp manages_server?(%User{id: user_id}),
-    do: Visibility.can?(%Scope{user_id: user_id}, :manage_server, :server)
 
   def server_icon_url(%ServerSettings{icon_asset: %MediaAsset{} = asset}),
     do: MediaAssets.asset_url(asset)
@@ -64,73 +71,42 @@ defmodule Tavern.Chat.ServerConfig do
   @doc "Drops the cached server settings, so the next read loads from the database."
   def reset_server_settings_cache, do: :persistent_term.erase(@cache_key)
 
-  defp persist_server_settings(attrs, actor) do
-    name_attrs = name_attrs(attrs)
-
-    Repo.transaction(fn ->
-      server_settings = lock_server_settings()
-      previous_icon_asset = server_settings.icon_asset
-
-      with {:ok, icon_change} <- resolve_icon_change(attrs, actor),
-           {:ok, settings} <-
-             server_settings
-             |> settings_changeset(name_attrs, icon_change)
-             |> Repo.insert_or_update() do
-        settings = Repo.preload(settings, [:icon_asset], force: true)
-
-        if icon_change != :keep do
-          maybe_delete_server_icon_asset(previous_icon_asset)
-        end
-
-        settings
-      else
-        {:error, changeset} -> Repo.rollback(changeset)
-        {:error, reason, :upload} -> Repo.rollback({:upload, reason})
+  # Decides `manage_server`, then locks the settings row, then runs `fun` with it, in one
+  # transaction. The cache takes the new settings only after the commit.
+  defp write_settings(scope, fun) do
+    Repo.transact(fn ->
+      with :ok <- Visibility.authorize_write(scope, :manage_server, :server) do
+        fun.(lock_server_settings())
       end
     end)
-    |> finalize_settings_write()
-  end
-
-  defp persist_remove_server_icon do
-    Repo.transaction(fn ->
-      server_settings = lock_server_settings()
-      previous_icon_asset = server_settings.icon_asset
-
-      with {:ok, settings} <-
-             server_settings
-             |> settings_changeset(name_attrs(%{"name" => server_settings.name}), {:replace, nil})
-             |> Repo.insert_or_update() do
-        maybe_delete_server_icon_asset(previous_icon_asset)
-        Repo.preload(settings, [:icon_asset], force: true)
-      else
-        {:error, changeset} -> Repo.rollback(changeset)
-      end
+    |> tap(fn
+      {:ok, settings} -> :persistent_term.put(@cache_key, settings)
+      {:error, _reason} -> :ok
     end)
-    |> finalize_settings_write()
   end
 
-  defp finalize_settings_write(result) do
-    case result do
-      {:ok, settings} ->
-        :persistent_term.put(@cache_key, settings)
-        {:ok, settings}
+  defp save_settings(server_settings, name_attrs, icon_change) do
+    with {:ok, settings} <-
+           server_settings
+           |> settings_changeset(name_attrs, icon_change)
+           |> Repo.insert_or_update() do
+      if icon_change != :keep do
+        maybe_delete_server_icon_asset(server_settings.icon_asset)
+      end
 
-      {:error, {:upload, reason}} ->
-        {:error, reason}
-
-      {:error, changeset} ->
-        {:error, changeset}
+      {:ok, Repo.preload(settings, [:icon_asset], force: true)}
     end
   end
 
-  defp resolve_icon_change(attrs, actor) do
+  defp resolve_icon_change(scope, attrs) do
     case Map.get(attrs, "icon_upload") do
       nil ->
         {:ok, :keep}
 
       upload ->
-        with {:ok, asset} <- MediaAssets.create_server_icon_from_upload(actor, upload) do
-          {:ok, {:replace, asset.id}}
+        case MediaAssets.create_server_icon_from_upload(scope, upload) do
+          {:ok, asset} -> {:ok, {:replace, asset.id}}
+          {:error, reason, :upload} -> {:error, reason}
         end
     end
   end

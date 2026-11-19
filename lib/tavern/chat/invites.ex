@@ -27,21 +27,17 @@ defmodule Tavern.Chat.Invites do
   def new_invite_changeset, do: Ecto.Changeset.change(%Invite{})
 
   @doc """
-  Creates an invite from attrs, as `actor`. Needs `manage_server` now, in the database.
-  A blank or missing `code` gets a random one; `channel_id` is required.
+  Creates an invite from attrs. Needs `manage_server` now, in the database: `{:error,
+  :forbidden}` without it. A blank or missing `code` gets a random one; `channel_id` is required.
   """
-  def create_invite(attrs, %User{} = actor) when is_map(attrs) do
-    Repo.transaction(fn ->
-      with :ok <-
-             Visibility.authorize_write(%Scope{user_id: actor.id}, :manage_server, :server),
+  def create_invite(%Scope{} = scope, attrs) when is_map(attrs) do
+    Repo.transact(fn ->
+      with :ok <- Visibility.authorize_write(scope, :manage_server, :server),
            {:ok, invite} <-
-             %Invite{inviter_id: actor.id}
+             %Invite{inviter_id: scope.user_id}
              |> Invite.changeset(with_generated_code(attrs))
              |> Repo.insert() do
-        Repo.preload(invite, [:channel, :inviter])
-      else
-        {:error, %Changeset{} = changeset} -> Repo.rollback(changeset)
-        {:error, reason} -> Repo.rollback({:refused, reason})
+        {:ok, Repo.preload(invite, [:channel, :inviter])}
       end
     end)
   end
@@ -101,8 +97,8 @@ defmodule Tavern.Chat.Invites do
   @doc """
   The active invites of the server, newest first. Needs `manage_server`.
   """
-  def list_invites(%User{} = actor) do
-    if Visibility.can?(%Scope{user_id: actor.id}, :manage_server, :server) do
+  def list_invites(%Scope{} = scope) do
+    if Visibility.can?(scope, :manage_server, :server) do
       Invite
       |> order_by(desc: :inserted_at)
       |> Repo.all()
@@ -113,32 +109,36 @@ defmodule Tavern.Chat.Invites do
   end
 
   @doc """
-  Revokes an invite by id, as `actor`. Needs `manage_server`. Returns the revoked invite,
-  or `:not_found` when the id names no invite.
+  Revokes an invite by id. Needs `manage_server`. Returns the revoked invite, or
+  `{:error, :not_found}` when the id names no invite.
   """
-  def revoke_invite(invite_id, %User{} = actor) do
-    Repo.transaction(fn ->
-      with :ok <-
-             Visibility.authorize_write(%Scope{user_id: actor.id}, :manage_server, :server),
-           invite <- Repo.get(Invite, invite_id) || Repo.rollback(:not_found),
-           {:ok, invite} <-
-             invite
-             |> Ecto.Changeset.change(revoked_at: DateTime.utc_now())
-             |> Repo.update() do
+  def revoke_invite(%Scope{} = scope, invite_id) do
+    Repo.transact(fn ->
+      with :ok <- Visibility.authorize_write(scope, :manage_server, :server),
+           {:ok, invite} <- lock_invite(invite_id) do
         invite
-      else
-        {:error, %Changeset{} = changeset} -> Repo.rollback(changeset)
-        {:error, reason} -> Repo.rollback({:refused, reason})
+        |> Ecto.Changeset.change(revoked_at: DateTime.utc_now())
+        |> Repo.update()
       end
     end)
+  end
+
+  defp lock_invite(invite_id) do
+    with {:ok, invite_id} <- Ecto.UUID.cast(invite_id),
+         %Invite{} = invite <-
+           Invite |> where(id: ^invite_id) |> lock("FOR UPDATE") |> Repo.one() do
+      {:ok, invite}
+    else
+      _ -> {:error, :not_found}
+    end
   end
 
   @doc """
   Redeems `code` for `user` inside the caller's transaction. The caller must already hold
   a transaction: registration checks the code and creates the user as one decision.
 
-  Returns the redeemed invite, or rolls back with `{:refused, :invalid_invite}` for an
-  unknown, revoked, expired, exhausted or already-used code.
+  Returns `{:ok, invite}`, or `{:error, :invalid_invite}` for an unknown, revoked, expired,
+  exhausted or already-used code. The caller rolls back on the error.
   """
   def redeem(code, %User{} = user) do
     unless Repo.in_transaction?() do
@@ -157,9 +157,9 @@ defmodule Tavern.Chat.Invites do
       |> Repo.one()
 
     with %Invite{} = invite <- invite,
-         :ok <- check_expiry(invite, now),
-         :ok <- check_use_cap(invite),
-         :ok <- check_unused_by_user(invite, user.id),
+         true <- unexpired?(invite, now),
+         true <- under_use_cap?(invite),
+         false <- used_by?(invite, user.id),
          {:ok, _} <-
            invite
            |> Ecto.Changeset.change(uses: invite.uses + 1, last_used_at: now)
@@ -168,37 +168,23 @@ defmodule Tavern.Chat.Invites do
            %InviteUse{}
            |> InviteUse.changeset(%{invite_id: invite.id, user_id: user.id, used_at: now})
            |> Repo.insert() do
-      invite
+      {:ok, invite}
     else
-      nil -> Repo.rollback({:refused, :invalid_invite})
-      {:error, reason} -> Repo.rollback(reason)
+      {:error, %Changeset{} = changeset} -> {:error, changeset}
+      _unusable -> {:error, :invalid_invite}
     end
   end
 
-  defp check_expiry(%Invite{expires_at: nil}, _now), do: :ok
+  defp unexpired?(%Invite{expires_at: nil}, _now), do: true
+  defp unexpired?(%Invite{expires_at: expires_at}, now), do: not DateTime.before?(expires_at, now)
 
-  defp check_expiry(%Invite{expires_at: expires_at}, now) do
-    if DateTime.compare(expires_at, now) == :lt,
-      do: Repo.rollback({:refused, :invalid_invite}),
-      else: :ok
-  end
+  defp under_use_cap?(%Invite{max_uses: nil}), do: true
+  defp under_use_cap?(%Invite{max_uses: max_uses, uses: uses}), do: uses < max_uses
 
-  defp check_use_cap(%Invite{max_uses: nil}), do: :ok
-
-  defp check_use_cap(%Invite{max_uses: max_uses, uses: uses}) when uses >= max_uses,
-    do: Repo.rollback({:refused, :invalid_invite})
-
-  defp check_use_cap(%Invite{}), do: :ok
-
-  defp check_unused_by_user(invite, user_id) do
-    query =
+  defp used_by?(invite, user_id) do
+    Repo.exists?(
       from invite_use in InviteUse,
         where: invite_use.invite_id == ^invite.id and invite_use.user_id == ^user_id
-
-    if Repo.exists?(query) do
-      Repo.rollback({:refused, :invalid_invite})
-    else
-      :ok
-    end
+    )
   end
 end

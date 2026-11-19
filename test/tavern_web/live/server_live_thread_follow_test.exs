@@ -246,7 +246,7 @@ defmodule TavernWeb.ServerLiveThreadFollowTest do
 
   defp mute(user, channel),
     do:
-      Chat.update_channel_membership_notification(user, channel.id, %{
+      Chat.update_channel_membership_notification(scope_for(user), channel.id, %{
         notification_level: :nothing
       })
 

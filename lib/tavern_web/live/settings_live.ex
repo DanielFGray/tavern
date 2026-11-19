@@ -1,13 +1,10 @@
 defmodule TavernWeb.SettingsLive do
   use TavernWeb, :live_view
 
-  import Ecto.Query, warn: false
-
   alias Tavern.Accounts
   alias Tavern.Accounts.LoginRateLimiter
   alias Tavern.Bots
   alias Tavern.Chat
-  alias Tavern.Repo
   alias TavernWeb.Live.SharedHelpers
   alias TavernWeb.Plugs.ClientIp
   alias Tavern.Chat.Topics
@@ -156,7 +153,7 @@ defmodule TavernWeb.SettingsLive do
 
   @impl true
   def handle_event("save_notifications", %{"notification" => attrs}, socket) do
-    case Chat.update_user_notification_setting(socket.assigns.current_user, attrs) do
+    case Chat.update_user_notification_setting(socket.assigns.current_scope, attrs) do
       {:ok, setting} ->
         {:noreply,
          socket
@@ -171,7 +168,7 @@ defmodule TavernWeb.SettingsLive do
 
   @impl true
   def handle_event("enable_desktop_mentions", _params, socket) do
-    case Chat.update_user_notification_setting(socket.assigns.current_user, %{
+    case Chat.update_user_notification_setting(socket.assigns.current_scope, %{
            desktop_enabled: true,
            notify_on_mentions: true
          }) do
@@ -189,7 +186,7 @@ defmodule TavernWeb.SettingsLive do
 
   @impl true
   def handle_event("disable_desktop_mentions", _params, socket) do
-    case Chat.update_user_notification_setting(socket.assigns.current_user, %{
+    case Chat.update_user_notification_setting(socket.assigns.current_scope, %{
            desktop_enabled: false
          }) do
       {:ok, setting} ->
@@ -210,31 +207,26 @@ defmodule TavernWeb.SettingsLive do
       is_favorite: State.truthy?(Map.get(attrs, "is_favorite"))
     }
 
-    case Chat.update_channel_membership_notification(
-           socket.assigns.current_user,
-           channel_id,
-           membership_attrs
-         ) do
+    scope = socket.assigns.current_scope
+
+    case Chat.update_channel_membership_notification(scope, channel_id, membership_attrs) do
       {:ok, _membership} ->
-        channels = Chat.list_channels(socket.assigns.current_scope)
+        channels = Chat.list_channels(scope)
 
         {:noreply,
          socket
          |> assign(:channels, channels)
-         |> assign(
-           :channel_memberships,
-           State.channel_memberships_map(socket.assigns.current_user, channels)
-         )
+         |> assign(:channel_memberships, State.channel_memberships(scope, channels))
          |> put_flash(:info, "Channel preference saved.")}
 
-      {:error, _changeset} ->
+      {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "Could not update that channel preference.")}
     end
   end
 
   @impl true
   def handle_event("remove_server_icon", _params, socket) do
-    case Chat.remove_server_icon(socket.assigns.current_user) do
+    case Chat.remove_server_icon(socket.assigns.current_scope) do
       {:ok, settings} ->
         {:noreply,
          socket
@@ -268,7 +260,7 @@ defmodule TavernWeb.SettingsLive do
   def handle_event("save_server_settings", %{"server_settings" => attrs}, socket) do
     attrs = State.maybe_attach_server_icon_upload(socket, attrs)
 
-    case Chat.update_server_settings(attrs, socket.assigns.current_user) do
+    case Chat.update_server_settings(socket.assigns.current_scope, attrs) do
       {:ok, settings} ->
         {:noreply,
          socket
@@ -292,7 +284,7 @@ defmodule TavernWeb.SettingsLive do
 
   @impl true
   def handle_event("create_invite", %{"invite" => attrs}, socket) do
-    case Chat.create_invite(State.invite_attrs(socket, attrs), socket.assigns.current_user) do
+    case Chat.create_invite(socket.assigns.current_scope, State.invite_attrs(socket, attrs)) do
       {:ok, _invite} ->
         {:noreply,
          socket
@@ -300,7 +292,7 @@ defmodule TavernWeb.SettingsLive do
          |> assign(:invite_form, to_form(Chat.change_invite(), as: :invite))
          |> put_flash(:info, "Invite created.")}
 
-      {:error, {:refused, _reason}} ->
+      {:error, :forbidden} ->
         {:noreply, put_flash(socket, :error, "You cannot manage invites.")}
 
       {:error, %Ecto.Changeset{} = changeset} ->
@@ -310,14 +302,14 @@ defmodule TavernWeb.SettingsLive do
 
   @impl true
   def handle_event("revoke_invite", %{"id" => invite_id}, socket) do
-    case Chat.revoke_invite(invite_id, socket.assigns.current_user) do
+    case Chat.revoke_invite(socket.assigns.current_scope, invite_id) do
       {:ok, _invite} ->
         {:noreply, socket |> State.maybe_load_invites() |> put_flash(:info, "Invite revoked.")}
 
       {:error, :not_found} ->
         {:noreply, socket |> State.maybe_load_invites() |> put_flash(:error, "Invite not found.")}
 
-      {:error, {:refused, _reason}} ->
+      {:error, :forbidden} ->
         {:noreply, put_flash(socket, :error, "You cannot manage invites.")}
     end
   end
@@ -333,84 +325,67 @@ defmodule TavernWeb.SettingsLive do
 
   @impl true
   def handle_event("create_bot", %{"bot" => bot_params}, socket) do
-    if socket.assigns.can_manage_bots? do
-      role_ids = List.wrap(Map.get(bot_params, "role_ids", []))
-      bot_params = Map.put(bot_params, "role_ids", Enum.reject(role_ids, &(&1 == "")))
+    role_ids = List.wrap(Map.get(bot_params, "role_ids", []))
+    bot_params = Map.put(bot_params, "role_ids", Enum.reject(role_ids, &(&1 == "")))
 
-      case Bots.create_bot(bot_params, socket.assigns.current_user) do
-        {:ok, _bot} ->
-          {:noreply,
-           socket
-           |> State.refresh_bot_assigns()
-           |> assign(:bot_form, to_form(State.bot_form_defaults(), as: :bot))
-           |> put_flash(:info, "Bot created.")}
+    case Bots.create_bot(socket.assigns.current_scope, bot_params) do
+      {:ok, _bot} ->
+        {:noreply,
+         socket
+         |> State.refresh_bot_assigns()
+         |> assign(:bot_form, to_form(State.bot_form_defaults(), as: :bot))
+         |> put_flash(:info, "Bot created.")}
 
-        {:error, %Ecto.Changeset{} = changeset} ->
-          {:noreply, assign(socket, :bot_form, to_form(changeset, as: :bot))}
+      {:error, %Ecto.Changeset{} = changeset} ->
+        {:noreply, assign(socket, :bot_form, to_form(changeset, as: :bot))}
 
-        {:error, :forbidden} ->
-          {:noreply, put_flash(socket, :error, "You cannot give a bot those roles.")}
-      end
-    else
-      {:noreply, put_flash(socket, :error, "You do not have permission to manage bots.")}
+      {:error, :forbidden} ->
+        {:noreply, put_flash(socket, :error, "You do not have permission to create that bot.")}
     end
   end
 
   @impl true
   def handle_event("create_bot_token", %{"id" => bot_id, "token" => token_params}, socket) do
-    if socket.assigns.can_manage_bots? do
-      bot_user = Bots.get_bot_user!(bot_id)
+    case Bots.create_bot_token(socket.assigns.current_scope, bot_id, token_params) do
+      {:ok, token_info} ->
+        {:noreply,
+         socket
+         |> State.refresh_bot_assigns()
+         |> assign(
+           :revealed_bot_tokens,
+           Map.put(socket.assigns.revealed_bot_tokens, bot_id, token_info.token)
+         )
+         |> put_flash(:info, "Bot token created. Copy it now; it will not be shown again.")}
 
-      case Bots.create_bot_token(bot_user, token_params, socket.assigns.current_user) do
-        {:ok, token_info} ->
-          {:noreply,
-           socket
-           |> State.refresh_bot_assigns()
-           |> assign(
-             :revealed_bot_tokens,
-             Map.put(socket.assigns.revealed_bot_tokens, bot_id, token_info.token)
-           )
-           |> put_flash(:info, "Bot token created. Copy it now; it will not be shown again.")}
+      {:error, :forbidden} ->
+        {:noreply, put_flash(socket, :error, "You cannot mint tokens for this bot.")}
 
-        {:error, :forbidden} ->
-          {:noreply, put_flash(socket, :error, "You cannot mint tokens for this bot.")}
+      {:error, :not_found} ->
+        {:noreply, socket |> State.refresh_bot_assigns() |> put_flash(:error, "Bot not found.")}
 
-        {:error, changeset} ->
-          token_forms =
-            Map.put(
-              socket.assigns.bot_token_forms,
-              bot_id,
-              State.bot_token_form(bot_id, changeset)
-            )
+      {:error, %Ecto.Changeset{} = changeset} ->
+        token_forms =
+          Map.put(socket.assigns.bot_token_forms, bot_id, State.bot_token_form(bot_id, changeset))
 
-          {:noreply, assign(socket, :bot_token_forms, token_forms)}
-      end
-    else
-      {:noreply, put_flash(socket, :error, "You do not have permission to manage bots.")}
+        {:noreply, assign(socket, :bot_token_forms, token_forms)}
     end
   end
 
   @impl true
   def handle_event("revoke_bot_token", %{"id" => token_id}, socket) do
-    if socket.assigns.can_manage_bots? do
-      case Repo.get(Chat.BotToken, token_id) do
-        nil ->
-          {:noreply, put_flash(socket, :error, "Bot token not found.")}
+    case Bots.revoke_bot_token(socket.assigns.current_scope, token_id) do
+      {:ok, _revoked} ->
+        {:noreply,
+         socket |> State.refresh_bot_assigns() |> put_flash(:info, "Bot token revoked.")}
 
-        token ->
-          case Bots.revoke_bot_token(token, socket.assigns.current_user) do
-            {:ok, _revoked} ->
-              {:noreply,
-               socket
-               |> State.refresh_bot_assigns()
-               |> put_flash(:info, "Bot token revoked.")}
+      {:error, :forbidden} ->
+        {:noreply, put_flash(socket, :error, "You cannot revoke tokens for this bot.")}
 
-            {:error, _changeset} ->
-              {:noreply, put_flash(socket, :error, "Could not revoke bot token.")}
-          end
-      end
-    else
-      {:noreply, put_flash(socket, :error, "You do not have permission to manage bots.")}
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "Bot token not found.")}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Could not revoke bot token.")}
     end
   end
 
@@ -426,11 +401,7 @@ defmodule TavernWeb.SettingsLive do
 
   @impl true
   def handle_event("save_emoji", %{"emoji" => emoji_params}, socket) do
-    if socket.assigns.can_manage_emojis? do
-      State.save_emoji(socket, emoji_params)
-    else
-      {:noreply, put_flash(socket, :error, "You do not have permission to manage emojis.")}
-    end
+    State.save_emoji(socket, emoji_params)
   end
 
   @impl true
@@ -624,10 +595,8 @@ defmodule TavernWeb.SettingsLive do
     socket =
       socket
       |> Roles.refresh()
-      |> assign(
-        :can_view_audit_log?,
-        SharedHelpers.can_view_audit_log?(socket.assigns.current_scope)
-      )
+      |> State.assign_management_flags()
+      |> State.refresh_bot_assigns()
 
     socket =
       if tab_allowed?(socket, socket.assigns.active_tab),

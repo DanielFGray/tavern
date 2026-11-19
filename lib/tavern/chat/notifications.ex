@@ -1,8 +1,17 @@
 defmodule Tavern.Chat.Notifications do
-  @moduledoc false
+  @moduledoc """
+  A member's notification settings and read state. Each function reads or writes only the rows
+  of `scope.user_id`, the read policy's "that member only". The channel ids it takes come from
+  the caller's scoped channel reads, except where a function says it decides the channel itself.
+
+  `message_mentions_user?/2` and `message_mentions_user_directly?/2` take a `%User{}`, not a
+  scope: they are pure, and decide from rows already preloaded, so each receiver of a broadcast
+  decides without a query.
+  """
 
   import Ecto.Query, warn: false
 
+  alias Tavern.Accounts.Scope
   alias Tavern.Chat.Channel
   alias Tavern.Chat.ChannelMembership
   alias Tavern.Chat.ChannelNotificationOverride
@@ -12,60 +21,80 @@ defmodule Tavern.Chat.Notifications do
   alias Tavern.Chat.Role
   alias Tavern.Chat.User
   alias Tavern.Chat.UserNotificationSetting
+  alias Tavern.Chat.Visibility
   alias Tavern.Repo
 
-  def get_user_notification_setting(%User{} = user) do
-    Repo.get_by(UserNotificationSetting, user_id: user.id) ||
-      %UserNotificationSetting{user_id: user.id}
+  @doc "The scope's notification setting, or the defaults when none is stored."
+  def get_user_notification_setting(%Scope{user_id: user_id}) do
+    Repo.get_by(UserNotificationSetting, user_id: user_id) ||
+      %UserNotificationSetting{user_id: user_id}
   end
 
-  def update_user_notification_setting(%User{} = user, attrs) do
-    user
+  def update_user_notification_setting(%Scope{} = scope, attrs) do
+    scope
     |> get_user_notification_setting()
     |> UserNotificationSetting.changeset(attrs)
     |> Repo.insert_or_update()
   end
 
-  def update_channel_membership_notification(%User{} = user, channel_id, attrs) do
-    membership =
-      Repo.get_by(ChannelMembership, user_id: user.id, channel_id: channel_id) ||
-        %ChannelMembership{
-          user_id: user.id,
-          channel_id: channel_id,
-          joined_at: DateTime.utc_now()
-        }
-
-    membership
-    |> ChannelMembership.changeset(attrs)
-    |> Repo.insert_or_update()
+  @doc "The scope's channel membership rows among `channel_ids`, by channel id."
+  def channel_memberships(%Scope{user_id: user_id}, channel_ids) when is_list(channel_ids) do
+    ChannelMembership
+    |> where(
+      [membership],
+      membership.user_id == ^user_id and membership.channel_id in ^channel_ids
+    )
+    |> Repo.all()
+    |> Map.new(&{&1.channel_id, &1})
   end
 
-  def unread_counts_for_user(%User{} = user, channels) when is_list(channels) do
-    channel_ids = Enum.map(channels, & &1.id)
-    counts = unread_counts_by_channel(user.id, channel_ids)
-
-    Enum.into(channels, %{}, fn channel ->
-      {channel.id, Map.get(counts, channel.id, 0)}
-    end)
+  @doc """
+  Sets the scope's notification level and favourite flag for channel `channel_id`. The id comes
+  from the client, so the write first decides that the scope may view the channel:
+  `{:error, :not_found}` when it may not, or when the id names no channel.
+  """
+  def update_channel_membership_notification(%Scope{} = scope, channel_id, attrs) do
+    with {:ok, channel_id} <- Ecto.UUID.cast(channel_id) do
+      Repo.transact(fn ->
+        with :ok <- Visibility.authorize_write(scope, :view_channel, %Channel{id: channel_id}) do
+          scope.user_id
+          |> channel_membership(channel_id)
+          |> ChannelMembership.changeset(attrs)
+          |> Repo.insert_or_update()
+        end
+      end)
+    else
+      :error -> {:error, :not_found}
+    end
   end
 
-  def unread_mentions_for_user(%User{} = user, channels) when is_list(channels) do
-    channel_ids = Enum.map(channels, & &1.id)
+  defp channel_membership(user_id, channel_id) do
+    Repo.get_by(ChannelMembership, user_id: user_id, channel_id: channel_id) ||
+      %ChannelMembership{user_id: user_id, channel_id: channel_id, joined_at: DateTime.utc_now()}
+  end
 
+  @doc "The scope's unread message count in each of `channel_ids`, by channel id."
+  def unread_counts(%Scope{user_id: user_id}, channel_ids) when is_list(channel_ids) do
+    counts = unread_counts_by_channel(user_id, channel_ids)
+    Map.new(channel_ids, &{&1, Map.get(counts, &1, 0)})
+  end
+
+  @doc """
+  The number of unread messages in each of `channel_ids` that mention the scope: directly,
+  through one of its roles, or through the default role. By channel id.
+  """
+  def unread_mentions(%Scope{user_id: user_id}, channel_ids) when is_list(channel_ids) do
     role_ids =
       Role
       |> join(:left, [role], member_role in assoc(role, :member_roles),
-        on: member_role.user_id == ^user.id
+        on: member_role.user_id == ^user_id
       )
       |> where([role, member_role], role.is_default or not is_nil(member_role.id))
       |> select([role, _member_role], role.id)
       |> Repo.all()
 
-    mentions = unread_mentions_by_channel(user.id, role_ids, channel_ids)
-
-    Enum.into(channels, %{}, fn channel ->
-      {channel.id, Map.get(mentions, channel.id, 0)}
-    end)
+    mentions = unread_mentions_by_channel(user_id, role_ids, channel_ids)
+    Map.new(channel_ids, &{&1, Map.get(mentions, &1, 0)})
   end
 
   @doc """
@@ -94,8 +123,13 @@ defmodule Tavern.Chat.Notifications do
       when is_list(user_mentions),
       do: Enum.any?(user_mentions, &(&1.mentioned_user_id == user_id))
 
-  def mention_notifications_enabled?(%User{} = user, %Channel{} = channel) do
-    setting = get_user_notification_setting(user)
+  @doc """
+  Whether a mention in `channel` should alert the scope: desktop and mention alerts are on, and
+  the channel's effective level is not `:nothing`. The channel struct is read for its parent
+  link only.
+  """
+  def mention_notifications_enabled?(%Scope{} = scope, %Channel{} = channel) do
+    setting = get_user_notification_setting(scope)
 
     cond do
       not setting.desktop_enabled ->
@@ -105,22 +139,27 @@ defmodule Tavern.Chat.Notifications do
         false
 
       true ->
-        case effective_channel_notification_level(user, channel) do
+        case effective_channel_notification_level(scope.user_id, channel) do
           :nothing -> false
           _ -> true
         end
     end
   end
 
-  def mark_channel_read(%User{} = user, %Channel{} = channel, message \\ nil) do
-    message = message || latest_message_for_channel(channel.id)
+  @doc """
+  Marks channel `channel_id` read for the scope up to `message`, or up to the channel's latest
+  message when none is given. `message` is the one the caller already shows; its id and time set
+  the read marker.
+  """
+  def mark_channel_read(%Scope{user_id: user_id}, channel_id, message \\ nil) do
+    message = message || latest_message_for_channel(channel_id)
     now = DateTime.utc_now()
     last_read_at = message && DateTime.add(message.inserted_at, 1, :microsecond)
 
     %ChannelMembership{}
     |> ChannelMembership.changeset(%{
-      channel_id: channel.id,
-      user_id: user.id,
+      channel_id: channel_id,
+      user_id: user_id,
       joined_at: now,
       last_read_message_id: message && message.id,
       last_read_at: last_read_at
@@ -229,11 +268,11 @@ defmodule Tavern.Chat.Notifications do
 
   # A thread whose own level is :default takes its parent channel's level, so muting a channel
   # also mutes the threads under it.
-  defp effective_channel_notification_level(%User{} = user, %Channel{} = channel) do
-    case own_notification_level(user, channel.id) do
+  defp effective_channel_notification_level(user_id, %Channel{} = channel) do
+    case own_notification_level(user_id, channel.id) do
       :default when is_binary(channel.parent_channel_id) ->
         if Channel.thread?(channel),
-          do: own_notification_level(user, channel.parent_channel_id),
+          do: own_notification_level(user_id, channel.parent_channel_id),
           else: :default
 
       level ->
@@ -241,12 +280,12 @@ defmodule Tavern.Chat.Notifications do
     end
   end
 
-  defp own_notification_level(%User{} = user, channel_id) do
+  defp own_notification_level(user_id, channel_id) do
     override =
-      Repo.get_by(ChannelNotificationOverride, user_id: user.id, channel_id: channel_id)
+      Repo.get_by(ChannelNotificationOverride, user_id: user_id, channel_id: channel_id)
 
     membership =
-      Repo.get_by(ChannelMembership, user_id: user.id, channel_id: channel_id)
+      Repo.get_by(ChannelMembership, user_id: user_id, channel_id: channel_id)
 
     cond do
       override && override.level != :default -> override.level

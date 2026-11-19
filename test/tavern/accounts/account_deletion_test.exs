@@ -170,7 +170,7 @@ defmodule Tavern.Accounts.AccountDeletionTest do
 
     test "a member who rejoined before the time is not deleted", ctx do
       {:ok, _, _} = Chat.kick_member_and_schedule_deletion(scope_for(ctx.owner), ctx.member.id)
-      {:ok, invite} = Chat.create_invite(%{"channel_id" => ctx.channel.id}, ctx.owner)
+      {:ok, invite} = Chat.create_invite(scope_for(ctx.owner), %{"channel_id" => ctx.channel.id})
       {:ok, _} = Chat.rejoin_with_invite(scope_for(ctx.member), invite.code)
 
       assert Accounts.delete_due_accounts(DateTime.add(DateTime.utc_now(), 31, :day)) == 0

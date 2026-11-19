@@ -40,43 +40,43 @@ defmodule Tavern.Bootstrap do
   @unverified_description "Held by every member who has not confirmed their email."
 
   def ensure_seed_data! do
-    Repo.transaction(fn ->
-      user =
-        ensure_system_user!()
+    {:ok, seed} = Repo.transact(&seed/0)
+    seed
+  end
 
-      default_role = ensure_default_role!()
-      unverified_role = ensure_unverified_role!()
+  defp seed do
+    user =
+      ensure_system_user!()
 
-      channels =
-        [
-          %{name: "General", slug: "general", position: 0, topic: "Default lobby for the server"},
-          %{
-            name: "Engineering",
-            slug: "engineering",
-            position: 1,
-            topic: "Build notes and technical chatter"
-          },
-          %{name: "Random", slug: "random", position: 2, topic: "Off-topic but still useful"}
-        ]
-        |> Enum.map(&ensure_channel!/1)
+    default_role = ensure_default_role!()
+    unverified_role = ensure_unverified_role!()
 
-      general_channel = Enum.find(channels, &(&1.slug == "general"))
+    channels =
+      [
+        %{name: "General", slug: "general", position: 0, topic: "Default lobby for the server"},
+        %{
+          name: "Engineering",
+          slug: "engineering",
+          position: 1,
+          topic: "Build notes and technical chatter"
+        },
+        %{name: "Random", slug: "random", position: 2, topic: "Off-topic but still useful"}
+      ]
+      |> Enum.map(&ensure_channel!/1)
 
-      ensure_welcome_message!(general_channel, user)
-      ensure_server_settings!()
-      Accounts.ensure_first_owner!()
+    general_channel = Enum.find(channels, &(&1.slug == "general"))
 
-      %{
-        system_user: user,
-        default_role: default_role,
-        unverified_role: unverified_role,
-        channels: channels
-      }
-    end)
-    |> case do
-      {:ok, result} -> result
-      {:error, _step, reason, _changes} -> raise reason
-    end
+    ensure_welcome_message!(general_channel, user)
+    ensure_server_settings!()
+    Accounts.ensure_first_owner!()
+
+    {:ok,
+     %{
+       system_user: user,
+       default_role: default_role,
+       unverified_role: unverified_role,
+       channels: channels
+     }}
   end
 
   defp ensure_system_user! do

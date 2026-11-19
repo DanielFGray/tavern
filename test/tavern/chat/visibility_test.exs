@@ -380,7 +380,9 @@ defmodule Tavern.Chat.VisibilityTest do
       viewer = role_fixture(%{name: "Expiry viewer", permissions: bits([:view_channel])})
       bot_user = bot_fixture(actor, %{"role_ids" => [viewer.id]})
 
-      {:ok, %{token: token}} = Bots.create_bot_token(bot_user, %{"label" => "expiry"}, actor)
+      {:ok, %{token: token}} =
+        Bots.create_bot_token(scope_for(actor), bot_user.id, %{"label" => "expiry"})
+
       {:ok, scope} = Bots.get_bot_scope_by_token(token)
       assert Visibility.can?(scope, :view_channel, channel)
 
@@ -404,12 +406,14 @@ defmodule Tavern.Chat.VisibilityTest do
 
       bot_user = bot_fixture(actor, %{"role_ids" => [viewer.id]})
 
-      {:ok, %{token: token}} = Bots.create_bot_token(bot_user, %{"label" => "gate"}, actor)
+      {:ok, %{token: token}} =
+        Bots.create_bot_token(scope_for(actor), bot_user.id, %{"label" => "gate"})
+
       {:ok, scope} = Bots.get_bot_scope_by_token(token)
       assert Visibility.can?(scope, :view_channel, channel)
 
       bot_token = Repo.get!(BotToken, scope.bot_token_id)
-      {:ok, _revoked} = Bots.revoke_bot_token(bot_token, actor)
+      {:ok, _revoked} = Bots.revoke_bot_token(scope_for(actor), bot_token.id)
 
       assert Visibility.member(scope) == nil
       refute Visibility.can?(scope, :view_channel, channel)

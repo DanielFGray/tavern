@@ -29,6 +29,6 @@ defmodule TavernWeb.API.BotAuthorityTest do
       })
 
     assert %{"error" => %{"code" => "forbidden"}} = json_response(conn, 403)
-    assert Bots.list_controllable_bot_users(manager) == []
+    assert Bots.list_controllable_bot_users(scope_for(manager)) == []
   end
 end

@@ -113,7 +113,7 @@ defmodule TavernWeb.ServerLive.State do
       end
 
     last_message = List.last(messages)
-    Chat.mark_channel_read(socket.assigns.current_user, channel, last_message)
+    Chat.mark_channel_read(socket.assigns.current_scope, channel.id, last_message)
     thread_summaries = Chat.thread_summaries_for_channel(socket.assigns.current_scope, channel.id)
 
     visible_channels = Keyword.get(opts, :visible_channels)
@@ -129,11 +129,11 @@ defmodule TavernWeb.ServerLive.State do
 
     unread_counts =
       Keyword.get(opts, :unread_counts) ||
-        Chat.unread_counts_for_user(socket.assigns.current_user, refreshed_channels)
+        Chat.unread_counts(socket.assigns.current_scope, ids(refreshed_channels))
 
     unread_mentions =
       Keyword.get(opts, :unread_mentions) ||
-        Chat.unread_mentions_for_user(socket.assigns.current_user, refreshed_channels)
+        Chat.unread_mentions(socket.assigns.current_scope, ids(refreshed_channels))
 
     active_thread = reloaded_active_thread(socket, refreshed_active_channel)
 
@@ -238,7 +238,7 @@ defmodule TavernWeb.ServerLive.State do
       true ->
         starter_message_id = active_thread.starter_message_id
         # The member is reading the open thread, so its sidebar badge must not return on reload.
-        Chat.mark_channel_read(socket.assigns.current_user, active_thread, message)
+        Chat.mark_channel_read(socket.assigns.current_scope, active_thread.id, message)
 
         socket
         |> assign(:thread_messages_empty?, false)
@@ -306,7 +306,7 @@ defmodule TavernWeb.ServerLive.State do
     assign(
       socket,
       :unread_counts,
-      Chat.unread_counts_for_user(socket.assigns.current_user, socket.assigns.channels)
+      Chat.unread_counts(socket.assigns.current_scope, ids(socket.assigns.channels))
     )
   end
 
@@ -314,7 +314,7 @@ defmodule TavernWeb.ServerLive.State do
     assign(
       socket,
       :unread_mentions,
-      Chat.unread_mentions_for_user(socket.assigns.current_user, socket.assigns.channels)
+      Chat.unread_mentions(socket.assigns.current_scope, ids(socket.assigns.channels))
     )
   end
 
@@ -412,7 +412,7 @@ defmodule TavernWeb.ServerLive.State do
       not Chat.message_mentions_user?(message, current_user) ->
         socket
 
-      not Chat.mention_notifications_enabled?(current_user, channel) ->
+      not Chat.mention_notifications_enabled?(socket.assigns.current_scope, channel) ->
         socket
 
       true ->
@@ -465,7 +465,7 @@ defmodule TavernWeb.ServerLive.State do
 
     last_message = List.last(thread_messages)
     Chat.ensure_channel_memberships(socket.assigns.current_scope, [thread])
-    Chat.mark_channel_read(socket.assigns.current_user, thread, last_message)
+    Chat.mark_channel_read(socket.assigns.current_scope, thread.id, last_message)
 
     socket
     |> assign(
@@ -654,4 +654,6 @@ defmodule TavernWeb.ServerLive.State do
   defp visible_text_channel?(channel) do
     channel.kind not in [:category, :thread_public, :thread_private, :thread_announcement]
   end
+
+  defp ids(channels), do: Enum.map(channels, & &1.id)
 end

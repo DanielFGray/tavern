@@ -19,9 +19,9 @@ defmodule TavernWeb.ServerLive.ThreadNav do
 
   @doc "Reloads the followed threads, their unread counts and the open thread's follow state."
   def refresh_followed_threads(socket) do
-    %{current_scope: scope, current_user: user} = socket.assigns
+    scope = socket.assigns.current_scope
     entries = Chat.followed_threads(scope)
-    unread = Chat.unread_counts_for_user(user, Enum.map(entries, & &1.thread))
+    unread = Chat.unread_counts(scope, Enum.map(entries, & &1.thread.id))
 
     entries =
       Enum.map(entries, fn entry ->
@@ -184,11 +184,11 @@ defmodule TavernWeb.ServerLive.ThreadNav do
       counts_unread?(socket, message) and
         if followed?(socket, thread.id) do
           Chat.message_mentions_user?(message, user) and
-            Chat.mention_notifications_enabled?(user, thread)
+            Chat.mention_notifications_enabled?(scope, thread)
         else
           Chat.message_mentions_user_directly?(message, user) and
             not is_nil(Chat.get_thread(scope, thread.id)) and
-            Chat.mention_notifications_enabled?(user, thread)
+            Chat.mention_notifications_enabled?(scope, thread)
         end
 
     if notify? do

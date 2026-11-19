@@ -110,7 +110,7 @@ defmodule TavernWeb.UserAuthLiveTest do
     refute has_element?(view, "input[name='user[invite_code]']")
 
     assert {:ok, _settings} =
-             Chat.update_server_settings(%{"registration_mode" => "invite_only"}, owner)
+             Chat.update_server_settings(scope_for(owner), %{"registration_mode" => "invite_only"})
 
     view
     |> form("#registration-form", %{
@@ -133,9 +133,9 @@ defmodule TavernWeb.UserAuthLiveTest do
     channel = channel_fixture()
 
     assert {:ok, _settings} =
-             Chat.update_server_settings(%{"registration_mode" => "invite_only"}, owner)
+             Chat.update_server_settings(scope_for(owner), %{"registration_mode" => "invite_only"})
 
-    assert {:ok, invite} = Chat.create_invite(%{"channel_id" => channel.id}, owner)
+    assert {:ok, invite} = Chat.create_invite(scope_for(owner), %{"channel_id" => channel.id})
 
     {:ok, view, _html} = live(conn, ~p"/register")
     assert has_element?(view, "input[name='user[invite_code]']")

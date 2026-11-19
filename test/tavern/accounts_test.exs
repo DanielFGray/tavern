@@ -55,7 +55,9 @@ defmodule Tavern.AccountsTest do
       owner = owner_fixture()
 
       assert {:ok, _} =
-               Chat.update_server_settings(%{"registration_mode" => "invite_only"}, owner)
+               Chat.update_server_settings(scope_for(owner), %{
+                 "registration_mode" => "invite_only"
+               })
 
       assert {:error, :invite_required} = Accounts.register_user(@attrs)
       refute Repo.exists?(from u in User, where: u.email == "gate@example.com")
@@ -66,9 +68,11 @@ defmodule Tavern.AccountsTest do
       channel = channel_fixture()
 
       assert {:ok, _} =
-               Chat.update_server_settings(%{"registration_mode" => "invite_only"}, owner)
+               Chat.update_server_settings(scope_for(owner), %{
+                 "registration_mode" => "invite_only"
+               })
 
-      {:ok, invite} = Chat.create_invite(%{"channel_id" => channel.id}, owner)
+      {:ok, invite} = Chat.create_invite(scope_for(owner), %{"channel_id" => channel.id})
 
       assert {:ok, _user} = Accounts.register_user(@attrs, invite_code: invite.code)
     end

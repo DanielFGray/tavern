@@ -57,7 +57,9 @@ defmodule TavernWeb.API.BotControllerTest do
 
     channel = channel_fixture(%{name: "Bot Channel", slug: unique_slug()})
     bot_user = bot_fixture(actor, %{"role_ids" => [role.id]})
-    {:ok, %{token: bot_token}} = Bots.create_bot_token(bot_user, %{"label" => "api"}, actor)
+
+    {:ok, %{token: bot_token}} =
+      Bots.create_bot_token(scope_for(actor), bot_user.id, %{"label" => "api"})
 
     post_conn =
       Phoenix.ConnTest.build_conn()
@@ -94,7 +96,9 @@ defmodule TavernWeb.API.BotControllerTest do
     starter = message_fixture(channel, actor, %{body: "bot state starter"})
     thread = thread_fixture(channel, starter, actor)
     bot_user = bot_fixture(actor, %{"role_ids" => [role.id]})
-    {:ok, %{token: bot_token}} = Bots.create_bot_token(bot_user, %{"label" => "api"}, actor)
+
+    {:ok, %{token: bot_token}} =
+      Bots.create_bot_token(scope_for(actor), bot_user.id, %{"label" => "api"})
 
     post = fn id, body ->
       Phoenix.ConnTest.build_conn()
@@ -132,7 +136,9 @@ defmodule TavernWeb.API.BotControllerTest do
 
     channel = channel_fixture(%{name: "Validation Channel", slug: unique_slug()})
     bot_user = bot_fixture(actor, %{"role_ids" => [role.id]})
-    {:ok, %{token: bot_token}} = Bots.create_bot_token(bot_user, %{"label" => "api"}, actor)
+
+    {:ok, %{token: bot_token}} =
+      Bots.create_bot_token(scope_for(actor), bot_user.id, %{"label" => "api"})
 
     conn =
       Phoenix.ConnTest.build_conn()
@@ -160,7 +166,9 @@ defmodule TavernWeb.API.BotControllerTest do
     _replied_user_role = member_role_fixture(replied_user, role)
     reply_target = message_fixture(channel, replied_user, %{body: "seed reply target"})
     bot_user = bot_fixture(actor, %{"role_ids" => [role.id]})
-    {:ok, %{token: bot_token}} = Bots.create_bot_token(bot_user, %{"label" => "api"}, actor)
+
+    {:ok, %{token: bot_token}} =
+      Bots.create_bot_token(scope_for(actor), bot_user.id, %{"label" => "api"})
 
     post_conn =
       Phoenix.ConnTest.build_conn()
@@ -208,7 +216,9 @@ defmodule TavernWeb.API.BotControllerTest do
     channel = channel_fixture(%{name: "Thread Host", slug: unique_slug()})
     starter = message_fixture(channel, actor, %{body: "starter message"})
     bot_user = bot_fixture(actor, %{"role_ids" => [role.id]})
-    {:ok, %{token: bot_token}} = Bots.create_bot_token(bot_user, %{"label" => "api"}, actor)
+
+    {:ok, %{token: bot_token}} =
+      Bots.create_bot_token(scope_for(actor), bot_user.id, %{"label" => "api"})
 
     create_conn =
       Phoenix.ConnTest.build_conn()
@@ -260,7 +270,9 @@ defmodule TavernWeb.API.BotControllerTest do
     channel = channel_fixture(%{name: "Thread Query Host", slug: unique_slug()})
     starter = message_fixture(channel, actor, %{body: "no thread yet"})
     bot_user = bot_fixture(actor, %{"role_ids" => [role.id]})
-    {:ok, %{token: bot_token}} = Bots.create_bot_token(bot_user, %{"label" => "api"}, actor)
+
+    {:ok, %{token: bot_token}} =
+      Bots.create_bot_token(scope_for(actor), bot_user.id, %{"label" => "api"})
 
     conn =
       Phoenix.ConnTest.build_conn()
@@ -465,7 +477,9 @@ defmodule TavernWeb.API.BotControllerTest do
 
       _actor_role = member_role_fixture(actor, role)
       bot_user = bot_fixture(actor, %{"role_ids" => [role.id]})
-      {:ok, %{token: token}} = Bots.create_bot_token(bot_user, %{"label" => "sse"}, actor)
+
+      {:ok, %{token: token}} =
+        Bots.create_bot_token(scope_for(actor), bot_user.id, %{"label" => "sse"})
 
       %{actor: actor, role: role, bot_user: bot_user, token: token}
     end
@@ -478,7 +492,7 @@ defmodule TavernWeb.API.BotControllerTest do
         Bots.get_bot_scope_by_token(token)
 
       bot_token = Tavern.Repo.get!(Tavern.Chat.BotToken, bot_token_id)
-      {:ok, _revoked} = Bots.revoke_bot_token(bot_token, actor)
+      {:ok, _revoked} = Bots.revoke_bot_token(scope_for(actor), bot_token.id)
 
       send(task.pid, :reauthorize)
 
@@ -572,7 +586,9 @@ defmodule TavernWeb.API.BotControllerTest do
   end
 
   defp bot_scope_for(bot_user, actor) do
-    {:ok, %{token: token}} = Bots.create_bot_token(bot_user, %{"label" => "test"}, actor)
+    {:ok, %{token: token}} =
+      Bots.create_bot_token(scope_for(actor), bot_user.id, %{"label" => "test"})
+
     {:ok, scope} = Bots.get_bot_scope_by_token(token)
     scope
   end

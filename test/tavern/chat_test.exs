@@ -30,7 +30,7 @@ defmodule Tavern.ChatTest do
       assert Enum.map(channels, & &1.id) == [earlier.id, later.id]
     end
 
-    test "ensure_channel_memberships_for_user/2 initializes read state and unread_counts_for_user/2 tracks new messages" do
+    test "ensure_channel_memberships_for_user/2 initializes read state and unread_counts/2 tracks new messages" do
       sender = owner_fixture(%{email: "sender@example.com", username: "sender_user"})
       user = user_fixture(%{email: "reads@example.com", username: "reads_user"})
       engineering = channel_fixture(%{name: "Engineering", slug: unique_slug()})
@@ -43,18 +43,18 @@ defmodule Tavern.ChatTest do
 
       refute membership.last_read_message_id
 
-      counts_before = Chat.unread_counts_for_user(user, channels)
+      counts_before = Chat.unread_counts(scope_for(user), Enum.map(channels, & &1.id))
       assert counts_before[engineering.id] == 0
 
       {:ok, message} =
         Chat.create_message(scope_for(sender), engineering.id, %{body: "fresh update"})
 
-      counts_after = Chat.unread_counts_for_user(user, channels)
+      counts_after = Chat.unread_counts(scope_for(user), Enum.map(channels, & &1.id))
       assert counts_after[engineering.id] == 1
 
-      Chat.mark_channel_read(user, engineering, message)
+      Chat.mark_channel_read(scope_for(user), engineering.id, message)
 
-      assert Chat.unread_counts_for_user(user, channels)[engineering.id] == 0
+      assert Chat.unread_counts(scope_for(user), Enum.map(channels, & &1.id))[engineering.id] == 0
     end
 
     test "a channel manager cannot see or change a channel hidden by its overwrite" do
@@ -223,7 +223,7 @@ defmodule Tavern.ChatTest do
                Chat.create_channel(scope_for(user), %{name: "No", slug: unique_slug()})
     end
 
-    test "unread_mentions_for_user/2 counts unread direct mentions" do
+    test "unread_mentions/2 counts unread direct mentions" do
       sender = owner_fixture(%{email: "mention-sender@example.com", username: "mention_sender"})
       user = user_fixture(%{email: "mention-target@example.com", username: "mention_target"})
       engineering = channel_fixture(%{name: "Engineering", slug: unique_slug()})
@@ -241,14 +241,16 @@ defmodule Tavern.ChatTest do
                  }
                })
 
-      assert Chat.unread_mentions_for_user(user, channels)[engineering.id] == 1
+      assert Chat.unread_mentions(scope_for(user), Enum.map(channels, & &1.id))[engineering.id] ==
+               1
 
-      Chat.mark_channel_read(user, engineering, first_message)
+      Chat.mark_channel_read(scope_for(user), engineering.id, first_message)
 
-      assert Chat.unread_mentions_for_user(user, channels)[engineering.id] == 0
+      assert Chat.unread_mentions(scope_for(user), Enum.map(channels, & &1.id))[engineering.id] ==
+               0
     end
 
-    test "unread_mentions_for_user/2 counts unread role mentions for member roles" do
+    test "unread_mentions/2 counts unread role mentions for member roles" do
       sender =
         owner_fixture(%{
           email: "role-mention-sender@example.com",
@@ -275,7 +277,8 @@ defmodule Tavern.ChatTest do
                  }
                })
 
-      assert Chat.unread_mentions_for_user(user, channels)[engineering.id] == 1
+      assert Chat.unread_mentions(scope_for(user), Enum.map(channels, & &1.id))[engineering.id] ==
+               1
     end
 
     test "a created message carries the mention rows receivers check" do
@@ -369,7 +372,7 @@ defmodule Tavern.ChatTest do
                )
       end
 
-      assert Chat.unread_mentions_for_user(receiver, [channel])[channel.id] == 2
+      assert Chat.unread_mentions(scope_for(receiver), [channel.id])[channel.id] == 2
     end
 
     test "@here follows the default role, not the name @everyone" do
@@ -392,16 +395,36 @@ defmodule Tavern.ChatTest do
       user = user_fixture(%{email: "notify-prefs@example.com", username: "notify_prefs"})
       channel = channel_fixture()
 
-      assert Chat.mention_notifications_enabled?(user, channel)
+      assert Chat.mention_notifications_enabled?(scope_for(user), channel)
 
       assert {:ok, %UserNotificationSetting{} = setting} =
-               Chat.update_user_notification_setting(user, %{
+               Chat.update_user_notification_setting(scope_for(user), %{
                  desktop_enabled: false,
                  notify_on_mentions: true
                })
 
       refute setting.desktop_enabled
-      refute Chat.mention_notifications_enabled?(user, channel)
+      refute Chat.mention_notifications_enabled?(scope_for(user), channel)
+    end
+
+    test "a channel preference for a hidden or malformed channel is not_found and stores no row" do
+      %{default_role: default_role} = Bootstrap.ensure_seed_data!()
+      user = user_fixture()
+      hidden = channel_fixture(%{name: "Hidden", slug: unique_slug()})
+
+      channel_permission_overwrite_fixture(hidden, %{
+        role_id: default_role.id,
+        deny_permissions: PermissionBits.combine([:view_channel])
+      })
+
+      for channel_id <- [hidden.id, "not-a-uuid"] do
+        assert {:error, :not_found} =
+                 Chat.update_channel_membership_notification(scope_for(user), channel_id, %{
+                   is_favorite: true
+                 })
+      end
+
+      refute Repo.get_by(Tavern.Chat.ChannelMembership, user_id: user.id, channel_id: hidden.id)
     end
   end
 
@@ -882,7 +905,7 @@ defmodule Tavern.ChatTest do
       user = user_fixture(%{email: "emoji-list-user@example.com", username: "emoji_list_user"})
       emoji = emoji_fixture(user, %{name: "partyblob", shortcode: ":partyblob:"})
 
-      assert Enum.any?(Chat.list_available_emojis(user), &(&1.id == emoji.id))
+      assert Enum.any?(Chat.list_available_emojis(scope_for(user)), &(&1.id == emoji.id))
     end
 
     test "delete_message/2 allows moderators with manage_messages" do

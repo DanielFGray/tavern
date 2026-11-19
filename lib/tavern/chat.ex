@@ -69,13 +69,12 @@ defmodule Tavern.Chat do
   ]
 
   def default_reaction_emojis, do: @default_reaction_emojis
-  defdelegate create_server_icon_from_upload(creator, upload), to: MediaAssets
   defdelegate asset_url(asset), to: MediaAssets
   defdelegate get_server_settings(), to: ServerConfig
   defdelegate reset_server_settings_cache(), to: ServerConfig
   defdelegate change_server_settings(server_settings, attrs \\ %{}), to: ServerConfig
-  defdelegate update_server_settings(attrs, actor), to: ServerConfig
-  defdelegate remove_server_icon(actor), to: ServerConfig
+  defdelegate update_server_settings(scope, attrs), to: ServerConfig
+  defdelegate remove_server_icon(scope), to: ServerConfig
   defdelegate server_icon_url(settings), to: ServerConfig
   defdelegate default_server_name(), to: ServerConfig
 
@@ -154,11 +153,9 @@ defmodule Tavern.Chat do
     ]
   end
 
-  defdelegate list_custom_emojis(), to: Emojis
-  defdelegate list_available_emojis(user), to: Emojis
-  defdelegate get_emoji!(id), to: Emojis
+  defdelegate list_available_emojis(scope), to: Emojis
   defdelegate change_emoji(emoji, attrs \\ %{}), to: Emojis
-  defdelegate create_custom_emoji_from_upload(attrs, creator, upload), to: Emojis
+  defdelegate create_custom_emoji(scope, upload, attrs), to: Emojis
   defdelegate delete_custom_emoji(scope, emoji_id), to: Emojis
 
   defdelegate build_channel_tree(channels), to: Channels
@@ -171,15 +168,16 @@ defmodule Tavern.Chat do
   defdelegate delete_channel(scope, channel_id), to: Channels
   defdelegate list_deleted_channels(scope), to: Channels
   defdelegate restore_channel(scope, channel_id), to: Channels
-  defdelegate get_user_notification_setting(user), to: Notifications
-  defdelegate update_user_notification_setting(user, attrs), to: Notifications
-  defdelegate update_channel_membership_notification(user, channel_id, attrs), to: Notifications
-  defdelegate unread_counts_for_user(user, channels), to: Notifications
-  defdelegate unread_mentions_for_user(user, channels), to: Notifications
+  defdelegate get_user_notification_setting(scope), to: Notifications
+  defdelegate update_user_notification_setting(scope, attrs), to: Notifications
+  defdelegate channel_memberships(scope, channel_ids), to: Notifications
+  defdelegate update_channel_membership_notification(scope, channel_id, attrs), to: Notifications
+  defdelegate unread_counts(scope, channel_ids), to: Notifications
+  defdelegate unread_mentions(scope, channel_ids), to: Notifications
 
-  defdelegate create_invite(attrs, actor), to: Invites
-  defdelegate list_invites(actor), to: Invites
-  defdelegate revoke_invite(invite_id, actor), to: Invites
+  defdelegate create_invite(scope, attrs), to: Invites
+  defdelegate list_invites(scope), to: Invites
+  defdelegate revoke_invite(scope, invite_id), to: Invites
   defdelegate invite_tree_children(scope, parent), to: InviteTree, as: :children
   defdelegate invite_tree_path_to(scope, user_id), to: InviteTree, as: :path_to
   defdelegate invite_tree_search(scope, query), to: InviteTree, as: :search
@@ -839,15 +837,15 @@ defmodule Tavern.Chat do
   naming the code. Broadcasts `:roles_changed`, and returns `{:ok, membership}`.
 
   Errors: `{:error, :banned}` for a banned member, `{:error, :not_kicked}` for a member who is
-  active or has no membership, and `{:error, {:refused, :invalid_invite}}` for a code that is
-  unknown, revoked, expired, exhausted or already used by this member.
+  active or has no membership, and `{:error, :invalid_invite}` for a code that is unknown,
+  revoked, expired, exhausted or already used by this member.
   """
   def rejoin_with_invite(%Scope{user_id: user_id}, code) when is_binary(user_id) do
     Repo.transact(fn ->
       with %Membership{} = membership <- lock_membership(user_id),
            :ok <- ensure_kicked(membership),
            %User{} = user <- Repo.get(User, user_id),
-           invite = Invites.redeem(code, user) do
+           {:ok, invite} <- Invites.redeem(code, user) do
         from(member_role in MemberRole, where: member_role.user_id == ^user_id)
         |> Repo.delete_all()
 
@@ -1014,7 +1012,7 @@ defmodule Tavern.Chat do
 
   defdelegate message_mentions_user?(message, user), to: Notifications
   defdelegate message_mentions_user_directly?(message, user), to: Notifications
-  defdelegate mention_notifications_enabled?(user, channel), to: Notifications
+  defdelegate mention_notifications_enabled?(scope, channel), to: Notifications
 
   @doc """
   Adds the scope's reaction with this unicode emoji to a message, or removes it when present.
@@ -1027,17 +1025,15 @@ defmodule Tavern.Chat do
         {:error, :invalid_emoji}
 
       emoji_unicode ->
-        toggle_reaction_on(scope, message_id, fn _member ->
-          {:ok, %{emoji_unicode: emoji_unicode}}
-        end)
+        toggle_reaction_on(scope, message_id, fn -> {:ok, %{emoji_unicode: emoji_unicode}} end)
     end
   end
 
   # Toggles a reaction with a custom emoji the scope's member may use, by emoji id.
   def toggle_reaction(%Scope{} = scope, message_id, %{"emoji_id" => emoji_id})
       when is_binary(emoji_id) do
-    toggle_reaction_on(scope, message_id, fn member ->
-      with {:ok, emoji} <- Emojis.fetch_available_emoji_for_user(emoji_id, member) do
+    toggle_reaction_on(scope, message_id, fn ->
+      with {:ok, emoji} <- Emojis.fetch_available_emoji(scope, emoji_id) do
         {:ok, %{emoji_id: emoji.id}}
       end
     end)
@@ -1049,7 +1045,7 @@ defmodule Tavern.Chat do
     with {:ok, message_id} <- cast_id(message_id) do
       Repo.transact(fn ->
         with {:ok, message} <- authorize_message_write(scope, :add_reactions, message_id),
-             {:ok, key} <- emoji_key.(Visibility.member(scope)),
+             {:ok, key} <- emoji_key.(),
              {:ok, change} <- toggle_reaction_row(message, scope.user_id, key) do
           {:ok, {reload_message(message.id), change}}
         end
@@ -1083,7 +1079,7 @@ defmodule Tavern.Chat do
     end
   end
 
-  defdelegate mark_channel_read(user, channel, message \\ nil), to: Notifications
+  defdelegate mark_channel_read(scope, channel_id, message \\ nil), to: Notifications
 
   @doc """
   What the scope may do in channel or thread `channel_id`, decided from one permission load: a
@@ -1113,10 +1109,6 @@ defmodule Tavern.Chat do
     else
       _ -> 0
     end
-  end
-
-  def first_user! do
-    Repo.one!(from(user in User, order_by: [asc: user.inserted_at], limit: 1))
   end
 
   def default_role, do: Repo.get_by(Role, is_default: true)

@@ -18,7 +18,7 @@ defmodule TavernWeb.ServerBrandingTest do
 
   test "a member without manage_server sees no branding form and forged events change nothing",
        %{conn: conn} do
-    {:ok, _} = Chat.update_server_settings(%{"name" => "Original"}, owner_fixture())
+    {:ok, _} = Chat.update_server_settings(scope_for(owner_fixture()), %{"name" => "Original"})
     conn = log_in_member_user(conn, "branding")
     {:ok, view, _html} = live(conn, ~p"/settings?tab=server")
 
@@ -58,13 +58,13 @@ defmodule TavernWeb.ServerBrandingTest do
     {:ok, _} = Tavern.Accounts.demote_from_owner(scope_for(owner), second_owner.id)
 
     assert {:error, :forbidden} =
-             Chat.update_server_settings(%{"name" => "Stale"}, stale_second_owner)
+             Chat.update_server_settings(scope_for(stale_second_owner), %{"name" => "Stale"})
   end
 
   test "forged icon_asset_id in save_server_settings does not change the icon", %{conn: conn} do
     owner = owner_fixture()
     emoji = emoji_fixture(owner)
-    {:ok, _} = Chat.update_server_settings(%{"name" => "Brand HQ"}, owner)
+    {:ok, _} = Chat.update_server_settings(scope_for(owner), %{"name" => "Brand HQ"})
 
     conn = log_in_owner_user(conn)
     {:ok, view, _html} = live(conn, ~p"/settings?tab=server")
@@ -88,17 +88,14 @@ defmodule TavernWeb.ServerBrandingTest do
     File.write!(path, "fake png bytes")
 
     assert {:ok, settings} =
-             Chat.update_server_settings(
-               %{
-                 "name" => "Brand HQ",
-                 "icon_upload" => %{
-                   path: path,
-                   client_name: "brand.png",
-                   client_type: "image/png"
-                 }
-               },
-               owner
-             )
+             Chat.update_server_settings(scope_for(owner), %{
+               "name" => "Brand HQ",
+               "icon_upload" => %{
+                 path: path,
+                 client_name: "brand.png",
+                 client_type: "image/png"
+               }
+             })
 
     File.rm(path)
     icon_id = settings.icon_asset_id

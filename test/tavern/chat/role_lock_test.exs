@@ -111,7 +111,10 @@ defmodule Tavern.Chat.RoleLockTest do
       "role_ids" => [granted_role.id]
     }
 
-    creation = Task.async(fn -> on_own_connection(fn -> Bots.create_bot(attrs, manager) end) end)
+    creation =
+      Task.async(fn ->
+        on_own_connection(fn -> Bots.create_bot(scope_for(manager), attrs) end)
+      end)
 
     await_waiters(1)
     commit(holder)

@@ -49,8 +49,14 @@ defmodule TavernWeb.Live.SharedHelpers do
         {:error, :invalid_upload_type, socket} ->
           {:noreply, put_flash(socket, :error, "Emoji uploads must be png, jpg, gif, or webp.")}
 
-        {:error, changeset, socket} ->
+        {:error, :forbidden, socket} ->
+          {:noreply, put_flash(socket, :error, "You do not have permission to manage emojis.")}
+
+        {:error, %Ecto.Changeset{} = changeset, socket} ->
           {:noreply, assign(socket, :emoji_form, to_form(changeset, as: :emoji))}
+
+        {:error, _reason, socket} ->
+          {:noreply, put_flash(socket, :error, "Could not save that emoji.")}
       end
     end
   end
@@ -58,12 +64,8 @@ defmodule TavernWeb.Live.SharedHelpers do
   def consume_emoji_upload(socket, emoji_params) do
     result =
       Phoenix.LiveView.consume_uploaded_entries(socket, :emoji_image, fn %{path: path}, entry ->
-        {:ok,
-         Chat.create_custom_emoji_from_upload(emoji_params, socket.assigns.current_user, %{
-           path: path,
-           client_name: entry.client_name,
-           client_type: entry.client_type
-         })}
+        upload = %{path: path, client_name: entry.client_name, client_type: entry.client_type}
+        {:ok, Chat.create_custom_emoji(socket.assigns.current_scope, upload, emoji_params)}
       end)
 
     case result do
@@ -145,8 +147,8 @@ defmodule TavernWeb.Live.SharedHelpers do
 
   def run_member_moderation(_scope, _subject_id, _params), do: {:error, :invalid_action}
 
-  def emoji_entries_for_picker(current_user) do
-    Chat.list_available_emojis(current_user)
+  def emoji_entries_for_picker(scope) do
+    Chat.list_available_emojis(scope)
     |> Enum.map(fn emoji ->
       %{
         id: emoji.id,

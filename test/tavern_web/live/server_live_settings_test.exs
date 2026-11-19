@@ -126,13 +126,13 @@ defmodule TavernWeb.ServerLiveSettingsTest do
     |> form("#emoji-form", %{emoji: %{name: "blobhype", shortcode: ":blobhype:"}})
     |> render_submit()
 
-    assert has_element?(view, "#manage-emoji-#{List.last(Chat.list_custom_emojis()).id}")
+    emoji = Tavern.Repo.get_by!(Chat.Emoji, name: "blobhype") |> Tavern.Repo.preload(:asset)
+    assert has_element?(view, "#manage-emoji-#{emoji.id}")
 
-    emoji = List.last(Chat.list_custom_emojis())
     assert build_conn() |> get(Chat.asset_url(emoji.asset)) |> response(200) == "fake png bytes"
 
     view |> element("#delete-emoji-#{emoji.id}") |> render_click()
-    refute Enum.any?(Chat.list_custom_emojis(), &(&1.id == emoji.id))
+    refute Tavern.Repo.get(Chat.Emoji, emoji.id)
     assert build_conn() |> get(Chat.asset_url(emoji.asset)) |> response(404)
   end
 
@@ -172,7 +172,7 @@ defmodule TavernWeb.ServerLiveSettingsTest do
 
     view |> element("#delete-emoji-#{emoji.id}") |> render_click()
 
-    assert Enum.any?(Chat.list_custom_emojis(), &(&1.id == emoji.id))
+    assert Tavern.Repo.get(Chat.Emoji, emoji.id)
     assert render(view) =~ "You do not have permission to manage emojis."
   end
 

@@ -92,7 +92,7 @@ defmodule Tavern.Chat.ScheduledDeletionTest do
     end
 
     test "rejoining with an invite clears the schedule and records the cancellation", ctx do
-      {:ok, invite} = Chat.create_invite(%{"channel_id" => ctx.channel.id}, ctx.owner)
+      {:ok, invite} = Chat.create_invite(scope_for(ctx.owner), %{"channel_id" => ctx.channel.id})
 
       assert {:ok, membership} = Chat.rejoin_with_invite(scope_for(ctx.member), invite.code)
       assert is_nil(membership.deletion_scheduled_at)

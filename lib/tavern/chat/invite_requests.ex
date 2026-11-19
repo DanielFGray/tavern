@@ -167,7 +167,7 @@ defmodule Tavern.Chat.InviteRequests do
   `{:ok, count}`. Needs `manage_applications`.
   """
   def deny_invite_requests_from_ip(%Scope{} = scope, ip_address) when is_binary(ip_address) do
-    Repo.transaction(fn ->
+    Repo.transact(fn ->
       with :ok <- Visibility.authorize_write(scope, :manage_applications, :server) do
         now = DateTime.utc_now()
 
@@ -184,9 +184,7 @@ defmodule Tavern.Chat.InviteRequests do
           "count" => count
         })
 
-        count
-      else
-        {:error, reason} -> Repo.rollback(reason)
+        {:ok, count}
       end
     end)
   end
@@ -197,17 +195,17 @@ defmodule Tavern.Chat.InviteRequests do
   `manage_applications`.
   """
   def resend_invite(%Scope{} = scope, request_id) do
-    Repo.transaction(fn ->
+    Repo.transact(fn ->
       with :ok <- Visibility.authorize_write(scope, :manage_applications, :server),
            %InviteRequest{status: :approved} = request <- get_request(request_id),
            %Invite{} = invite <- Repo.preload(request, :invite).invite,
            true <- usable?(invite) do
-        %{request | invite: invite}
+        {:ok, %{request | invite: invite}}
       else
-        {:error, reason} -> Repo.rollback(reason)
-        nil -> Repo.rollback(:not_found)
-        %InviteRequest{} -> Repo.rollback(:not_approved)
-        false -> Repo.rollback(:invite_unusable)
+        {:error, reason} -> {:error, reason}
+        nil -> {:error, :not_found}
+        %InviteRequest{} -> {:error, :not_approved}
+        false -> {:error, :invite_unusable}
       end
     end)
     |> case do
@@ -219,14 +217,14 @@ defmodule Tavern.Chat.InviteRequests do
   # Authorises, locks the request row and checks it is still pending, then runs `fun` with the
   # locked request, all in one transaction, so two moderators cannot both decide one request.
   defp decide(scope, request_id, fun) do
-    Repo.transaction(fn ->
+    Repo.transact(fn ->
       with :ok <- Visibility.authorize_write(scope, :manage_applications, :server),
            %InviteRequest{status: :pending} = request <- get_request(request_id, lock: true) do
-        fun.(request, DateTime.utc_now())
+        {:ok, fun.(request, DateTime.utc_now())}
       else
-        {:error, reason} -> Repo.rollback(reason)
-        nil -> Repo.rollback(:not_found)
-        %InviteRequest{} -> Repo.rollback(:not_pending)
+        {:error, reason} -> {:error, reason}
+        nil -> {:error, :not_found}
+        %InviteRequest{} -> {:error, :not_pending}
       end
     end)
   end

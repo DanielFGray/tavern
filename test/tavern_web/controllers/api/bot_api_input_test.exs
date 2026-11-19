@@ -71,7 +71,7 @@ defmodule TavernWeb.API.BotApiInputTest do
       conn = post(session_conn(owner), ~p"/api/v1/bots/#{bot.id}/tokens", %{token: %{}})
 
       assert json_response(conn, 201)
-      assert [%{expires_at: nil}] = Bots.list_bot_tokens(bot)
+      assert [%{expires_at: nil}] = tokens(owner, bot)
     end
 
     test "a blank form expiry creates a token that never expires", %{owner: owner, bot: bot} do
@@ -81,7 +81,7 @@ defmodule TavernWeb.API.BotApiInputTest do
         })
 
       assert json_response(conn, 201)
-      assert [%{expires_at: nil}] = Bots.list_bot_tokens(bot)
+      assert [%{expires_at: nil}] = tokens(owner, bot)
     end
 
     test "an integer or form string from 1 to 365 sets an expiry", %{owner: owner, bot: bot} do
@@ -94,7 +94,7 @@ defmodule TavernWeb.API.BotApiInputTest do
         assert json_response(conn, 201)
       end
 
-      assert Enum.all?(Bots.list_bot_tokens(bot), &(&1.expires_at != nil))
+      assert Enum.all?(tokens(owner, bot), &(&1.expires_at != nil))
     end
 
     test "an expiry outside 1..365, or not an integer, is a 422 and creates no token",
@@ -111,7 +111,7 @@ defmodule TavernWeb.API.BotApiInputTest do
         assert [_ | _] = details["expires_in_days"]
       end
 
-      assert Bots.list_bot_tokens(bot) == []
+      assert tokens(owner, bot) == []
     end
   end
 
@@ -120,7 +120,7 @@ defmodule TavernWeb.API.BotApiInputTest do
       owner = owner_fixture()
       bot = bot_fixture(owner, %{})
       channel = channel_fixture()
-      {:ok, %{token: bot_token}} = Bots.create_bot_token(bot, %{}, owner)
+      {:ok, %{token: bot_token}} = Bots.create_bot_token(scope_for(owner), bot.id, %{})
       %{owner: owner, bot: bot, channel: channel, bot_token: bot_token}
     end
 
@@ -165,7 +165,7 @@ defmodule TavernWeb.API.BotApiInputTest do
     test "revoking a token whose bot was deleted is 404, not a crash" do
       owner = owner_fixture()
       bot = bot_fixture(owner, %{})
-      {:ok, %{bot_token: bot_token}} = Bots.create_bot_token(bot, %{}, owner)
+      {:ok, %{bot_token: bot_token}} = Bots.create_bot_token(scope_for(owner), bot.id, %{})
 
       assert %{"data" => _} =
                session_conn(owner)
@@ -183,7 +183,7 @@ defmodule TavernWeb.API.BotApiInputTest do
       owner = owner_fixture()
       bot = bot_fixture(owner, %{})
       channel = channel_fixture()
-      {:ok, %{token: bot_token}} = Bots.create_bot_token(bot, %{}, owner)
+      {:ok, %{token: bot_token}} = Bots.create_bot_token(scope_for(owner), bot.id, %{})
       %{owner: owner, bot: bot, channel: channel, bot_token: bot_token}
     end
 
@@ -255,9 +255,14 @@ defmodule TavernWeb.API.BotApiInputTest do
   end
 
   defp create_token!(bot, actor) do
-    {:ok, %{token: token}} = Bots.create_bot_token(bot, %{}, actor)
+    {:ok, %{token: token}} = Bots.create_bot_token(scope_for(actor), bot.id, %{})
     token
   end
 
   defp bot_ids(%{"data" => bots}), do: Enum.map(bots, & &1["id"])
+
+  defp tokens(owner, bot) do
+    {:ok, tokens} = Bots.list_controllable_bot_tokens(scope_for(owner), bot.id)
+    tokens
+  end
 end

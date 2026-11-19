@@ -8,62 +8,64 @@ defmodule Tavern.Chat.Emojis do
   alias Tavern.Chat.MediaAsset
   alias Tavern.Chat.MediaAssets
   alias Tavern.Chat.Visibility
-  alias Tavern.Chat.User
   alias Tavern.Repo
 
-  def list_custom_emojis do
-    Emoji
-    |> order_by([emoji], asc: emoji.name, asc: emoji.inserted_at)
-    |> preload([:asset, :creator, :emoji_roles])
-    |> Repo.all()
+  @doc """
+  The custom emojis the scope's member may use: every available emoji for a member with
+  `manage_emojis_and_stickers`, otherwise the listed ones open to everyone or to one of the
+  member's roles. Empty when the scope has no active member.
+  """
+  def list_available_emojis(%Scope{} = scope) do
+    case usable_by(scope) do
+      nil -> []
+      usable? -> Enum.filter(all_emojis(), usable?)
+    end
   end
 
-  def list_available_emojis(%User{} = user) do
-    user = Repo.preload(user, member_roles: :role)
-    role_ids = role_ids(user)
-    manager? = can_manage_emojis?(user)
-
-    list_custom_emojis()
-    |> Enum.filter(&emoji_available?(&1, role_ids, manager?))
-  end
-
-  def get_emoji!(id) do
-    Emoji
-    |> preload([:asset, :creator, :emoji_roles])
-    |> Repo.get!(id)
+  @doc """
+  The emoji `emoji_id`, when the scope's member may use it. `{:error, :invalid_emoji}` when the
+  id names no emoji, `{:error, :forbidden}` when the member may not use it.
+  """
+  def fetch_available_emoji(%Scope{} = scope, emoji_id) do
+    with {:ok, emoji} <- fetch_emoji(emoji_id),
+         usable? when is_function(usable?) <- usable_by(scope),
+         true <- usable?.(emoji) do
+      {:ok, emoji}
+    else
+      {:error, :invalid_emoji} -> {:error, :invalid_emoji}
+      _ -> {:error, :forbidden}
+    end
   end
 
   def change_emoji(%Emoji{} = emoji, attrs \\ %{}) do
     Emoji.changeset(emoji, attrs)
   end
 
-  def create_custom_emoji_from_upload(attrs, %User{} = creator, upload) when is_map(attrs) do
+  @doc """
+  Stores the uploaded image and creates a custom emoji from it. Needs `manage_emojis_and_stickers`
+  now, in the database: the transaction decides it before the upload is read. Returns
+  `{:error, :forbidden}` without it, `{:error, :invalid_upload_type}` (or another storage
+  reason) for a refused file, and `{:error, changeset}` for bad attrs.
+  """
+  def create_custom_emoji(%Scope{} = scope, upload, attrs) when is_map(attrs) do
     attrs = normalize_emoji_attrs(attrs)
 
-    Repo.transaction(fn ->
-      with :ok <-
-             Visibility.authorize_write(
-               %Scope{user_id: creator.id},
-               :manage_emojis_and_stickers,
-               :server
-             ),
-           {:ok, asset} <- MediaAssets.create_media_asset_from_upload(upload, creator),
+    Repo.transact(fn ->
+      with :ok <- Visibility.authorize_write(scope, :manage_emojis_and_stickers, :server),
+           {:ok, asset} <- store_upload(scope, upload),
            {:ok, emoji} <-
-             %Emoji{creator_id: creator.id}
+             %Emoji{creator_id: scope.user_id}
              |> Emoji.changeset(Map.put(attrs, "asset_id", asset.id))
              |> Repo.insert() do
-        Repo.preload(emoji, [:asset, :creator, :emoji_roles])
-      else
-        {:error, %Ecto.Changeset{} = changeset} -> Repo.rollback(changeset)
-        {:error, reason, :upload} -> Repo.rollback({:upload, reason})
-        {:error, reason} -> Repo.rollback({:refused, reason})
+        {:ok, Repo.preload(emoji, [:asset, :creator, :emoji_roles])}
       end
     end)
-    |> case do
-      {:ok, emoji} -> {:ok, emoji}
-      {:error, {:upload, reason}} -> {:error, reason}
-      {:error, {:refused, reason}} -> {:error, reason}
-      {:error, changeset} -> {:error, changeset}
+  end
+
+  defp store_upload(scope, upload) do
+    case MediaAssets.create_media_asset_from_upload(scope, upload) do
+      {:ok, asset} -> {:ok, asset}
+      {:error, reason, :upload} -> {:error, reason}
     end
   end
 
@@ -72,19 +74,16 @@ defmodule Tavern.Chat.Emojis do
   Returns `{:error, :forbidden}` without it and `{:error, :not_found}` for a missing emoji.
   """
   def delete_custom_emoji(%Scope{} = scope, emoji_id) do
-    Repo.transaction(fn ->
+    Repo.transact(fn ->
       with :ok <- Visibility.authorize_write(scope, :manage_emojis_and_stickers, :server),
-           {:ok, emoji} <- lock_emoji(emoji_id) do
-        {:ok, deleted_emoji} = Repo.delete(emoji)
-
+           {:ok, emoji} <- lock_emoji(emoji_id),
+           {:ok, deleted_emoji} <- Repo.delete(emoji) do
         case deleted_emoji.asset do
           %MediaAsset{} = asset -> MediaAssets.delete_media_asset(asset)
           _ -> {:ok, nil}
         end
 
-        deleted_emoji
-      else
-        {:error, reason} -> Repo.rollback(reason)
+        {:ok, deleted_emoji}
       end
     end)
   end
@@ -99,35 +98,44 @@ defmodule Tavern.Chat.Emojis do
     end
   end
 
-  def fetch_available_emoji_for_user(emoji_id, %User{} = user) do
-    emoji = get_emoji!(emoji_id)
-    user = Repo.preload(user, member_roles: :role)
-
-    if emoji_available?(emoji, role_ids(user), can_manage_emojis?(user)) do
-      {:ok, emoji}
-    else
-      {:error, :forbidden}
-    end
-  rescue
-    Ecto.NoResultsError -> {:error, :invalid_emoji}
+  defp all_emojis do
+    Emoji
+    |> order_by([emoji], asc: emoji.name, asc: emoji.inserted_at)
+    |> preload([:asset, :creator, :emoji_roles])
+    |> Repo.all()
   end
 
-  # `manager?` is the user's manage_emojis_and_stickers decision, made once by the caller so a
-  # list does not decide it per emoji.
-  defp emoji_available?(%Emoji{} = emoji, role_ids, manager?) do
+  defp fetch_emoji(emoji_id) do
+    with {:ok, emoji_id} <- Ecto.UUID.cast(emoji_id),
+         %Emoji{} = emoji <-
+           Emoji |> preload([:asset, :creator, :emoji_roles]) |> Repo.get(emoji_id) do
+      {:ok, emoji}
+    else
+      _ -> {:error, :invalid_emoji}
+    end
+  end
+
+  # Reads the scope's member and its manage_emojis_and_stickers decision once, and returns the
+  # test for one emoji, so a list does not decide per emoji. Nil when no active member.
+  defp usable_by(scope) do
+    case Visibility.member(scope) do
+      nil ->
+        nil
+
+      member ->
+        role_ids = MapSet.new(member.member_roles, & &1.role_id)
+        manager? = Visibility.can?(scope, :manage_emojis_and_stickers, :server)
+        &usable?(&1, role_ids, manager?)
+    end
+  end
+
+  defp usable?(%Emoji{} = emoji, role_ids, manager?) do
     cond do
       not emoji.available -> false
       manager? -> true
       emoji.emoji_roles == [] -> emoji.listed
       true -> emoji.listed and Enum.any?(emoji.emoji_roles, &MapSet.member?(role_ids, &1.role_id))
     end
-  end
-
-  defp can_manage_emojis?(%User{id: user_id}),
-    do: Visibility.can?(%Scope{user_id: user_id}, :manage_emojis_and_stickers, :server)
-
-  defp role_ids(%User{} = user) do
-    MapSet.new(Enum.map(user.member_roles || [], & &1.role_id))
   end
 
   defp normalize_emoji_attrs(attrs) do

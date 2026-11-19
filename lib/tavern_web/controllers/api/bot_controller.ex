@@ -11,147 +11,94 @@ defmodule TavernWeb.API.BotController do
 
   @reauthorize_interval 20_000
 
+  # The bot context decides every write in its own transaction, so a write answers `forbidden`
+  # when the scope may not manage bots. The two reads keep their own check, so a member without
+  # manage_bots gets 403 rather than an empty list or a not-found.
   def index(conn, _params) do
-    if Bots.can_manage_bots?(conn.assigns.current_scope) do
-      bots = Bots.list_controllable_bot_users(conn.assigns.current_user)
-      json(conn, TavernWeb.API.BotJSON.index(%{bots: bots}))
+    scope = conn.assigns.current_scope
+
+    if Bots.can_manage_bots?(scope) do
+      json(conn, TavernWeb.API.BotJSON.index(%{bots: Bots.list_controllable_bot_users(scope)}))
     else
       ErrorHelpers.render_error(conn, :forbidden, "forbidden", "You cannot manage bots.")
     end
   end
 
   def create(conn, %{"bot" => bot_params}) when is_map(bot_params) do
-    actor = conn.assigns.current_user
+    case Bots.create_bot(conn.assigns.current_scope, bot_params) do
+      {:ok, bot} ->
+        conn
+        |> put_status(:created)
+        |> json(TavernWeb.API.BotJSON.show(%{bot: bot}))
 
-    if Bots.can_manage_bots?(conn.assigns.current_scope) do
-      case Bots.create_bot(bot_params, actor) do
-        {:ok, bot} ->
-          conn
-          |> put_status(:created)
-          |> json(TavernWeb.API.BotJSON.show(%{bot: bot}))
+      {:error, :forbidden} ->
+        forbidden(conn)
 
-        {:error, :forbidden} ->
-          forbidden(conn)
-
-        {:error, changeset} ->
-          ErrorHelpers.render_changeset_error(
-            conn,
-            :unprocessable_entity,
-            "invalid_bot",
-            changeset
-          )
-      end
-    else
-      ErrorHelpers.render_error(conn, :forbidden, "forbidden", "You cannot manage bots.")
+      {:error, changeset} ->
+        ErrorHelpers.render_changeset_error(conn, :unprocessable_entity, "invalid_bot", changeset)
     end
   end
 
   def create(conn, _params), do: ErrorHelpers.render_invalid_body(conn)
 
   def update(conn, %{"id" => id, "bot" => bot_params}) when is_map(bot_params) do
-    actor = conn.assigns.current_user
+    case Bots.update_bot(conn.assigns.current_scope, id, bot_params) do
+      {:ok, updated_bot} ->
+        json(conn, TavernWeb.API.BotJSON.show(%{bot: updated_bot}))
 
-    if Bots.can_manage_bots?(conn.assigns.current_scope) do
-      case Bots.get_bot_user(id) do
-        nil ->
-          ErrorHelpers.render_error(conn, :not_found, "not_found", "Bot not found.")
+      {:error, :forbidden} ->
+        forbidden(conn)
 
-        bot ->
-          case Bots.update_bot(bot, bot_params, actor) do
-            {:ok, updated_bot} ->
-              json(conn, TavernWeb.API.BotJSON.show(%{bot: updated_bot}))
+      {:error, :not_found} ->
+        bot_not_found(conn)
 
-            {:error, :forbidden} ->
-              forbidden(conn)
-
-            {:error, changeset} ->
-              ErrorHelpers.render_changeset_error(
-                conn,
-                :unprocessable_entity,
-                "invalid_bot",
-                changeset
-              )
-          end
-      end
-    else
-      ErrorHelpers.render_error(conn, :forbidden, "forbidden", "You cannot manage bots.")
+      {:error, changeset} ->
+        ErrorHelpers.render_changeset_error(conn, :unprocessable_entity, "invalid_bot", changeset)
     end
   end
 
   def update(conn, _params), do: ErrorHelpers.render_invalid_body(conn)
 
   def delete(conn, %{"id" => id}) do
-    actor = conn.assigns.current_user
-
-    if Bots.can_manage_bots?(conn.assigns.current_scope) do
-      case Bots.get_bot_user(id) do
-        nil ->
-          ErrorHelpers.render_error(conn, :not_found, "not_found", "Bot not found.")
-
-        bot ->
-          case Bots.revoke_bot(bot, actor) do
-            {:ok, revoked_bot} ->
-              json(conn, TavernWeb.API.BotJSON.show(%{bot: revoked_bot}))
-
-            {:error, :forbidden} ->
-              forbidden(conn)
-
-            {:error, _reason} ->
-              ErrorHelpers.render_error(
-                conn,
-                :unprocessable_entity,
-                "invalid_bot",
-                "Unable to revoke bot."
-              )
-          end
-      end
-    else
-      ErrorHelpers.render_error(conn, :forbidden, "forbidden", "You cannot manage bots.")
+    case Bots.revoke_bot(conn.assigns.current_scope, id) do
+      {:ok, revoked_bot} -> json(conn, TavernWeb.API.BotJSON.show(%{bot: revoked_bot}))
+      {:error, :forbidden} -> forbidden(conn)
+      {:error, :not_found} -> bot_not_found(conn)
     end
   end
 
   def create_token(conn, %{"id" => id, "token" => token_params}) when is_map(token_params) do
-    actor = conn.assigns.current_user
+    case Bots.create_bot_token(conn.assigns.current_scope, id, token_params) do
+      {:ok, token_info} ->
+        conn
+        |> put_status(:created)
+        |> json(TavernWeb.API.BotJSON.token(%{bot: token_info.bot, token: token_info}))
 
-    if Bots.can_manage_bots?(conn.assigns.current_scope) do
-      case Bots.get_bot_user(id) do
-        nil ->
-          ErrorHelpers.render_error(conn, :not_found, "not_found", "Bot not found.")
+      {:error, :forbidden} ->
+        forbidden(conn)
 
-        bot ->
-          case Bots.create_bot_token(bot, token_params, actor) do
-            {:ok, token_info} ->
-              conn
-              |> put_status(:created)
-              |> json(TavernWeb.API.BotJSON.token(%{bot: bot, token: token_info}))
+      {:error, :not_found} ->
+        bot_not_found(conn)
 
-            {:error, :forbidden} ->
-              forbidden(conn)
-
-            {:error, changeset} ->
-              ErrorHelpers.render_changeset_error(
-                conn,
-                :unprocessable_entity,
-                "invalid_bot_token",
-                changeset
-              )
-          end
-      end
-    else
-      ErrorHelpers.render_error(conn, :forbidden, "forbidden", "You cannot manage bots.")
+      {:error, changeset} ->
+        ErrorHelpers.render_changeset_error(
+          conn,
+          :unprocessable_entity,
+          "invalid_bot_token",
+          changeset
+        )
     end
   end
 
   def create_token(conn, _params), do: ErrorHelpers.render_invalid_body(conn)
 
   def list_tokens(conn, %{"id" => id}) do
-    if Bots.can_manage_bots?(conn.assigns.current_scope) do
-      case Bots.list_controllable_bot_tokens(id, conn.assigns.current_user) do
-        {:ok, tokens} ->
-          json(conn, TavernWeb.API.BotJSON.tokens(%{tokens: tokens}))
+    scope = conn.assigns.current_scope
 
-        {:error, :not_found} ->
-          ErrorHelpers.render_error(conn, :not_found, "not_found", "Bot not found.")
+    if Bots.can_manage_bots?(scope) do
+      case Bots.list_controllable_bot_tokens(scope, id) do
+        {:ok, tokens} -> json(conn, TavernWeb.API.BotJSON.tokens(%{tokens: tokens}))
+        {:error, :not_found} -> bot_not_found(conn)
       end
     else
       ErrorHelpers.render_error(conn, :forbidden, "forbidden", "You cannot manage bots.")
@@ -159,23 +106,23 @@ defmodule TavernWeb.API.BotController do
   end
 
   def revoke_token(conn, %{"id" => id}) do
-    actor = conn.assigns.current_user
+    case Bots.revoke_bot_token(conn.assigns.current_scope, id) do
+      {:ok, revoked_token} ->
+        json(conn, %{data: %{id: revoked_token.id, revoked_at: revoked_token.revoked_at}})
 
-    if Bots.can_manage_bots?(conn.assigns.current_scope) do
-      token = Bots.get_bot_token(id)
+      {:error, :forbidden} ->
+        forbidden(conn)
 
-      case token && Bots.revoke_bot_token(token, actor) do
-        {:ok, revoked_token} ->
-          json(conn, %{data: %{id: revoked_token.id, revoked_at: revoked_token.revoked_at}})
+      {:error, :not_found} ->
+        ErrorHelpers.render_error(conn, :not_found, "not_found", "Bot token not found.")
 
-        {:error, :forbidden} ->
-          forbidden(conn)
-
-        _ ->
-          ErrorHelpers.render_error(conn, :not_found, "not_found", "Bot token not found.")
-      end
-    else
-      ErrorHelpers.render_error(conn, :forbidden, "forbidden", "You cannot manage bots.")
+      {:error, changeset} ->
+        ErrorHelpers.render_changeset_error(
+          conn,
+          :unprocessable_entity,
+          "invalid_bot_token",
+          changeset
+        )
     end
   end
 
@@ -342,6 +289,9 @@ defmodule TavernWeb.API.BotController do
 
   defp fetch_scope(nil), do: {:error, :unauthorized}
   defp fetch_scope(token), do: Bots.get_bot_scope_by_token(token)
+
+  defp bot_not_found(conn),
+    do: ErrorHelpers.render_error(conn, :not_found, "not_found", "Bot not found.")
 
   defp forbidden(conn),
     do: ErrorHelpers.render_error(conn, :forbidden, "forbidden", "You cannot manage this bot.")

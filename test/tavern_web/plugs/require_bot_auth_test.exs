@@ -12,7 +12,9 @@ defmodule TavernWeb.Plugs.RequireBotAuthTest do
   test "a token whose bot is deactivated gets the same 401 as an invalid token" do
     actor = owner_fixture(%{email: "plug-deact-owner@example.com", username: "plug_deact_owner"})
     bot_user = bot_fixture(actor)
-    {:ok, %{token: token}} = Bots.create_bot_token(bot_user, %{"label" => "plug"}, actor)
+
+    {:ok, %{token: token}} =
+      Bots.create_bot_token(scope_for(actor), bot_user.id, %{"label" => "plug"})
 
     Repo.update_all(from(m in Membership, where: m.user_id == ^bot_user.id),
       set: [deactivated_at: DateTime.utc_now()]

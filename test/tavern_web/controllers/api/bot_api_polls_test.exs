@@ -21,7 +21,9 @@ defmodule TavernWeb.API.BotApiPollsTest do
     role = role_fixture(%{permissions: PermissionBits.combine(@speaker)})
     channel = channel_fixture(%{name: "Agent Channel", slug: unique_slug()})
     bot = bot_fixture(owner, %{"role_ids" => [role.id]})
-    {:ok, %{token: token}} = Bots.create_bot_token(bot, %{"label" => "agent"}, owner)
+
+    {:ok, %{token: token}} =
+      Bots.create_bot_token(scope_for(owner), bot.id, %{"label" => "agent"})
 
     %{owner: owner, channel: channel, bot: bot, token: token}
   end
@@ -196,7 +198,9 @@ defmodule TavernWeb.API.BotApiPollsTest do
   end
 
   defp bot_scope(ctx) do
-    {:ok, %{token: token}} = Bots.create_bot_token(ctx.bot, %{"label" => "scope"}, ctx.owner)
+    {:ok, %{token: token}} =
+      Bots.create_bot_token(scope_for(ctx.owner), ctx.bot.id, %{"label" => "scope"})
+
     {:ok, scope} = Bots.get_bot_scope_by_token(token)
     scope
   end

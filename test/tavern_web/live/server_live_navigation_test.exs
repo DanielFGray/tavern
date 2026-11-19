@@ -187,7 +187,7 @@ defmodule TavernWeb.ServerLiveNavigationTest do
     assert_patch(view, ~p"/?channel=engineering")
     refute has_element?(view, "#channel-mention-engineering")
 
-    Chat.mark_channel_read(current_user, engineering, message)
+    Chat.mark_channel_read(scope_for(current_user), engineering.id, message)
   end
 
   test "receives inactive channel mention from another hydrated user", %{conn: conn} do

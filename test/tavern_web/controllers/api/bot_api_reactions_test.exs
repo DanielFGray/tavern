@@ -18,7 +18,10 @@ defmodule TavernWeb.API.BotApiReactionsTest do
     role = role_fixture(%{permissions: PermissionBits.combine([:view_channel, :send_messages])})
     channel = channel_fixture(%{name: "React", slug: unique_slug()})
     bot = bot_fixture(owner, %{"role_ids" => [role.id]})
-    {:ok, %{token: token}} = Bots.create_bot_token(bot, %{"label" => "react"}, owner)
+
+    {:ok, %{token: token}} =
+      Bots.create_bot_token(scope_for(owner), bot.id, %{"label" => "react"})
+
     {:ok, scope} = Bots.get_bot_scope_by_token(token)
 
     %{owner: owner, channel: channel, bot: bot, scope: scope}
@@ -135,7 +138,9 @@ defmodule TavernWeb.API.BotApiReactionsTest do
   end
 
   defp fresh_scope(ctx) do
-    {:ok, %{token: token}} = Bots.create_bot_token(ctx.bot, %{"label" => "fresh"}, ctx.owner)
+    {:ok, %{token: token}} =
+      Bots.create_bot_token(scope_for(ctx.owner), ctx.bot.id, %{"label" => "fresh"})
+
     Bots.get_bot_scope_by_token(token)
   end
 

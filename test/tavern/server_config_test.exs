@@ -21,10 +21,10 @@ defmodule Tavern.Chat.ServerConfigTest do
     asset = emoji.asset
 
     assert {:ok, settings} =
-             ServerConfig.update_server_settings(
-               %{"name" => "HQ", "icon_asset_id" => asset.id},
-               owner
-             )
+             ServerConfig.update_server_settings(scope_for(owner), %{
+               "name" => "HQ",
+               "icon_asset_id" => asset.id
+             })
 
     assert settings.name == "HQ"
     assert is_nil(settings.icon_asset_id)
@@ -38,18 +38,18 @@ defmodule Tavern.Chat.ServerConfigTest do
     asset = emoji.asset
 
     assert {:ok, _} =
-             ServerConfig.update_server_settings(
-               %{"name" => "HQ", "icon_asset_id" => asset.id},
-               owner
-             )
+             ServerConfig.update_server_settings(scope_for(owner), %{
+               "name" => "HQ",
+               "icon_asset_id" => asset.id
+             })
 
     upload = icon_upload("first.png")
 
     assert {:ok, settings} =
-             ServerConfig.update_server_settings(
-               %{"name" => "HQ", "icon_upload" => upload},
-               owner
-             )
+             ServerConfig.update_server_settings(scope_for(owner), %{
+               "name" => "HQ",
+               "icon_upload" => upload
+             })
 
     File.rm(upload.path)
 
@@ -64,15 +64,15 @@ defmodule Tavern.Chat.ServerConfigTest do
     upload = icon_upload("keep-then-remove.png")
 
     assert {:ok, settings} =
-             ServerConfig.update_server_settings(
-               %{"name" => "HQ", "icon_upload" => upload},
-               owner
-             )
+             ServerConfig.update_server_settings(scope_for(owner), %{
+               "name" => "HQ",
+               "icon_upload" => upload
+             })
 
     File.rm(upload.path)
     icon_id = settings.icon_asset_id
 
-    assert {:ok, cleared} = ServerConfig.remove_server_icon(owner)
+    assert {:ok, cleared} = ServerConfig.remove_server_icon(scope_for(owner))
 
     assert is_nil(cleared.icon_asset_id)
     assert is_nil(Repo.get(MediaAsset, icon_id))
@@ -83,10 +83,10 @@ defmodule Tavern.Chat.ServerConfigTest do
     first = icon_upload("first.png")
 
     assert {:ok, settings} =
-             ServerConfig.update_server_settings(
-               %{"name" => "HQ", "icon_upload" => first},
-               owner
-             )
+             ServerConfig.update_server_settings(scope_for(owner), %{
+               "name" => "HQ",
+               "icon_upload" => first
+             })
 
     File.rm(first.path)
     first_id = settings.icon_asset_id
@@ -94,10 +94,10 @@ defmodule Tavern.Chat.ServerConfigTest do
     second = icon_upload("second.png")
 
     assert {:ok, replaced} =
-             ServerConfig.update_server_settings(
-               %{"name" => "HQ", "icon_upload" => second},
-               owner
-             )
+             ServerConfig.update_server_settings(scope_for(owner), %{
+               "name" => "HQ",
+               "icon_upload" => second
+             })
 
     File.rm(second.path)
 
@@ -123,7 +123,7 @@ defmodule Tavern.Chat.ServerConfigTest do
       |> Ecto.Changeset.change(%{icon_asset_id: asset.id, name: "HQ", singleton: true})
       |> Repo.insert_or_update()
 
-    assert {:ok, cleared} = ServerConfig.remove_server_icon(owner)
+    assert {:ok, cleared} = ServerConfig.remove_server_icon(scope_for(owner))
 
     assert is_nil(cleared.icon_asset_id)
     assert Repo.get(MediaAsset, asset.id)

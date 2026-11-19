@@ -82,7 +82,7 @@ defmodule Tavern.TestSupport do
   defp execute("set_server_name", payload) do
     name = payload["name"] || raise "name is required"
 
-    {:ok, settings} = Chat.update_server_settings(%{"name" => name}, owner_user!())
+    {:ok, settings} = Chat.update_server_settings(owner_scope!(), %{"name" => name})
 
     %{server: %{name: settings.name, icon_url: Chat.server_icon_url(settings)}}
   end
@@ -90,20 +90,22 @@ defmodule Tavern.TestSupport do
   defp execute("set_registration_mode", payload) do
     mode = payload["mode"] || raise "mode is required"
 
-    {:ok, settings} = Chat.update_server_settings(%{"registration_mode" => mode}, owner_user!())
+    {:ok, settings} = Chat.update_server_settings(owner_scope!(), %{"registration_mode" => mode})
 
     %{server: %{registration_mode: Atom.to_string(settings.registration_mode)}}
   end
 
   defp execute("create_invite", payload) do
+    scope = owner_scope!()
+
     channel =
-      Chat.list_channels(%Tavern.Accounts.Scope{user_id: owner_user!().id})
+      Chat.list_channels(scope)
       |> Enum.find(&(&1.slug == "general")) || raise "no general channel"
 
     {:ok, invite} =
       Chat.create_invite(
-        payload |> Map.take(["code", "max_uses"]) |> Map.put("channel_id", channel.id),
-        owner_user!()
+        scope,
+        payload |> Map.take(["code", "max_uses"]) |> Map.put("channel_id", channel.id)
       )
 
     %{invite: %{code: invite.code, id: invite.id, channel_id: channel.id}}
@@ -136,7 +138,7 @@ defmodule Tavern.TestSupport do
 
         nil ->
           {:ok, channel} =
-            Chat.create_channel(Accounts.user_scope(owner_user!()), %{
+            Chat.create_channel(owner_scope!(), %{
               "name" => payload["name"] || slug,
               "slug" => slug,
               "kind" => payload["kind"] || "text"
@@ -149,26 +151,21 @@ defmodule Tavern.TestSupport do
   end
 
   defp execute("create_bot_with_token", payload) do
-    actor = owner_user!()
+    scope = owner_scope!()
 
     username = payload["username"] || "test_bot_#{System.unique_integer([:positive])}"
 
     {:ok, bot_user} =
-      Tavern.Bots.create_bot(
-        %{
-          username: username,
-          display_name: payload["display_name"] || username,
-          email: payload["email"] || "#{username}@bot.local"
-        },
-        actor
-      )
+      Tavern.Bots.create_bot(scope, %{
+        username: username,
+        display_name: payload["display_name"] || username,
+        email: payload["email"] || "#{username}@bot.local"
+      })
 
     {:ok, %{token: token}} =
-      Tavern.Bots.create_bot_token(
-        bot_user,
-        %{label: payload["label"] || "k6-load-test"},
-        actor
-      )
+      Tavern.Bots.create_bot_token(scope, bot_user.id, %{
+        label: payload["label"] || "k6-load-test"
+      })
 
     %{
       bot: %{id: bot_user.id, username: bot_user.username},
@@ -320,13 +317,13 @@ defmodule Tavern.TestSupport do
     end
   end
 
-  defp owner_user! do
+  defp owner_scope! do
     User
     |> join(:inner, [user], membership in Membership, on: membership.user_id == user.id)
     |> where([_user, membership], membership.is_owner == true)
-    |> preload([user, _membership], [:membership, member_roles: :role])
     |> limit(1)
     |> Repo.one!()
+    |> Accounts.user_scope()
   end
 
   defp user_payload(user) do

@@ -267,7 +267,7 @@ defmodule Tavern.Chat.ChannelManagementTest do
 
   defp bot_scope(owner) do
     bot = bot_fixture(owner)
-    {:ok, %{token: token}} = Bots.create_bot_token(bot, %{"label" => "test"}, owner)
+    {:ok, %{token: token}} = Bots.create_bot_token(scope_for(owner), bot.id, %{"label" => "test"})
     {:ok, scope} = Bots.get_bot_scope_by_token(token)
     scope
   end

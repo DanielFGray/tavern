@@ -285,7 +285,9 @@ defmodule Tavern.Chat.InviteRequestsTest do
         [provider: :cloudflare, from: nil, account_id: "a", api_token: nil],
         fn ->
           assert {:error, changeset} =
-                   Chat.update_server_settings(%{"accept_invite_requests" => "true"}, owner)
+                   Chat.update_server_settings(scope_for(owner), %{
+                     "accept_invite_requests" => "true"
+                   })
 
           assert [message] = errors_on(changeset).accept_invite_requests
           assert message =~ "EMAIL_FROM"
@@ -294,7 +296,7 @@ defmodule Tavern.Chat.InviteRequestsTest do
       )
 
       assert {:ok, %{accept_invite_requests: true}} =
-               Chat.update_server_settings(%{"accept_invite_requests" => "true"}, owner)
+               Chat.update_server_settings(scope_for(owner), %{"accept_invite_requests" => "true"})
     end
   end
 

@@ -1,27 +1,20 @@
 defmodule TavernWeb.SettingsLive.State do
   @moduledoc false
 
-  import Ecto.Query, warn: false
   import Phoenix.Component, only: [assign: 3, to_form: 2]
 
   alias Tavern.Accounts
   alias Tavern.Bots
   alias Tavern.Chat
-  alias Tavern.Chat.ChannelMembership
   alias Tavern.Chat.ServerSettings
   alias Tavern.Chat.UserNotificationSetting
-  alias Tavern.Repo
   alias TavernWeb.Live.SharedHelpers
 
   def init(socket) do
     current_user = socket.assigns.current_user
-    channels = Chat.list_channels(socket.assigns.current_scope)
-    :ok = Chat.ensure_channel_memberships(socket.assigns.current_scope, channels)
-
-    can_manage_emojis? = SharedHelpers.can_manage_emojis?(socket.assigns.current_scope)
-    can_moderate_members? = SharedHelpers.can_moderate_members?(socket.assigns.current_scope)
-    can_view_audit_log? = SharedHelpers.can_view_audit_log?(socket.assigns.current_scope)
-    can_manage_bots? = Bots.can_manage_bots?(socket.assigns.current_scope)
+    scope = socket.assigns.current_scope
+    channels = Chat.list_channels(scope)
+    :ok = Chat.ensure_channel_memberships(scope, channels)
     server_settings = Chat.get_server_settings()
 
     socket
@@ -30,19 +23,12 @@ defmodule TavernWeb.SettingsLive.State do
     |> assign(:current_server, server_settings)
     |> assign(:page_title, server_settings.name)
     |> assign(:active_tab, "profile")
-    |> assign(:can_manage_emojis?, can_manage_emojis?)
-    |> assign(:can_moderate_members?, can_moderate_members?)
-    |> assign(:can_view_audit_log?, can_view_audit_log?)
-    |> assign(
-      :can_manage_server?,
-      SharedHelpers.can_manage_server?(socket.assigns.current_scope)
-    )
-    |> assign(:can_manage_bots?, can_manage_bots?)
-    |> assign(:notification_setting, Chat.get_user_notification_setting(current_user))
+    |> assign_management_flags()
+    |> assign(:notification_setting, Chat.get_user_notification_setting(scope))
     |> assign(:channels, channels)
-    |> assign(:channel_memberships, channel_memberships_map(current_user, channels))
-    |> assign(:channel_sections, Chat.list_channel_tree(socket.assigns.current_scope))
-    |> assign(:custom_emojis, SharedHelpers.emoji_entries_for_picker(current_user))
+    |> assign(:channel_memberships, channel_memberships(scope, channels))
+    |> assign(:channel_sections, Chat.list_channel_tree(scope))
+    |> assign(:custom_emojis, SharedHelpers.emoji_entries_for_picker(scope))
     |> assign(:bot_users, [])
     |> assign(:manageable_roles, [])
     |> assign(:bot_form, to_form(bot_form_defaults(), as: :bot))
@@ -83,7 +69,7 @@ defmodule TavernWeb.SettingsLive.State do
   end
 
   def maybe_load_invites(socket) do
-    case Chat.list_invites(socket.assigns.current_user) do
+    case Chat.list_invites(socket.assigns.current_scope) do
       {:error, :forbidden} -> assign(socket, :invites, [])
       invites -> assign(socket, :invites, invites)
     end
@@ -133,26 +119,32 @@ defmodule TavernWeb.SettingsLive.State do
     end
   end
 
-  def channel_memberships_map(current_user, channels) do
-    channel_ids = Enum.map(channels, & &1.id)
-
-    ChannelMembership
-    |> where(
-      [membership],
-      membership.user_id == ^current_user.id and membership.channel_id in ^channel_ids
-    )
-    |> Repo.all()
-    |> Map.new(&{&1.channel_id, &1})
-  end
+  def channel_memberships(scope, channels),
+    do: Chat.channel_memberships(scope, Enum.map(channels, & &1.id))
 
   def refresh_channels(socket) do
-    current_user = socket.assigns.current_user
-    channels = Chat.list_channels(socket.assigns.current_scope)
+    scope = socket.assigns.current_scope
+    channels = Chat.list_channels(scope)
 
     socket
     |> assign(:channels, channels)
-    |> assign(:channel_sections, Chat.list_channel_tree(socket.assigns.current_scope))
-    |> assign(:channel_memberships, channel_memberships_map(current_user, channels))
+    |> assign(:channel_sections, Chat.list_channel_tree(scope))
+    |> assign(:channel_memberships, channel_memberships(scope, channels))
+  end
+
+  @doc """
+  The flags that decide which management panels the page shows. They only shape the page: each
+  write decides its own permission in its context. Read at mount and again on a role change.
+  """
+  def assign_management_flags(socket) do
+    scope = socket.assigns.current_scope
+
+    socket
+    |> assign(:can_manage_emojis?, SharedHelpers.can_manage_emojis?(scope))
+    |> assign(:can_moderate_members?, SharedHelpers.can_moderate_members?(scope))
+    |> assign(:can_view_audit_log?, SharedHelpers.can_view_audit_log?(scope))
+    |> assign(:can_manage_server?, SharedHelpers.can_manage_server?(scope))
+    |> assign(:can_manage_bots?, Bots.can_manage_bots?(scope))
   end
 
   # Who is in the server, who is banned and whose deletion is scheduled change together, so one
@@ -175,32 +167,30 @@ defmodule TavernWeb.SettingsLive.State do
   end
 
   def refresh_custom_emojis(socket) do
-    current_user = socket.assigns.current_user
-    assign(socket, :custom_emojis, SharedHelpers.emoji_entries_for_picker(current_user))
+    assign(
+      socket,
+      :custom_emojis,
+      SharedHelpers.emoji_entries_for_picker(socket.assigns.current_scope)
+    )
   end
 
   def run_member_moderation(scope, subject_id, params),
     do: SharedHelpers.run_member_moderation(scope, subject_id, params)
 
+  # The bot context answers empty lists to a scope that may not manage bots.
   def refresh_bot_assigns(socket) do
-    if socket.assigns.can_manage_bots? do
-      bot_users = Bots.list_controllable_bot_users(socket.assigns.current_user)
+    scope = socket.assigns.current_scope
+    bot_users = Bots.list_controllable_bot_users(scope)
 
-      bot_token_forms =
-        Enum.reduce(bot_users, %{}, fn bot_user, acc ->
-          Map.put_new(acc, bot_user.id, bot_token_form(bot_user.id))
-        end)
+    bot_token_forms =
+      Enum.reduce(bot_users, %{}, fn bot_user, acc ->
+        Map.put_new(acc, bot_user.id, bot_token_form(bot_user.id))
+      end)
 
-      socket
-      |> assign(:bot_users, bot_users)
-      |> assign(:manageable_roles, Bots.grantable_roles(socket.assigns.current_user))
-      |> assign(
-        :bot_token_forms,
-        Map.merge(bot_token_forms, socket.assigns.bot_token_forms || %{})
-      )
-    else
-      socket
-    end
+    socket
+    |> assign(:bot_users, bot_users)
+    |> assign(:manageable_roles, Bots.grantable_roles(scope))
+    |> assign(:bot_token_forms, Map.merge(bot_token_forms, socket.assigns.bot_token_forms || %{}))
   end
 
   @doc """

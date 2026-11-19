@@ -22,20 +22,19 @@ defmodule Tavern.BotsTest do
         })
 
       {:ok, bot_user} =
-        Bots.create_bot(
-          %{
-            "display_name" => "Helper Bot",
-            "username" => "helper_bot",
-            "email" => "helper-bot@example.com",
-            "role_ids" => [role.id]
-          },
-          actor
-        )
+        Bots.create_bot(scope_for(actor), %{
+          "display_name" => "Helper Bot",
+          "username" => "helper_bot",
+          "email" => "helper-bot@example.com",
+          "role_ids" => [role.id]
+        })
 
       assert bot_user.bot
       assert Enum.any?(bot_user.member_roles, &(&1.role_id == role.id))
 
-      {:ok, %{token: token}} = Bots.create_bot_token(bot_user, %{"label" => "primary"}, actor)
+      {:ok, %{token: token}} =
+        Bots.create_bot_token(scope_for(actor), bot_user.id, %{"label" => "primary"})
+
       assert {:ok, bot_scope} = Bots.get_bot_scope_by_token(token)
       assert bot_scope.user_id == bot_user.id
     end
@@ -63,10 +62,11 @@ defmodule Tavern.BotsTest do
       assert message.channel_id == channel.id
     end
 
-    test "get_bot_user/1 does not return non-bot users" do
+    test "a human user is not a bot: no token can be minted for one" do
+      owner = owner_fixture()
       user = user_fixture(%{email: "human@example.com", username: "human_user"})
 
-      assert Bots.get_bot_user(user.id) == nil
+      assert {:error, :not_found} = Bots.create_bot_token(scope_for(owner), user.id, %{})
     end
 
     test "send_message returns invalid_params for malformed channel ids" do
@@ -94,17 +94,24 @@ defmodule Tavern.BotsTest do
       admin_role = role_fixture(%{permissions: PermissionBits.combine([:administrator])})
 
       assert {:error, :forbidden} =
-               Bots.create_bot(bot_attrs(%{"role_ids" => [admin_role.id]}), bot_manager)
+               Bots.create_bot(
+                 scope_for(bot_manager),
+                 bot_attrs(%{"role_ids" => [admin_role.id]})
+               )
 
-      assert Bots.list_controllable_bot_users(bot_manager) == []
+      assert Bots.list_controllable_bot_users(scope_for(bot_manager)) == []
     end
 
     test "the system user is never a manageable bot", %{owner: owner} do
       %{system_user: system_user} = Bootstrap.ensure_seed_data!()
 
-      refute Enum.any?(Bots.list_controllable_bot_users(owner), &(&1.id == system_user.id))
-      assert Bots.get_bot_user(system_user.id) == nil
-      assert_raise Ecto.NoResultsError, fn -> Bots.get_bot_user!(system_user.id) end
+      refute Enum.any?(
+               Bots.list_controllable_bot_users(scope_for(owner)),
+               &(&1.id == system_user.id)
+             )
+
+      assert {:error, :not_found} = Bots.create_bot_token(scope_for(owner), system_user.id, %{})
+      assert {:error, :not_found} = Bots.update_bot(scope_for(owner), system_user.id, %{})
     end
 
     test "a manage_bots-only member cannot give a bot any role" do
@@ -112,7 +119,7 @@ defmodule Tavern.BotsTest do
       speaker = role_fixture(%{permissions: 0, position: 0})
 
       assert {:error, :forbidden} =
-               Bots.create_bot(bot_attrs(%{"role_ids" => [speaker.id]}), bot_manager)
+               Bots.create_bot(scope_for(bot_manager), bot_attrs(%{"role_ids" => [speaker.id]}))
     end
 
     test "a role manager can grant only lower roles whose permissions they hold" do
@@ -121,16 +128,18 @@ defmodule Tavern.BotsTest do
       higher = role_fixture(%{permissions: 0, position: 60})
       stronger = role_fixture(%{permissions: PermissionBits.combine([:ban_members]), position: 5})
 
-      assert {:ok, bot} = Bots.create_bot(bot_attrs(%{"role_ids" => [lower.id]}), manager)
+      assert {:ok, bot} =
+               Bots.create_bot(scope_for(manager), bot_attrs(%{"role_ids" => [lower.id]}))
+
       assert [%{role_id: role_id}] = bot.member_roles
       assert role_id == lower.id
 
       for role <- [higher, stronger] do
         assert {:error, :forbidden} =
-                 Bots.create_bot(bot_attrs(%{"role_ids" => [role.id]}), manager)
+                 Bots.create_bot(scope_for(manager), bot_attrs(%{"role_ids" => [role.id]}))
       end
 
-      assert Enum.map(Bots.grantable_roles(manager), & &1.id) == [lower.id]
+      assert Enum.map(Bots.grantable_roles(scope_for(manager)), & &1.id) == [lower.id]
     end
 
     test "a bot manager cannot mint a token for a bot that outranks them", %{owner: owner} do
@@ -138,27 +147,50 @@ defmodule Tavern.BotsTest do
       admin_bot = bot_fixture(owner, %{"role_ids" => [admin_role.id]})
       bot_manager = member_with([:manage_bots])
 
-      assert {:error, :forbidden} = Bots.create_bot_token(admin_bot, %{}, bot_manager)
-      assert {:error, :forbidden} = Bots.revoke_bot(admin_bot, bot_manager)
-      assert Bots.list_bot_tokens(admin_bot) == []
+      assert {:error, :forbidden} =
+               Bots.create_bot_token(scope_for(bot_manager), admin_bot.id, %{})
+
+      assert {:error, :forbidden} = Bots.revoke_bot(scope_for(bot_manager), admin_bot.id)
+      assert {:ok, []} = Bots.list_controllable_bot_tokens(scope_for(owner), admin_bot.id)
     end
 
-    test "authority is read from the database, not from the actor struct" do
+    test "a token revoke needs control of the token's bot, decided before the token is read",
+         %{owner: owner} do
+      admin_role = role_fixture(%{permissions: PermissionBits.combine([:administrator])})
+      admin_bot = bot_fixture(owner, %{"role_ids" => [admin_role.id]})
+      {:ok, %{bot_token: token}} = Bots.create_bot_token(scope_for(owner), admin_bot.id, %{})
+      bot_manager = member_with([:manage_bots])
+      member = user_fixture()
+
+      assert {:error, :forbidden} = Bots.revoke_bot_token(scope_for(bot_manager), token.id)
+
+      for token_id <- [token.id, Ecto.UUID.generate()] do
+        assert {:error, :forbidden} = Bots.revoke_bot_token(scope_for(member), token_id)
+      end
+
+      assert {:error, :not_found} = Bots.revoke_bot_token(scope_for(owner), Ecto.UUID.generate())
+      refute Repo.reload!(token).revoked_at
+      assert {:ok, %{revoked_at: %DateTime{}}} = Bots.revoke_bot_token(scope_for(owner), token.id)
+    end
+
+    test "authority is read from the database when the write runs" do
       manager_role = role_fixture(%{permissions: PermissionBits.combine([:manage_bots])})
       manager = user_fixture()
       member_role = member_role_fixture(manager, manager_role)
-      stale_manager = Tavern.Repo.preload(manager, [:membership, member_roles: :role])
+      scope = scope_for(manager)
 
       Tavern.Repo.delete!(member_role)
 
-      assert {:error, :forbidden} = Bots.create_bot(bot_attrs(), stale_manager)
+      assert {:error, :forbidden} = Bots.create_bot(scope, bot_attrs())
     end
 
     test "updating a bot without role_ids keeps its roles", %{owner: owner} do
       role = role_fixture()
       bot = bot_fixture(owner, %{"role_ids" => [role.id]})
 
-      assert {:ok, updated} = Bots.update_bot(bot, %{"display_name" => "Renamed"}, owner)
+      assert {:ok, updated} =
+               Bots.update_bot(scope_for(owner), bot.id, %{"display_name" => "Renamed"})
+
       assert updated.display_name == "Renamed"
       assert Enum.map(updated.member_roles, & &1.role_id) == [role.id]
     end
@@ -170,23 +202,26 @@ defmodule Tavern.BotsTest do
       {private, insider} = private_channel_insider_role()
 
       assert {:error, :forbidden} =
-               Bots.create_bot(bot_attrs(%{"role_ids" => [insider.id]}), manager)
+               Bots.create_bot(scope_for(manager), bot_attrs(%{"role_ids" => [insider.id]}))
 
-      refute Enum.any?(Bots.grantable_roles(manager), &(&1.id == insider.id))
+      refute Enum.any?(Bots.grantable_roles(scope_for(manager)), &(&1.id == insider.id))
 
       bot = bot_fixture(owner, %{"role_ids" => [insider.id]})
-      assert {:error, :forbidden} = Bots.create_bot_token(bot, %{}, manager)
+      assert {:error, :forbidden} = Bots.create_bot_token(scope_for(manager), bot.id, %{})
 
-      assert {:ok, _bot} = Bots.create_bot(bot_attrs(%{"role_ids" => [insider.id]}), owner)
+      assert {:ok, _bot} =
+               Bots.create_bot(scope_for(owner), bot_attrs(%{"role_ids" => [insider.id]}))
 
       channel_permission_overwrite_fixture(private, %{
         user_id: manager.id,
         allow_permissions: PermissionBits.combine([:view_channel])
       })
 
-      assert {:ok, granted} = Bots.create_bot(bot_attrs(%{"role_ids" => [insider.id]}), manager)
+      assert {:ok, granted} =
+               Bots.create_bot(scope_for(manager), bot_attrs(%{"role_ids" => [insider.id]}))
+
       assert Enum.any?(granted.member_roles, &(&1.role_id == insider.id))
-      assert Enum.any?(Bots.grantable_roles(manager), &(&1.id == insider.id))
+      assert Enum.any?(Bots.grantable_roles(scope_for(manager)), &(&1.id == insider.id))
     end
   end
 
@@ -242,7 +277,10 @@ defmodule Tavern.BotsTest do
   test "get_bot_scope_by_token refuses a valid token whose bot is deactivated" do
     actor = owner_fixture(%{email: "bot-deact-owner@example.com", username: "bot_deact_owner"})
     bot_user = bot_fixture(actor)
-    {:ok, %{token: token}} = Bots.create_bot_token(bot_user, %{"label" => "deact"}, actor)
+
+    {:ok, %{token: token}} =
+      Bots.create_bot_token(scope_for(actor), bot_user.id, %{"label" => "deact"})
+
     assert {:ok, _scope} = Bots.get_bot_scope_by_token(token)
 
     Repo.update_all(from(m in Membership, where: m.user_id == ^bot_user.id),
@@ -253,7 +291,9 @@ defmodule Tavern.BotsTest do
   end
 
   defp bot_scope_for(bot_user, actor) do
-    {:ok, %{token: token}} = Bots.create_bot_token(bot_user, %{"label" => "test"}, actor)
+    {:ok, %{token: token}} =
+      Bots.create_bot_token(scope_for(actor), bot_user.id, %{"label" => "test"})
+
     {:ok, scope} = Bots.get_bot_scope_by_token(token)
     scope
   end

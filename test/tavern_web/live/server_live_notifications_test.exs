@@ -71,7 +71,7 @@ defmodule TavernWeb.ServerLiveNotificationsTest do
     assert current_user
 
     {:ok, _setting} =
-      Chat.update_user_notification_setting(current_user, %{
+      Chat.update_user_notification_setting(scope_for(current_user), %{
         desktop_enabled: false,
         notify_on_mentions: true
       })

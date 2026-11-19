@@ -7,7 +7,7 @@ defmodule TavernWeb.ServerLive.Events.Notifications do
   alias Tavern.Chat
 
   def handle_event("enable_desktop_mentions", _params, socket) do
-    case Chat.update_user_notification_setting(socket.assigns.current_user, %{
+    case Chat.update_user_notification_setting(socket.assigns.current_scope, %{
            desktop_enabled: true,
            notify_on_mentions: true
          }) do
@@ -23,7 +23,7 @@ defmodule TavernWeb.ServerLive.Events.Notifications do
   end
 
   def handle_event("disable_desktop_mentions", _params, socket) do
-    case Chat.update_user_notification_setting(socket.assigns.current_user, %{
+    case Chat.update_user_notification_setting(socket.assigns.current_scope, %{
            desktop_enabled: false
          }) do
       {:ok, setting} ->

@@ -17,9 +17,9 @@ defmodule Tavern.Bots.Authority do
   alias Tavern.Chat.User
   alias Tavern.Repo
 
-  @doc "The actor's current authority, when the actor may manage bots."
-  def manage_bots(%User{id: actor_id}) do
-    authority = RoleAuthority.load(%Scope{user_id: actor_id})
+  @doc "The scope's current authority, when it may manage bots."
+  def manage_bots(%Scope{} = scope) do
+    authority = RoleAuthority.load(scope)
 
     if Authorization.has_permission?(authority.permissions, :manage_bots),
       do: {:ok, authority},

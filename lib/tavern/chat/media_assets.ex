@@ -4,8 +4,8 @@ defmodule Tavern.Chat.MediaAssets do
   and the app serves them at `asset_url/1`.
   """
 
+  alias Tavern.Accounts.Scope
   alias Tavern.Chat.MediaAsset
-  alias Tavern.Chat.User
   alias Tavern.ObjectStore
   alias Tavern.Repo
 
@@ -35,12 +35,14 @@ defmodule Tavern.Chat.MediaAssets do
   end
 
   @doc """
-  Stores the uploaded file in the object store, then records it. Returns
-  `{:error, reason, :upload}` when the file is refused or cannot be stored.
+  Stores the uploaded file in the object store, then records it with the scope's member as its
+  uploader. It decides nothing: the caller has already authorised the write that uses the asset,
+  in the same transaction. Returns `{:error, reason, :upload}` when the file is refused or cannot
+  be stored.
   """
   def create_media_asset_from_upload(
+        %Scope{} = scope,
         %{path: path, client_name: client_name, client_type: client_type},
-        %User{} = creator,
         opts \\ []
       ) do
     allowed_types = Keyword.get(opts, :allowed_types, @allowed_upload_content_types)
@@ -55,7 +57,7 @@ defmodule Tavern.Chat.MediaAssets do
          {:ok, asset} <-
            %MediaAsset{}
            |> MediaAsset.changeset(%{
-             uploader_id: creator.id,
+             uploader_id: scope.user_id,
              kind: kind,
              storage_provider: "s3",
              storage_key: storage_key,
@@ -71,8 +73,9 @@ defmodule Tavern.Chat.MediaAssets do
     end
   end
 
-  def create_server_icon_from_upload(%User{} = creator, upload) do
-    create_media_asset_from_upload(upload, creator,
+  @doc "Stores an uploaded server icon, as `create_media_asset_from_upload/3` does."
+  def create_server_icon_from_upload(%Scope{} = scope, upload) do
+    create_media_asset_from_upload(scope, upload,
       allowed_types: @allowed_upload_content_types,
       upload_dir: @server_icon_upload_dir,
       kind: :server_icon
