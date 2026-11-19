@@ -492,6 +492,9 @@ defmodule Tavern.Chat.Visibility do
     do: channel_decision(:create_public_threads, ctx, channel)
 
   defp channel_decision(:view_channel, ctx, channel), do: view?(ctx, channel)
+  # A forum holds posts, which are threads, and no message of its own. Only this decision says
+  # so: `send?/2` still answers for a forum, because its posts and their replies need it.
+  defp channel_decision(:send_messages, _ctx, %Channel{kind: :forum}), do: false
   defp channel_decision(:send_messages, ctx, channel), do: send?(ctx, channel)
 
   defp channel_decision(:send_messages_in_threads, ctx, channel),

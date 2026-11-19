@@ -32,6 +32,8 @@ defmodule Tavern.Chat.Channel do
     field(:default_auto_archive_minutes, :integer, default: 1440)
     field(:archived_at, :utc_datetime_usec)
     field(:locked_at, :utc_datetime_usec)
+    # A thread's tags, set from its title and starter message by `Tavern.Chat.Hashtags`.
+    field(:hashtags, {:array, :string}, default: [])
 
     belongs_to(:parent_channel, __MODULE__)
     belongs_to(:created_by, Tavern.Chat.User)
@@ -50,8 +52,13 @@ defmodule Tavern.Chat.Channel do
 
   def thread?(%__MODULE__{kind: kind}), do: kind in @thread_kinds
 
-  @doc "Whether the channel may hold a public thread's starter message: text-like channels only."
+  @doc """
+  Whether the channel may hold public threads: text-like channels and forums. A forum's threads
+  are its posts, and each starts from a message inside itself (docs/design/forums.md).
+  """
   def thread_host?(%__MODULE__{kind: kind}), do: kind in [:text, :announcement, :forum]
+
+  def forum?(%__MODULE__{kind: kind}), do: kind == :forum
 
   @doc """
   A changeset for a channel or category that a channel manager creates or edits. A thread is

@@ -5,6 +5,7 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
   import Phoenix.LiveView, only: [put_flash: 3]
 
   alias Tavern.Chat
+  alias TavernWeb.ServerLive.ForumNav
   alias TavernWeb.ServerLive.State
   alias TavernWeb.ServerLive.ThreadNav
 
@@ -85,7 +86,8 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
       {:noreply,
        socket
        |> State.maybe_refresh_thread_summaries(channel)
-       |> ThreadNav.reload()}
+       |> ThreadNav.reload()
+       |> ForumNav.reload_for_post(channel)}
     else
       {:noreply, State.refresh_channels(socket)}
     end

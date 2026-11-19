@@ -12,13 +12,18 @@ defmodule TavernWeb.ServerComponents.Messages do
   def active_channel_view(assigns) do
     ~H"""
     <.channel_header server={@server} />
-    <%= if @server.channel_ready? do %>
-      <.message_stream server={@server} />
-    <% else %>
-      <.channel_loading_state server={@server} />
+    <%= cond do %>
+      <% !@server.channel_ready? -> %>
+        <.channel_loading_state server={@server} />
+      <% @server.forum -> %>
+        <TavernWeb.ServerComponents.Forums.forum_view server={@server} />
+      <% true -> %>
+        <.message_stream server={@server} />
     <% end %>
-    <.typing_indicator users={@server.typing_users} id="channel-typing-indicator" />
-    <TavernWeb.ServerComponents.Composer.channel_composer server={@server} />
+    <%= unless Chat.Channel.forum?(@server.active_channel) do %>
+      <.typing_indicator users={@server.typing_users} id="channel-typing-indicator" />
+      <TavernWeb.ServerComponents.Composer.channel_composer server={@server} />
+    <% end %>
     """
   end
 
@@ -70,7 +75,10 @@ defmodule TavernWeb.ServerComponents.Messages do
           <span aria-hidden="true">👥</span>
           <span>{length(@server.member_presence)}</span>
         </button>
-        <span class="hidden rounded-md bg-base-100 px-2 py-1 font-medium sm:inline-flex">
+        <span
+          :if={!Chat.Channel.forum?(@server.active_channel)}
+          class="hidden rounded-md bg-base-100 px-2 py-1 font-medium sm:inline-flex"
+        >
           <%= if @server.channel_ready? do %>
             {@server.message_count} messages
           <% else %>

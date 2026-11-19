@@ -16,6 +16,9 @@ defmodule Tavern.Chat.ChannelMembership do
     field(:muted_until, :utc_datetime_usec)
     field(:is_favorite, :boolean, default: false)
     field(:joined_at, :utc_datetime_usec)
+    # How the member lists a forum's posts (docs/design/forums.md). Other channels ignore them.
+    field(:post_sort, Ecto.Enum, values: [:activity, :created], default: :activity)
+    field(:post_layout, Ecto.Enum, values: [:list, :gallery], default: :list)
 
     belongs_to(:channel, Tavern.Chat.Channel)
     belongs_to(:user, Tavern.Chat.User)

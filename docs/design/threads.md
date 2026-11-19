@@ -2,7 +2,7 @@
 
 Status: built. Task: "Thread following, sidebar threads and a thread browser".
 
-A public thread starts from a message (`Tavern.Chat.Threads.create_public_thread/3`) and is a channel row of a thread kind whose parent is the channel it started in. A thread is visible exactly when the scope may view it under `Tavern.Chat.Visibility` (scoped-reads.md). This document covers who follows a thread, what following changes, and how a session learns about thread activity.
+A public thread is a channel row of a thread kind whose parent is the channel that hosts it. In a text or announcement channel it starts from a message in that channel (`Tavern.Chat.Threads.create_public_thread/3`). In a forum it is a post, and its first message is inside the thread (forums.md). A thread is visible exactly when the scope may view it under `Tavern.Chat.Visibility` (scoped-reads.md). This document covers who follows a thread, what following changes, and how a session learns about thread activity.
 
 ## Follow rules
 
@@ -26,7 +26,7 @@ The state lives in `thread_followers`, one row per thread and member: `source`, 
 - An edit that adds a mention follows no one. Only a new message does, so editing an old message does not pull people in.
 - Follow and unfollow are domain operations: scope first, decided with `:view_channel` on the thread inside the write's transaction. A thread the scope may not view answers `{:error, :not_found}`.
 
-The follow writes run inside the transaction of the event that causes them: `insert_thread` for `:created`, and `Chat.create_message/3` after the mentions are stored for `:posted` and `:mentioned`. A post and its follow commit together or not at all.
+The follow writes run inside the transaction of the event that causes them: `insert_thread` for `:created`, and `Chat.write_message/3` (the insert step of `Chat.create_message/3` and of a forum post) after the mentions are stored for `:posted` and `:mentioned`. A post and its follow commit together or not at all.
 
 ## What following changes
 
@@ -37,13 +37,13 @@ Channels push only mention alerts today; `notify_on_all_messages` is stored but 
 
 ## Last activity
 
-There is no activity column. A thread's last activity is its newest live message's `inserted_at`, or the thread's own `inserted_at` when it has none. Its reply count is its live (not deleted) messages. Both come from one grouped subquery in `Threads.thread_entries_query/2`.
+There is no activity column. A thread's last activity is its newest live message's `inserted_at`, or the thread's own `inserted_at` when it has none. Its reply count is its live (not deleted) messages other than its starter. A forum post's starter is inside the post and is not a reply; a text-channel starter is in the parent and was never counted. `Threads.replies_query/1` holds this rule; the browser, the channel summaries and the open thread pane all count with it.
 
 ## The thread browser
 
-The Threads button in the header of a thread-hosting channel (`Channel.thread_host?/1`: text, announcement, forum) opens a drawer with Active and Archived tabs. Each lists the channel's threads by last activity, newest first, with a title search (case-insensitive substring), reply count, last activity and a Follow toggle.
+The Threads button in the header of a thread-hosting channel (`Channel.thread_host?/1`: text, announcement, forum) opens a drawer with Active and Archived tabs. Each lists the channel's threads by last activity, newest first, with a search, reply count, last activity and a Follow toggle. The search splits its text on spaces: a word that starts with `#` is a tag and matches the thread's hashtags exactly (forums.md); each other word must appear in the title (case-insensitive substring). `browse_threads/3` also takes `sort: :created`, which a forum uses.
 
-Both tabs load 25 at a time, paged by keyset on `(last_activity, id)`. Paging in SQL is exact because the query is limited to the visible thread ids before it pages, so a page is never short because a row was filtered out afterwards.
+Both tabs load 25 at a time, paged by keyset on `(last_activity, id)`, or `(inserted_at, id)` when sorted by creation. Paging in SQL is exact because the query is limited to the visible thread ids before it pages, so a page is never short because a row was filtered out afterwards.
 
 The cursor stays on the server, in the LiveView's `:thread_browser` assign; the client sends only "load more".
 
@@ -72,4 +72,4 @@ Archiving, unarchiving, creating and deleting threads, and role changes already 
 
 ## Forum channels
 
-A forum post will be a thread. The follow code, the sidebar and the browser select threads by `Channel.thread?/1` and hosts by `Channel.thread_host?/1`, which already includes `:forum`. They do not name `:thread_public`.
+A forum post is a thread: see forums.md. The follow code, the sidebar and the browser select threads by `Channel.thread?/1` and hosts by `Channel.thread_host?/1`, which includes `:forum`.

@@ -12,6 +12,7 @@ defmodule Tavern.Chat do
   alias Tavern.Chat.Channels
   alias Tavern.Chat.Embeds
   alias Tavern.Chat.Emojis
+  alias Tavern.Chat.Forums
   alias Tavern.Chat.MediaAssets
   alias Tavern.Chat.InviteRequests
   alias Tavern.Chat.InviteTree
@@ -313,6 +314,7 @@ defmodule Tavern.Chat do
   defdelegate thread_summaries_for_channel(scope, channel_id), to: Threads
   defdelegate get_thread_for_starter_message(scope, starter_message_id), to: Threads
   defdelegate get_thread(scope, thread_id), to: Threads
+  defdelegate thread_reply_count(scope, thread_id), to: Threads, as: :reply_count
 
   defdelegate create_public_thread(scope, starter_message_id, attrs \\ %{}), to: Threads
   defdelegate archive_thread(scope, thread_id), to: Threads
@@ -321,6 +323,11 @@ defmodule Tavern.Chat do
   defdelegate unlock_thread(scope, thread_id), to: Threads
   defdelegate followed_threads(scope), to: Threads
   defdelegate browse_threads(scope, channel_id, opts \\ []), to: Threads
+  defdelegate change_forum_post(attrs \\ %{}), to: Forums, as: :change_post
+  defdelegate create_forum_post(scope, forum_id, attrs), to: Forums, as: :create_post
+  defdelegate list_forum_posts(scope, forum_id, opts \\ []), to: Forums, as: :list_posts
+  defdelegate forum_post_view(scope, forum_id), to: Forums, as: :post_view
+  defdelegate set_forum_post_view(scope, forum_id, attrs), to: Forums, as: :set_post_view
   defdelegate follow_thread(scope, thread_id), to: ThreadFollows, as: :follow
   defdelegate unfollow_thread(scope, thread_id), to: ThreadFollows, as: :unfollow
   defdelegate following_thread?(scope, thread_id), to: ThreadFollows, as: :following?
@@ -352,31 +359,49 @@ defmodule Tavern.Chat do
       Repo.transact(fn ->
         with :ok <- Visibility.authorize_write(scope, :send_messages, %Channel{id: channel_id}),
              {:ok, reopened} <- enforce_channel_state(scope, channel_id),
-             :ok <- validate_reply_target(channel_id, attrs),
-             :ok <- authorize_message_mentions(scope, channel_id, attrs),
-             {:ok, message} <-
-               %Message{channel_id: channel_id, author_id: scope.user_id}
-               |> Message.create_changeset(attrs)
-               |> Repo.insert(),
-             :ok <- sync_message_mentions(message),
-             {:ok, new_followers} <- ThreadFollows.follow_for_message(message) do
-          {:ok, {reload_message(message.id), reopened, new_followers}}
+             {:ok, written} <- write_message(scope, channel_id, attrs) do
+          {:ok, {written, reopened}}
         end
       end)
       |> case do
-        {:ok, {message, reopened, new_followers}} ->
-          broadcast_message(:message_created, message)
-          ThreadFollows.broadcast_message_created(message, new_followers)
+        {:ok, {written, reopened}} ->
+          result = publish_message(written)
           # After the message events: a session reloads its sidebar on the reopen, and that reload
           # must already include the message, or the message would be counted twice.
           if reopened, do: Topics.broadcast_server({:channel_updated, reopened})
-          {:ok, message}
+          result
 
         {:error, reason} ->
           {:error, reason}
       end
-      |> schedule_embeds([])
     end
+  end
+
+  @doc false
+  # Inserts a message the caller has authorized, with its mentions and the follows it makes. `attrs`
+  # have string keys and a decoded `"metadata"` map, as `normalize_message_attrs/1` returns them.
+  # Runs inside the caller's transaction; `publish_message/1` takes the result after the commit.
+  # `create_message/3` and a forum post's first message (`Tavern.Chat.Forums`) share it.
+  def write_message(%Scope{} = scope, channel_id, attrs) do
+    with :ok <- validate_reply_target(channel_id, attrs),
+         :ok <- authorize_message_mentions(scope, channel_id, attrs),
+         {:ok, message} <-
+           %Message{channel_id: channel_id, author_id: scope.user_id}
+           |> Message.create_changeset(attrs)
+           |> Repo.insert(),
+         :ok <- sync_message_mentions(message),
+         {:ok, new_followers} <- ThreadFollows.follow_for_message(message) do
+      {:ok, {reload_message(message.id), new_followers}}
+    end
+  end
+
+  @doc false
+  # Broadcasts a message `write_message/3` wrote, once its transaction committed, and fetches its
+  # link previews.
+  def publish_message({%Message{} = message, new_followers}) do
+    broadcast_message(:message_created, message)
+    ThreadFollows.broadcast_message_created(message, new_followers)
+    schedule_embeds(message, [])
   end
 
   # Applies the two send rules that depend on the channel row: slowmode, and reopening an archived
@@ -730,7 +755,8 @@ defmodule Tavern.Chat do
 
   @doc """
   Edits a message the scope authored, and broadcasts it. The edit drops the embeds of links it
-  removed and fetches previews only for links it added. A message the scope may not view is
+  removed and fetches previews only for links it added. Editing a thread's starter message takes
+  the thread's tags from it again (`Tavern.Chat.Hashtags`). A message the scope may not view is
   `{:error, :not_found}`. A visible message it may not edit (another author, or a timeout) is
   `{:error, :forbidden}`.
   """
@@ -745,18 +771,19 @@ defmodule Tavern.Chat do
                |> Message.changeset(attrs)
                |> Ecto.Changeset.put_change(:edited_at, DateTime.utc_now())
                |> Repo.update(),
-             :ok <- sync_message_mentions(updated_message) do
+             :ok <- sync_message_mentions(updated_message),
+             {:ok, retagged} <- Threads.retag_started_thread(updated_message) do
           {embedded_urls, image_keys} = Embeds.prune(updated_message)
-          {:ok, {reload_message(updated_message.id), embedded_urls, image_keys}}
+          {:ok, {reload_message(updated_message.id), embedded_urls, image_keys, retagged}}
         end
       end)
       |> case do
-        {:ok, {message, embedded_urls, image_keys}} ->
+        {:ok, {message, embedded_urls, image_keys, retagged}} ->
           Embeds.delete_objects(image_keys)
-
-          {:ok, message}
-          |> broadcast_written(:message_updated)
-          |> schedule_embeds(embedded_urls)
+          broadcast_message(:message_updated, message)
+          # A thread whose tags changed is redrawn wherever it is listed, as for a rename.
+          if retagged, do: Topics.broadcast_server({:channel_updated, retagged})
+          schedule_embeds(message, embedded_urls)
 
         {:error, reason} ->
           {:error, reason}
@@ -1220,12 +1247,10 @@ defmodule Tavern.Chat do
   defp broadcast_written({:error, reason}, _event), do: {:error, reason}
 
   # Runs after the broadcast, so the fetch's own broadcast follows the write's.
-  defp schedule_embeds({:ok, %Message{} = message}, embedded_urls) do
+  defp schedule_embeds(%Message{} = message, embedded_urls) do
     :ok = Embeds.schedule(message, embedded_urls)
     {:ok, message}
   end
-
-  defp schedule_embeds({:error, reason}, _embedded_urls), do: {:error, reason}
 
   # Decides `action`, applies `change` to the locked message and drops the embeds the changed
   # message no longer wants, in one transaction. Object-store deletes run after the commit, when

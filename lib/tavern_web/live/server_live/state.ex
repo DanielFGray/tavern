@@ -12,6 +12,7 @@ defmodule TavernWeb.ServerLive.State do
   alias Tavern.Chat
   alias Tavern.Chat.Message
   alias Tavern.Chat.Topics
+  alias TavernWeb.ServerLive.ForumNav
   alias TavernWeb.ServerLive.ThreadNav
 
   def queue_initial_hydration(socket) do
@@ -137,15 +138,7 @@ defmodule TavernWeb.ServerLive.State do
       Keyword.get(opts, :unread_mentions) ||
         Chat.unread_mentions_for_user(socket.assigns.current_user, refreshed_channels)
 
-    active_thread =
-      case socket.assigns.active_thread do
-        %{} = thread ->
-          Enum.find(Map.values(thread_summaries), &(&1.thread.id == thread.id))
-          |> then(&(&1 && &1.thread))
-
-        _ ->
-          nil
-      end
+    active_thread = reloaded_active_thread(socket, refreshed_active_channel)
 
     socket
     |> assign(:channels, refreshed_channels)
@@ -189,6 +182,7 @@ defmodule TavernWeb.ServerLive.State do
     |> assign(:unread_counts, unread_counts)
     |> assign(:unread_mentions, unread_mentions)
     |> stream(:messages, messages, reset: true)
+    |> ForumNav.load(refreshed_active_channel)
     |> sync_channel_subscriptions()
     |> maybe_restore_thread(active_thread)
   end
@@ -245,6 +239,7 @@ defmodule TavernWeb.ServerLive.State do
     )
     |> sync_channel_subscriptions()
     |> ThreadNav.reload()
+    |> ForumNav.reload()
   end
 
   def maybe_insert_message(socket, message) do
@@ -480,7 +475,10 @@ defmodule TavernWeb.ServerLive.State do
     )
     |> assign(:thread_reply_to_message, nil)
     |> assign_thread_controls(thread)
-    |> assign(:thread_message_count, Chat.message_count(socket.assigns.current_scope, thread.id))
+    |> assign(
+      :thread_message_count,
+      Chat.thread_reply_count(socket.assigns.current_scope, thread.id)
+    )
     |> assign(:thread_messages_empty?, thread_messages == [])
     |> assign_thread_message_form()
     |> stream(:thread_messages, thread_messages, reset: true)
@@ -501,6 +499,7 @@ defmodule TavernWeb.ServerLive.State do
     |> assign(:can_send_thread_messages?, Chat.can_send_messages_in_threads?(thread, user))
     |> assign(:can_archive_thread?, Chat.can_archive_thread?(thread, user))
     |> assign(:can_lock_thread?, Chat.can_lock_thread?(thread, user))
+    |> assign(:can_react_in_thread?, Chat.can_add_reactions?(thread, user))
   end
 
   @doc "Reloads the open thread when `channel_id` is it, so its header and controls follow."
@@ -535,6 +534,7 @@ defmodule TavernWeb.ServerLive.State do
     |> assign(:can_send_thread_messages?, false)
     |> assign(:can_archive_thread?, false)
     |> assign(:can_lock_thread?, false)
+    |> assign(:can_react_in_thread?, false)
     |> assign(:thread_following?, false)
     |> assign(:thread_message_count, 0)
     |> assign(:thread_messages_empty?, true)
@@ -542,6 +542,7 @@ defmodule TavernWeb.ServerLive.State do
     |> stream(:thread_messages, [], reset: true)
     |> rerender_messages([previous_starter_message_id])
     |> sync_channel_subscriptions()
+    |> ForumNav.reload()
   end
 
   def current_thread_starter_id(socket) do
@@ -589,6 +590,7 @@ defmodule TavernWeb.ServerLive.State do
     |> assign(:messages_empty?, true)
     |> assign(:thread_summaries, %{})
     |> assign(:typing_users, [])
+    |> assign(:forum, nil)
     |> close_thread()
     |> stream(:messages, [], reset: true)
     |> sync_channel_subscriptions()
@@ -633,6 +635,19 @@ defmodule TavernWeb.ServerLive.State do
           :active_channel,
           Enum.find(channels, &(&1.id == active_channel.id)) || active_channel
         )
+    end
+  end
+
+  # The open thread read again, when it is still one the member may view under `channel`.
+  defp reloaded_active_thread(socket, channel) do
+    channel_id = channel.id
+
+    with %{id: thread_id} <- socket.assigns.active_thread,
+         %{parent_channel_id: ^channel_id} = thread <-
+           Chat.get_thread(socket.assigns.current_scope, thread_id) do
+      thread
+    else
+      _ -> nil
     end
   end
 

@@ -1,6 +1,7 @@
 defmodule TavernWeb.ServerLive.Events do
   @moduledoc false
 
+  alias TavernWeb.ServerLive.Events.Forums
   alias TavernWeb.ServerLive.Events.Hydration
   alias TavernWeb.ServerLive.Events.Messages
   alias TavernWeb.ServerLive.Events.Mobile
@@ -113,6 +114,20 @@ defmodule TavernWeb.ServerLive.Events do
     else
       Threads.handle_event(event, params, socket)
     end
+  end
+
+  def handle_event(event, params, socket)
+      when event in [
+             "forum_search",
+             "forum_tag",
+             "forum_view",
+             "forum_more",
+             "new_forum_post",
+             "cancel_forum_post",
+             "validate_forum_post",
+             "create_forum_post"
+           ] do
+    Forums.handle_event(event, params, socket)
   end
 
   def handle_event(event, params, socket)

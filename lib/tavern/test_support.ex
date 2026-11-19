@@ -103,6 +103,29 @@ defmodule Tavern.TestSupport do
     %{channels: channels}
   end
 
+  # Creates a channel of `kind` (text by default) with this slug, unless one exists.
+  defp execute("ensure_channel", payload) do
+    slug = payload["slug"] || raise "slug is required"
+
+    channel =
+      case Repo.get_by(Channel, slug: slug) do
+        %Channel{} = channel ->
+          channel
+
+        nil ->
+          {:ok, channel} =
+            Chat.create_channel(Accounts.user_scope(owner_user!()), %{
+              "name" => payload["name"] || slug,
+              "slug" => slug,
+              "kind" => payload["kind"] || "text"
+            })
+
+          channel
+      end
+
+    %{channel: %{id: channel.id, name: channel.name, slug: channel.slug, kind: channel.kind}}
+  end
+
   defp execute("create_bot_with_token", payload) do
     actor = owner_user!()
 

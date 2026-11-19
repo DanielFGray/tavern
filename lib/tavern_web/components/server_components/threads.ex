@@ -27,8 +27,13 @@ defmodule TavernWeb.ServerComponents.Threads do
             <h3 class="truncate text-sm font-semibold text-base-content">
               {thread_title(@thread)}
             </h3>
-            <span class="rounded-full bg-base-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-base-content/60">
-              {@server.thread_message_count} replies
+            <span
+              id={"thread-reply-count-#{@message.id}"}
+              class="rounded-full bg-base-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-base-content/60"
+            >
+              {@server.thread_message_count} {if @server.thread_message_count == 1,
+                do: "reply",
+                else: "replies"}
             </span>
           </div>
           <p class="mt-1 truncate text-xs text-base-content/55">
@@ -205,6 +210,8 @@ defmodule TavernWeb.ServerComponents.Threads do
             removable?={embeds_removable?(@thread_message, @server)}
           />
 
+          <.thread_reactions message={@thread_message} server={@server} />
+
           <div class="mt-2 flex items-center gap-2 text-[11px] text-base-content/50">
             <span :if={edited_message?(@thread_message)}>(edited)</span>
             <span :if={deleted_message?(@thread_message)} class="text-amber-300">deleted</span>
@@ -222,6 +229,81 @@ defmodule TavernWeb.ServerComponents.Threads do
           </div>
         </div>
       </div>
+    </div>
+    """
+  end
+
+  attr :message, :map, required: true
+  attr :server, :map, required: true
+
+  # A thread message's reactions, and the default reactions a member who may react can add. The
+  # channel message's emoji picker is tied to the channel's stream, so a thread offers the defaults.
+  defp thread_reactions(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :can_react?,
+        assigns.server.can_react_in_thread? and
+          !deleted_message?(assigns.message)
+      )
+
+    assigns =
+      assign(
+        assigns,
+        :quick,
+        Enum.reject(
+          Tavern.Chat.default_reaction_emojis(),
+          fn emoji ->
+            Enum.any?(assigns.message.reactions, &(&1.emoji_unicode == emoji))
+          end
+        )
+      )
+
+    ~H"""
+    <div
+      :if={@can_react? or @message.reactions != []}
+      class="mt-2 flex flex-wrap items-center gap-1.5"
+    >
+      <button
+        :for={reaction <- reaction_summaries(@message, @server.current_user)}
+        type="button"
+        phx-click={
+          if(reaction.kind == :unicode, do: "toggle_reaction", else: "toggle_custom_reaction")
+        }
+        phx-value-id={@message.id}
+        phx-value-emoji={reaction.emoji_unicode}
+        phx-value-emoji_id={reaction.emoji_id}
+        id={reaction_dom_id(@message, reaction)}
+        disabled={!@can_react?}
+        class={[
+          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition disabled:cursor-not-allowed disabled:opacity-50",
+          reaction.reacted? && "border-violet-400/60 bg-violet-500/20 text-violet-100",
+          !reaction.reacted? &&
+            "border-base-300 bg-base-100 text-base-content/70 hover:border-base-content/20 hover:text-base-content"
+        ]}
+      >
+        <span :if={reaction.kind == :unicode}>{reaction.emoji_unicode}</span>
+        <img
+          :if={reaction.kind == :custom}
+          src={reaction.url}
+          alt={reaction.label}
+          class="size-4 rounded object-cover"
+        />
+        <span>{reaction.count}</span>
+      </button>
+      <button
+        :for={emoji <- @quick}
+        :if={@can_react?}
+        type="button"
+        phx-click="toggle_reaction"
+        phx-value-id={@message.id}
+        phx-value-emoji={emoji}
+        id={"add-#{reaction_dom_id(@message, %{kind: :unicode, emoji_unicode: emoji})}"}
+        aria-label={"React with #{emoji}"}
+        class="inline-flex items-center rounded-full border border-dashed border-base-300 px-2 py-0.5 text-[11px] opacity-60 transition hover:opacity-100"
+      >
+        {emoji}
+      </button>
     </div>
     """
   end

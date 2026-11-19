@@ -8,11 +8,16 @@ defmodule TavernWeb.ServerLive.Events.Threads do
 
   alias Tavern.Chat
   alias TavernWeb.ServerLive.Events.Helpers
+  alias TavernWeb.ServerLive.ForumNav
   alias TavernWeb.ServerLive.State
   alias TavernWeb.ServerLive.ThreadNav
 
-  def handle_info({:thread_message_created, message}, socket),
-    do: {:noreply, ThreadNav.apply_thread_message(socket, message)}
+  def handle_info({:thread_message_created, message}, socket) do
+    {:noreply,
+     socket
+     |> ThreadNav.apply_thread_message(message)
+     |> ForumNav.reload_for_post(message.channel)}
+  end
 
   def handle_info({:thread_followers_changed, _thread_id, user_ids}, socket),
     do: {:noreply, ThreadNav.apply_follow_change(socket, user_ids)}

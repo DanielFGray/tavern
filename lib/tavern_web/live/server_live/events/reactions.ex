@@ -2,7 +2,7 @@ defmodule TavernWeb.ServerLive.Events.Reactions do
   @moduledoc false
 
   import Phoenix.Component, only: [assign: 3]
-  import Phoenix.LiveView, only: [put_flash: 3, stream_insert: 3]
+  import Phoenix.LiveView, only: [put_flash: 3]
 
   alias Tavern.Chat
   alias TavernWeb.ServerLive.Events.Helpers
@@ -16,7 +16,8 @@ defmodule TavernWeb.ServerLive.Events.Reactions do
        socket
        |> assign(:reaction_picker_message_id, nil)
        |> State.rerender_messages([message.id])
-       |> stream_insert(:messages, updated_message)}
+       |> State.maybe_stream_update_message(updated_message)
+       |> State.maybe_stream_update_thread_message(updated_message)}
     else
       :error ->
         {:noreply, socket}
@@ -46,7 +47,8 @@ defmodule TavernWeb.ServerLive.Events.Reactions do
        socket
        |> assign(:reaction_picker_message_id, nil)
        |> State.rerender_messages([message.id])
-       |> stream_insert(:messages, updated_message)}
+       |> State.maybe_stream_update_message(updated_message)
+       |> State.maybe_stream_update_thread_message(updated_message)}
     else
       :error ->
         {:noreply, socket}
