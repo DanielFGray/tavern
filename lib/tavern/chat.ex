@@ -425,6 +425,15 @@ defmodule Tavern.Chat do
   # Broadcasts a message `write_message/3` wrote, once its transaction committed, and fetches its
   # link previews.
   def publish_message({%Message{} = message, new_followers}) do
+    # A sent message ends its author's typing in that channel, whoever sent it: a bot has no
+    # "stop typing" call, and a browser's own stop would race the message.
+    _ = Ephemeral.remove_typing(message.channel_id, message.author_id)
+
+    Topics.broadcast_channel(
+      message.channel_id,
+      {:typing_stopped, message.channel_id, message.author_id}
+    )
+
     broadcast_message(:message_created, message)
     ThreadFollows.broadcast_message_created(message, new_followers)
     schedule_embeds(message, [])

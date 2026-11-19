@@ -83,7 +83,6 @@ defmodule TavernWeb.ServerLive.Events.Threads do
                State.maybe_put_reply(socket, message_params)
              ) do
           {:ok, message} ->
-            Chat.clear_typing(socket.assigns.current_scope, socket.assigns.active_thread.id)
             socket = push_event(socket, "composer:clear", %{target: "thread"})
 
             {:noreply,

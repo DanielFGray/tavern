@@ -19,6 +19,9 @@ defmodule TavernWeb.ServerLive.Events do
     Navigation.handle_params(params, uri, socket)
   end
 
+  def handle_info({:typing_expired, _key, _user_id, _token} = message, socket),
+    do: Messages.handle_info(message, socket)
+
   def handle_info(message, socket)
       when (is_tuple(message) and tuple_size(message) == 2 and
               elem(message, 0) in [:message_created, :message_updated, :message_deleted]) or

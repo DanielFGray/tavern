@@ -51,6 +51,63 @@ defmodule TavernWeb.ServerLiveMessagesTest do
     refute render(view) =~ "value=\"hello from liveview\""
   end
 
+  describe "typing indicator" do
+    setup %{conn: conn} do
+      Bootstrap.ensure_seed_data!()
+      conn = log_in_member_user(conn)
+      general = channel_by_slug!("general")
+
+      typer =
+        user_fixture(%{display_name: "Quiet Typist", username: "quiet_typist"})
+
+      {:ok, view, _html} = live_hydrated(conn, ~p"/?channel=general")
+      %{view: view, general: general, typer: typer, conn: conn}
+    end
+
+    test "drops a typist whose last ping is older than the TTL", ctx do
+      :ok = Chat.announce_typing(scope_for(ctx.typer), ctx.general.id)
+      _ = :sys.get_state(ctx.view.pid)
+      assert has_element?(ctx.view, "#channel-typing-indicator", "Quiet Typist")
+
+      # The first ping of a session takes token 1; the second takes token 2.
+      :ok = Chat.announce_typing(scope_for(ctx.typer), ctx.general.id)
+      _ = :sys.get_state(ctx.view.pid)
+
+      send(ctx.view.pid, {:typing_expired, :typing_users, ctx.typer.id, 1})
+      _ = :sys.get_state(ctx.view.pid)
+      assert has_element?(ctx.view, "#channel-typing-indicator", "Quiet Typist")
+
+      send(ctx.view.pid, {:typing_expired, :typing_users, ctx.typer.id, 2})
+      _ = :sys.get_state(ctx.view.pid)
+      refute has_element?(ctx.view, "#channel-typing-indicator", "Quiet Typist")
+    end
+
+    test "a message from the typist clears their typing for viewers", ctx do
+      :ok = Chat.announce_typing(scope_for(ctx.typer), ctx.general.id)
+      _ = :sys.get_state(ctx.view.pid)
+      assert has_element?(ctx.view, "#channel-typing-indicator", "Quiet Typist")
+
+      {:ok, _message} =
+        Chat.create_message(scope_for(ctx.typer), ctx.general.id, %{"body" => "done typing"})
+
+      _ = :sys.get_state(ctx.view.pid)
+      refute has_element?(ctx.view, "#channel-typing-indicator", "Quiet Typist")
+      assert Tavern.Ephemeral.list_typing_user_ids(ctx.general.id) == []
+    end
+
+    test "sending from the composer clears the sender's typing", ctx do
+      user = current_user_from_conn(ctx.conn)
+      :ok = Chat.announce_typing(scope_for(user), ctx.general.id)
+      assert user.id in Tavern.Ephemeral.list_typing_user_ids(ctx.general.id)
+
+      ctx.view
+      |> form("#message-form", %{message: %{body: "sent"}})
+      |> render_submit()
+
+      refute user.id in Tavern.Ephemeral.list_typing_user_ids(ctx.general.id)
+    end
+  end
+
   test "stores the mention and slash command entities from composer metadata", %{conn: conn} do
     Bootstrap.ensure_seed_data!()
     conn = log_in_member_user(conn)

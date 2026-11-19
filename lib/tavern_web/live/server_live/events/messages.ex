@@ -31,6 +31,16 @@ defmodule TavernWeb.ServerLive.Events.Messages do
     {:noreply, socket}
   end
 
+  # A typist who stops pinging without a stop (a bot, a crashed browser) leaves the list when the
+  # timer of their last ping fires. A timer of an earlier ping finds a newer token and does nothing.
+  def handle_info({:typing_expired, assign_key, user_id, token}, socket) do
+    if socket.assigns.typing_tokens[{assign_key, user_id}] == token do
+      {:noreply, drop_typist(socket, assign_key, user_id)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_info({:message_updated, message}, socket) do
     {:noreply,
      socket
@@ -167,7 +177,6 @@ defmodule TavernWeb.ServerLive.Events.Messages do
                State.maybe_put_reply(socket, message_params)
              ) do
           {:ok, message} ->
-            Chat.clear_typing(socket.assigns.current_scope, socket.assigns.active_channel.id)
             socket = push_event(socket, "composer:clear", %{target: "channel"})
 
             {:noreply,
@@ -457,13 +466,32 @@ defmodule TavernWeb.ServerLive.Events.Messages do
           socket
 
         user ->
-          assign(socket, assign_key, merge_typing_user(socket.assigns[assign_key] || [], user))
+          socket
+          |> assign(assign_key, merge_typing_user(socket.assigns[assign_key] || [], user))
+          |> expire_typist_later(assign_key, user_id)
       end
     end
   end
 
-  defp update_typing_assign(socket, assign_key, :typing_stopped, user_id) do
-    assign(socket, assign_key, Enum.reject(socket.assigns[assign_key] || [], &(&1.id == user_id)))
+  defp update_typing_assign(socket, assign_key, :typing_stopped, user_id),
+    do: drop_typist(socket, assign_key, user_id)
+
+  defp drop_typist(socket, assign_key, user_id) do
+    socket
+    |> assign(assign_key, Enum.reject(socket.assigns[assign_key] || [], &(&1.id == user_id)))
+    |> assign(:typing_tokens, Map.delete(socket.assigns.typing_tokens, {assign_key, user_id}))
+  end
+
+  # Typing lasts `Ephemeral.typing_ttl/0` seconds after the last ping. Each ping takes a new token
+  # and starts a timer carrying it, so only the last ping's timer removes the typist.
+  defp expire_typist_later(socket, assign_key, user_id) do
+    token = socket.assigns.typing_token_seq + 1
+    ttl_ms = Tavern.Ephemeral.typing_ttl() * 1000
+    Process.send_after(self(), {:typing_expired, assign_key, user_id, token}, ttl_ms)
+
+    socket
+    |> assign(:typing_token_seq, token)
+    |> assign(:typing_tokens, Map.put(socket.assigns.typing_tokens, {assign_key, user_id}, token))
   end
 
   defp merge_typing_user(users, user) do

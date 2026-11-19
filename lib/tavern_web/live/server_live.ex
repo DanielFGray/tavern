@@ -71,6 +71,8 @@ defmodule TavernWeb.ServerLive do
       |> assign(:thread_summaries, %{})
       |> assign(:typing_users, [])
       |> assign(:thread_typing_users, [])
+      |> assign(:typing_tokens, %{})
+      |> assign(:typing_token_seq, 0)
       |> assign(:active_thread, nil)
       |> assign(:thread_following?, false)
       |> assign(:followed_threads, [])
