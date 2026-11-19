@@ -121,6 +121,7 @@ defmodule TavernWeb.Router do
     post("/messages/:message_id/poll/close", PollController, :close)
     post("/messages/:message_id/threads", MessageController, :create_thread)
     post("/commands/execute", CommandController, :execute)
+    get("/members/:user_id", MemberController, :show)
     get("/events", BotController, :events)
   end
 

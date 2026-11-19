@@ -97,6 +97,20 @@ defmodule Tavern.Chat.Roles do
     end
   end
 
+  @doc """
+  An active member the scope may see, with the roles they hold (the default role included), or
+  nil for a user who is not a visible member.
+  """
+  def get_member(%Scope{} = scope, user_id) do
+    with roles when is_list(roles) <- member_roles(scope, user_id),
+         %User{} = user <- Repo.get(User, user_id) do
+      default = Repo.get_by(Role, is_default: true)
+      %{user: user, roles: Enum.reject(roles, & &1.is_default) ++ List.wrap(default)}
+    else
+      _ -> nil
+    end
+  end
+
   def change_role(%Role{} = role, attrs \\ %{}), do: Role.manage_changeset(role, attrs)
 
   @doc "Creates a role just above the default role."

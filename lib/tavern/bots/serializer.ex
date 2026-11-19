@@ -31,6 +31,10 @@ defmodule Tavern.Bots.Serializer do
     }
   end
 
+  def serialize_member(%User{} = user, roles) do
+    serialize_user(user) |> Map.put(:role_ids, Enum.map(roles, & &1.id))
+  end
+
   # Reads nothing. The message must come from a scoped read that preloads its author, channel
   # tree and reply target, which is what `Tavern.Chat` returns.
   def serialize_message(%Message{} = message) do
@@ -49,9 +53,25 @@ defmodule Tavern.Bots.Serializer do
       channel: serialize_channel_summary(message.channel),
       reply_to: serialize_message_reference(message.reply_to),
       embeds: serialize_embeds(message.embeds),
-      poll: serialize_poll(message.poll)
+      poll: serialize_poll(message.poll),
+      mentions: serialize_mentions(message)
     }
   end
+
+  # `@everyone` and `@here` are stored as a mention of the default role, so they are reported as
+  # `everyone`, not as a role id.
+  defp serialize_mentions(%Message{user_mentions: users, role_mentions: roles})
+       when is_list(users) and is_list(roles) do
+    {everyone, named} = Enum.split_with(roles, & &1.mentioned_role.is_default)
+
+    %{
+      user_ids: Enum.map(users, & &1.mentioned_user_id),
+      role_ids: Enum.map(named, & &1.mentioned_role_id),
+      everyone: everyone != []
+    }
+  end
+
+  defp serialize_mentions(_message), do: nil
 
   @doc """
   The `poll.voted` payload: the poll after the vote, and the vote itself (who, which options by id

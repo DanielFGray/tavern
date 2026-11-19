@@ -416,6 +416,14 @@ defmodule Tavern.Bots do
 
   def serialize_bot_user(%User{} = bot_user), do: Serializer.serialize_bot_user(bot_user)
 
+  @doc "A visible active member with their role ids, or nil."
+  def get_member(%Scope{} = scope, user_id) do
+    case Chat.get_member(scope, user_id) do
+      nil -> nil
+      %{user: user, roles: roles} -> Serializer.serialize_member(user, roles)
+    end
+  end
+
   def serialize_message(message), do: Serializer.serialize_message(message)
 
   def serialize_thread(thread), do: Serializer.serialize_thread(thread)

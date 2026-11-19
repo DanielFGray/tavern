@@ -44,14 +44,16 @@ defmodule Tavern.Chat do
   # the decision that allowed the read, so it costs no query.
   @read_preloads [
     :author,
+    :user_mentions,
+    role_mentions: :mentioned_role,
     reactions: [emoji: :asset],
     reply_to: :author,
     embeds: :image_asset,
     poll: [:options, ballots: :user]
   ]
 
-  # What a write returns and broadcasts. The mention lists are here because the receiver's
-  # notification check reads them from the broadcast; reads do not need them.
+  # What a write returns and broadcasts. Reads carry the mention lists too, so a bot reads whom a
+  # message mentions from either.
   @message_preloads [
     :author,
     :channel,
@@ -79,6 +81,7 @@ defmodule Tavern.Chat do
   defdelegate list_roles(scope), to: Roles
   defdelegate role_controls(scope), to: Roles
   defdelegate member_roles(scope, user_id), to: Roles
+  defdelegate get_member(scope, user_id), to: Roles
   defdelegate change_role(role, attrs \\ %{}), to: Roles
   defdelegate create_role(scope, attrs), to: Roles
   defdelegate update_role(scope, role_id, attrs), to: Roles
