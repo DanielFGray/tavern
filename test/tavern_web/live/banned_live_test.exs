@@ -45,6 +45,27 @@ defmodule TavernWeb.BannedLiveTest do
     refute has_element?(view, "#ban-reason")
   end
 
+  test "a kicked member rejoins with a code and lands in the app; a banned member has no field",
+       %{conn: conn} do
+    owner = owner_fixture()
+    channel = channel_fixture()
+    {:ok, invite} = Tavern.Chat.create_invite(%{"channel_id" => channel.id}, owner)
+
+    banned_conn = login_excluded_user(conn, "no_field_banned", %{"banned" => true})
+    {:ok, banned_view, _html} = live(banned_conn, ~p"/banned")
+    refute has_element?(banned_view, "#rejoin-form")
+
+    kicked_conn = login_excluded_user(build_conn(), "field_kicked", %{"kicked" => true})
+    {:ok, view, _html} = live(kicked_conn, ~p"/banned")
+    assert has_element?(view, "#removed-page #rejoin-form #rejoin-code")
+
+    view |> form("#rejoin-form", invite: %{code: "wrongcode"}) |> render_submit()
+    assert has_element?(view, "#rejoin-error")
+
+    view |> form("#rejoin-form", invite: %{code: invite.code}) |> render_submit()
+    assert_redirect(view, ~p"/")
+  end
+
   defp login_excluded_user(conn, name, flags) do
     user =
       user_fixture(%{

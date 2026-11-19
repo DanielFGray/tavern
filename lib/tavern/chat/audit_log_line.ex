@@ -12,7 +12,7 @@ defmodule Tavern.Chat.AuditLogLine do
   alias Tavern.Chat.AuditLogEntry
   alias Tavern.Chat.PermissionBits
 
-  @action_types ~w(timeout_member kick_member ban_member unban_member
+  @action_types ~w(timeout_member kick_member ban_member unban_member member_rejoined
                    role_created role_updated role_moved role_deleted
                    member_role_added member_role_removed
                    channel_overwrite_updated channel_overwrite_deleted
@@ -41,6 +41,9 @@ defmodule Tavern.Chat.AuditLogLine do
   defp line("kick_member", actor, subject, _meta, _entry), do: "#{actor} kicked #{subject}"
   defp line("ban_member", actor, subject, _meta, _entry), do: "#{actor} banned #{subject}"
   defp line("unban_member", actor, subject, _meta, _entry), do: "#{actor} unbanned #{subject}"
+
+  defp line("member_rejoined", actor, _subject, meta, _entry),
+    do: "#{actor} rejoined via #{meta["invite_code"]}"
 
   defp line("role_created", actor, _subject, meta, _entry),
     do: "#{actor} created role #{role_name(meta)}"

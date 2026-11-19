@@ -18,6 +18,11 @@ defmodule TavernWeb.BannedLive do
       |> assign(:server_settings, server_settings)
       |> assign(:current_server, server_settings)
 
+    socket =
+      socket
+      |> assign(:rejoin_form, to_form(%{"code" => ""}, as: :invite))
+      |> assign(:rejoin_error, nil)
+
     {:ok, assign_ban_details(socket, state, user.membership)}
   end
 
@@ -32,6 +37,20 @@ defmodule TavernWeb.BannedLive do
   end
 
   defp assign_ban_details(socket, _state, _membership), do: socket
+
+  @impl true
+  def handle_event("rejoin", %{"invite" => %{"code" => code}}, socket) do
+    case Chat.rejoin_with_invite(socket.assigns.current_scope, code) do
+      {:ok, _membership} ->
+        {:noreply, push_navigate(socket, to: ~p"/")}
+
+      {:error, {:refused, :invalid_invite}} ->
+        {:noreply, assign(socket, :rejoin_error, "That invite code does not work.")}
+
+      {:error, _reason} ->
+        {:noreply, assign(socket, :rejoin_error, "This account cannot rejoin with an invite.")}
+    end
+  end
 
   @impl true
   def render(assigns) do
@@ -63,7 +82,35 @@ defmodule TavernWeb.BannedLive do
             </h1>
             <p class="mt-5 max-w-2xl text-base leading-7 text-base-content/70">
               A moderator removed this account from the server, so its channels are closed to it.
+              To come back, you need a new invite.
             </p>
+            <.form
+              for={@rejoin_form}
+              id="rejoin-form"
+              phx-submit="rejoin"
+              class="mt-6 flex flex-wrap items-start gap-3"
+            >
+              <div class="min-w-[14rem] flex-1">
+                <.input
+                  field={@rejoin_form[:code]}
+                  id="rejoin-code"
+                  type="text"
+                  placeholder="Invite code"
+                  autocomplete="off"
+                  required
+                />
+                <p :if={@rejoin_error} id="rejoin-error" class="mt-2 text-sm text-error">
+                  {@rejoin_error}
+                </p>
+              </div>
+              <button
+                id="rejoin-submit"
+                type="submit"
+                class="rounded-2xl bg-primary px-4 py-3 text-sm font-semibold text-primary-content transition hover:opacity-90"
+              >
+                Rejoin
+              </button>
+            </.form>
           <% end %>
 
           <div class="mt-8 grid gap-4 rounded-2xl border border-base-300 bg-base-200 p-5 sm:grid-cols-2">

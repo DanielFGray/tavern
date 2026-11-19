@@ -611,6 +611,56 @@ defmodule Tavern.Chat do
     end)
   end
 
+  @doc """
+  Brings the kicked member `scope.user_id` back with the invite `code`. One transaction takes the
+  member's membership row `FOR UPDATE`, redeems the invite (`Invites.redeem/2`: row lock, expiry,
+  use cap, one use per user), reactivates the membership with the default role only (the roles held
+  when kicked are dropped, as `unban_member/3` does), and writes a `member_rejoined` audit entry
+  naming the code. Broadcasts `:roles_changed`, and returns `{:ok, membership}`.
+
+  Errors: `{:error, :banned}` for a banned member, `{:error, :not_kicked}` for a member who is
+  active or has no membership, and `{:error, {:refused, :invalid_invite}}` for a code that is
+  unknown, revoked, expired, exhausted or already used by this member.
+  """
+  def rejoin_with_invite(%Scope{user_id: user_id}, code) when is_binary(user_id) do
+    Repo.transact(fn ->
+      with %Membership{} = membership <- lock_membership(user_id),
+           :ok <- ensure_kicked(membership),
+           %User{} = user <- Repo.get(User, user_id),
+           invite = Invites.redeem(code, user) do
+        from(member_role in MemberRole, where: member_role.user_id == ^user_id)
+        |> Repo.delete_all()
+
+        membership = membership |> Membership.reactivate_changeset() |> Repo.update!()
+
+        record_audit_log!(user_id, user_id, "member_rejoined", nil, %{
+          "invite_code" => invite.code
+        })
+
+        {:ok, membership}
+      else
+        nil -> {:error, :not_kicked}
+        {:error, reason} -> {:error, reason}
+      end
+    end)
+    |> tap(fn
+      {:ok, _membership} -> Topics.broadcast_server(:roles_changed)
+      {:error, _reason} -> :ok
+    end)
+  end
+
+  def rejoin_with_invite(%Scope{}, _code), do: {:error, :not_kicked}
+
+  defp lock_membership(user_id) do
+    from(membership in Membership, where: membership.user_id == ^user_id, lock: "FOR UPDATE")
+    |> Repo.one()
+  end
+
+  defp ensure_kicked(%Membership{deactivated_at: nil}), do: {:error, :not_kicked}
+
+  defp ensure_kicked(%Membership{} = membership),
+    do: if(banned_membership?(membership), do: {:error, :banned}, else: :ok)
+
   defp banned_membership?(%Membership{deactivated_at: nil}), do: false
   defp banned_membership?(%Membership{flags: flags}), do: Map.get(flags || %{}, "banned") == true
 
