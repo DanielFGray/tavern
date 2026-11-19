@@ -175,6 +175,14 @@ defmodule Tavern.TestSupport do
     }
   end
 
+  defp execute("delete_account", payload) do
+    username = payload["username"] || raise "username is required"
+    ensure_safe_test_identity!("#{username}@example.com", username)
+
+    {:ok, user} = Accounts.delete_account(Repo.get_by!(User, username: username).id)
+    %{user: user_payload(user)}
+  end
+
   defp execute("bulk_create_users", payload) do
     count = payload["count"] || 10
     offset = payload["offset"] || 0

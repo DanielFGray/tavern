@@ -84,6 +84,17 @@ defmodule TavernWeb.BannedLive do
               A moderator removed this account from the server, so its channels are closed to it.
               To come back, you need a new invite.
             </p>
+            <p
+              :if={@current_user.membership.deletion_scheduled_at}
+              id="deletion-scheduled"
+              class="mt-4 max-w-2xl rounded-2xl border border-error/30 bg-error/10 px-4 py-3 text-sm leading-6 text-base-content"
+            >
+              This account will be deleted on
+              <span class="font-semibold">
+                {Calendar.strftime(@current_user.membership.deletion_scheduled_at, "%B %-d, %Y")}
+              </span>
+              unless you rejoin with an invite before then.
+            </p>
             <.form
               for={@rejoin_form}
               id="rejoin-form"

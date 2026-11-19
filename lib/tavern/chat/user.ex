@@ -90,6 +90,26 @@ defmodule Tavern.Chat.User do
     |> validate_password(opts)
   end
 
+  @doc """
+  Wipes a deleted account's identity, so its email and username can register again. The username
+  becomes `deleted-` and random hex: registration allows no `-` (`validate_profile_fields/1`), so
+  no member can take it first, and it is random so nobody can predict it. The display name becomes
+  "Deleted user", the name everything that shows the account's messages prints.
+  """
+  def deletion_changeset(user, deleted_at) do
+    change(user,
+      email: nil,
+      username: "deleted-" <> Base.encode16(:crypto.strong_rand_bytes(8), case: :lower),
+      display_name: "Deleted user",
+      bio: nil,
+      hashed_password: nil,
+      confirmed_at: nil,
+      avatar_asset_id: nil,
+      banner_asset_id: nil,
+      deleted_at: deleted_at
+    )
+  end
+
   def password_changeset(user, attrs) do
     user
     |> cast(attrs, [:password])

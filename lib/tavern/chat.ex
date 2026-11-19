@@ -6,6 +6,7 @@ defmodule Tavern.Chat do
   import Ecto.Query, warn: false
 
   alias Tavern.Accounts
+  alias Tavern.Accounts.DeletionNotice
   alias Tavern.Accounts.Scope
   alias Tavern.Chat.Channel
   alias Tavern.Chat.ChannelOverwrites
@@ -39,6 +40,8 @@ defmodule Tavern.Chat do
   alias Tavern.Repo
 
   @default_reaction_emojis ["👍", "🔥", "❤️"]
+  # How long a member kicked by `kick_member_and_schedule_deletion/3` has to rejoin.
+  @deletion_grace_days 30
 
   # What a message read needs to render and serialize. The channel is not here: a read sets it from
   # the decision that allowed the read, so it costs no query.
@@ -632,15 +635,107 @@ defmodule Tavern.Chat do
 
   @doc "Removes the member `subject_user_id` from the server. Returns `{:ok, subject, moderation_case}`."
   def kick_member(%Scope{} = scope, subject_user_id, reason \\ nil) do
-    deactivate_member(scope, subject_user_id, :kick_members, :kick, reason, %{"kicked" => true})
+    deactivate_member(scope, subject_user_id, :kick_members, fn membership, subject_id ->
+      remove_membership!(scope, membership, subject_id, :kick, reason, %{"kicked" => true})
+    end)
   end
 
-  @doc "Bans the member `subject_user_id`. Returns `{:ok, subject, moderation_case}`."
+  @doc """
+  Kicks the member `subject_user_id` as `kick_member/3` does, and schedules the deletion of their
+  account #{@deletion_grace_days} days from now, unless they rejoin with an invite first
+  (`rejoin_with_invite/2`) or a moderator cancels it (`cancel_account_deletion/2`).
+  `Tavern.Accounts.delete_due_accounts/1` runs the deletion. Writes the kick case, the
+  `kick_member` audit entry and an `account_deletion_scheduled` entry. When mail is configured, it
+  mails the member the date after the commit.
+
+  Returns `{:ok, subject, moderation_case}`. A bot or the system account is `{:error, :forbidden}`:
+  a bot is revoked, never deleted. See `moderate/4` for the other refusals.
+  """
+  def kick_member_and_schedule_deletion(%Scope{} = scope, subject_user_id, reason \\ nil) do
+    deletion_at = DateTime.add(DateTime.utc_now(), @deletion_grace_days, :day)
+
+    deactivate_member(scope, subject_user_id, :kick_members, fn membership, subject_id ->
+      case Repo.get!(User, subject_id) do
+        %User{bot: false, system: false} ->
+          {membership, moderation_case} =
+            remove_membership!(scope, membership, subject_id, :kick, reason, %{"kicked" => true})
+
+          membership = membership |> Membership.deletion_changeset(deletion_at) |> Repo.update!()
+
+          record_audit_log!(scope.user_id, subject_id, "account_deletion_scheduled", reason, %{
+            "deletion_scheduled_at" => deletion_at
+          })
+
+          {membership, moderation_case}
+
+        %User{} ->
+          {:error, :forbidden}
+      end
+    end)
+    |> tap(fn
+      {:ok, subject, _moderation_case} -> DeletionNotice.deliver(subject, deletion_at)
+      {:error, _reason} -> :ok
+    end)
+  end
+
+  @doc """
+  The kicked members whose account deletion is scheduled, soonest first, for a scope with
+  `kick_members`; any other scope gets `{:error, :forbidden}`. Each entry is
+  `%{user: user, deletion_scheduled_at: datetime}`.
+  """
+  def list_scheduled_deletions(%Scope{} = scope) do
+    if Visibility.can?(scope, :kick_members, :server) do
+      {:ok,
+       from(user in User,
+         join: membership in Membership,
+         on: membership.user_id == user.id,
+         where: not is_nil(membership.deletion_scheduled_at),
+         order_by: [asc: membership.deletion_scheduled_at],
+         select: %{user: user, deletion_scheduled_at: membership.deletion_scheduled_at}
+       )
+       |> Repo.all()}
+    else
+      {:error, :forbidden}
+    end
+  end
+
+  @doc """
+  Cancels the scheduled deletion of `subject_user_id`'s account, for a scope with `kick_members`.
+  The member stays kicked. Writes an `account_deletion_canceled` audit entry. Returns
+  `{:ok, membership}`; `{:error, :forbidden}` for a scope without the permission, and
+  `{:error, :not_found}` when no deletion is scheduled.
+  """
+  def cancel_account_deletion(%Scope{} = scope, subject_user_id) do
+    with {:ok, subject_id} <- cast_id(subject_user_id),
+         true <- Visibility.can?(scope, :kick_members, :server) || {:error, :forbidden} do
+      Repo.transact(fn ->
+        case lock_membership(subject_id) do
+          %Membership{deletion_scheduled_at: %DateTime{}} = membership ->
+            {:ok, cancel_scheduled_deletion!(membership, scope.user_id)}
+
+          _none ->
+            {:error, :not_found}
+        end
+      end)
+    end
+  end
+
+  @doc """
+  Bans the member `subject_user_id`. A scheduled account deletion is canceled, with an
+  `account_deletion_canceled` audit entry naming the moderator: a banned account is never deleted
+  automatically, since deleting it would free its email for a new registration. Returns
+  `{:ok, subject, moderation_case}`.
+  """
   def ban_member(%Scope{} = scope, subject_user_id, reason \\ nil) do
-    deactivate_member(scope, subject_user_id, :ban_members, :ban, reason, %{
-      "banned" => true,
-      "ban_reason" => reason
-    })
+    deactivate_member(scope, subject_user_id, :ban_members, fn membership, subject_id ->
+      {banned, moderation_case} =
+        remove_membership!(scope, membership, subject_id, :ban, reason, %{
+          "banned" => true,
+          "ban_reason" => reason
+        })
+
+      {cancel_scheduled_deletion!(banned, scope.user_id), moderation_case}
+    end)
   end
 
   @doc """
@@ -717,7 +812,7 @@ defmodule Tavern.Chat do
           set: [state: :revoked, revoked_at: now, revoked_by_user_id: scope.user_id]
         )
 
-        membership = membership |> Membership.reactivate_changeset() |> Repo.update!()
+        membership = reactivate_membership!(membership, scope.user_id)
 
         moderation_case =
           record_moderation_case(scope.user_id, subject_id, :unban, reason, executed_at: now)
@@ -755,7 +850,7 @@ defmodule Tavern.Chat do
         from(member_role in MemberRole, where: member_role.user_id == ^user_id)
         |> Repo.delete_all()
 
-        membership = membership |> Membership.reactivate_changeset() |> Repo.update!()
+        membership = reactivate_membership!(membership, user_id)
 
         record_audit_log!(user_id, user_id, "member_rejoined", nil, %{
           "invite_code" => invite.code
@@ -1082,37 +1177,61 @@ defmodule Tavern.Chat do
     |> Ecto.Changeset.add_error(:metadata, "must be valid JSON")
   end
 
-  # A removed member's sessions go after the removal commits, and their open LiveViews
-  # disconnect. A socket that reconnects finds no session and is sent to log in.
-  defp deactivate_member(scope, subject_user_id, bit, action_type, reason, extra_flags) do
+  # Removes a member through `moderate/4` with `change`. A removed member's sessions go after the
+  # removal commits, and their open LiveViews disconnect. A socket that reconnects finds no
+  # session and is sent to log in.
+  defp deactivate_member(scope, subject_user_id, bit, change) do
     scope
-    |> remove_membership(subject_user_id, bit, action_type, reason, extra_flags)
+    |> moderate(subject_user_id, bit, change)
     |> tap(fn
       {:ok, subject, _moderation_case} -> Accounts.revoke_user_sessions(subject.id)
       {:error, _reason} -> :ok
     end)
   end
 
-  defp remove_membership(scope, subject_user_id, bit, action_type, reason, extra_flags) do
-    moderate(scope, subject_user_id, bit, fn membership, subject_id ->
-      now = DateTime.utc_now()
-      flags = Map.merge(membership.flags || %{}, extra_flags)
+  defp remove_membership!(scope, membership, subject_id, action_type, reason, extra_flags) do
+    now = DateTime.utc_now()
+    flags = Map.merge(membership.flags || %{}, extra_flags)
 
-      membership =
-        membership
-        |> Membership.deactivate_changeset(now, flags)
-        |> Repo.update!()
+    membership =
+      membership
+      |> Membership.deactivate_changeset(now, flags)
+      |> Repo.update!()
 
-      moderation_case =
-        record_moderation_case(scope.user_id, subject_id, action_type, reason,
-          executed_at: now,
-          details: flags
-        )
+    moderation_case =
+      record_moderation_case(scope.user_id, subject_id, action_type, reason,
+        executed_at: now,
+        details: flags
+      )
 
-      record_audit_log!(scope.user_id, subject_id, "#{action_type}_member", reason, flags)
+    record_audit_log!(scope.user_id, subject_id, "#{action_type}_member", reason, flags)
 
-      {membership, moderation_case}
-    end)
+    {membership, moderation_case}
+  end
+
+  # Reactivation (a rejoin, an unban) cancels a scheduled deletion: an active member never carries
+  # one.
+  defp reactivate_membership!(%Membership{} = membership, actor_id) do
+    membership
+    |> cancel_scheduled_deletion!(actor_id)
+    |> Membership.reactivate_changeset()
+    |> Repo.update!()
+  end
+
+  # Clears a scheduled deletion and records the cancellation, naming `actor_id`. A membership with
+  # none is returned unchanged, with nothing written.
+  defp cancel_scheduled_deletion!(
+         %Membership{deletion_scheduled_at: nil} = membership,
+         _actor_id
+       ),
+       do: membership
+
+  defp cancel_scheduled_deletion!(%Membership{} = membership, actor_id) do
+    record_audit_log!(actor_id, membership.user_id, "account_deletion_canceled", nil, %{
+      "deletion_scheduled_at" => membership.deletion_scheduled_at
+    })
+
+    membership |> Membership.deletion_changeset(nil) |> Repo.update!()
   end
 
   # Every moderation write runs here, in one transaction. `Visibility.authorize_write/3` takes the
@@ -1249,7 +1368,7 @@ defmodule Tavern.Chat do
     usernames = Enum.uniq(mention_tokens)
 
     User
-    |> where([user], user.username in ^usernames)
+    |> where([user], user.username in ^usernames and is_nil(user.deleted_at))
     |> select([user], user.id)
     |> Repo.all()
   end

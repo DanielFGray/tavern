@@ -114,7 +114,61 @@ defmodule TavernWeb.SettingsComponents.Server do
       <.invites_panel :if={@can_manage_server?} {assigns} />
       <InviteRequests.queue_panel :if={@can_manage_applications?} streams={@streams} />
       <.members_panel {assigns} />
+      <.scheduled_deletions_panel :if={@scheduled_deletions} {assigns} />
       <.bans_panel :if={@bans} {assigns} />
+    </div>
+    """
+  end
+
+  def scheduled_deletions_panel(assigns) do
+    ~H"""
+    <div
+      id="scheduled-deletions-panel"
+      class="mt-5 rounded-xl border border-base-300 bg-base-200 p-4"
+    >
+      <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-base-content/50">
+        Scheduled deletions
+      </p>
+      <p class="mt-1 text-xs text-base-content/60">
+        Kicked members whose accounts will be deleted. Rejoining with an invite cancels the deletion. Canceling here keeps the account, and the member stays kicked.
+      </p>
+
+      <div id="scheduled-deletion-list" class="mt-3 space-y-2">
+        <div
+          :for={entry <- @scheduled_deletions}
+          id={"scheduled-deletion-#{entry.user.id}"}
+          class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-base-300 bg-base-100 p-3"
+        >
+          <div class="min-w-0">
+            <p class="truncate text-sm font-semibold text-base-content">
+              {entry.user.display_name}
+              <span class="font-normal text-base-content/50">@{entry.user.username}</span>
+            </p>
+            <p class="text-[11px] font-medium text-rose-500">
+              Deletion scheduled for {Calendar.strftime(entry.deletion_scheduled_at, "%b %-d, %Y")}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            phx-click="cancel_account_deletion"
+            phx-value-user_id={entry.user.id}
+            id={"cancel-deletion-#{entry.user.id}"}
+            data-confirm={"Cancel the deletion of #{entry.user.display_name}'s account? They stay kicked."}
+            class="rounded-md border border-base-300 px-3 py-1.5 text-[11px] font-semibold text-base-content/80 transition hover:border-base-content/20 hover:bg-base-200 hover:text-base-content"
+          >
+            Cancel deletion
+          </button>
+        </div>
+
+        <p
+          :if={@scheduled_deletions == []}
+          id="scheduled-deletion-list-empty"
+          class="text-xs text-base-content/50"
+        >
+          No deletions scheduled.
+        </p>
+      </div>
     </div>
     """
   end
@@ -648,6 +702,18 @@ defmodule TavernWeb.SettingsComponents.Server do
                       value="kick"
                     >
                       Kick
+                    </button>
+
+                    <button
+                      :if={member_action_available?(@current_scope, entry, :kick_members)}
+                      type="submit"
+                      id={"kick-schedule-deletion-#{entry.user.id}"}
+                      data-confirm={"Kick #{entry.user.display_name} and delete their account in 30 days unless they rejoin with an invite?"}
+                      class="rounded-md border border-orange-500/50 bg-orange-500/10 px-3 py-1.5 text-[11px] font-semibold text-orange-500 transition hover:bg-orange-500/20"
+                      name="moderation[action]"
+                      value="kick_schedule_deletion"
+                    >
+                      Kick and delete in 30 days
                     </button>
 
                     <button

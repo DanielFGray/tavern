@@ -586,6 +586,26 @@ defmodule TavernWeb.SettingsLive do
     end
   end
 
+  @impl true
+  def handle_event("cancel_account_deletion", %{"user_id" => user_id}, socket) do
+    case Chat.cancel_account_deletion(socket.assigns.current_scope, user_id) do
+      {:ok, _membership} ->
+        {:noreply,
+         socket
+         |> State.refresh_member_presence()
+         |> put_flash(:info, "Deletion canceled. The member stays kicked.")}
+
+      {:error, :forbidden} ->
+        {:noreply, put_flash(socket, :error, "You do not have permission to cancel deletions.")}
+
+      {:error, :not_found} ->
+        {:noreply,
+         socket
+         |> State.refresh_member_presence()
+         |> put_flash(:error, "That account has no scheduled deletion.")}
+    end
+  end
+
   # Server events: a role change can change what this member may manage and which channels they
   # see; a channel change re-reads the channel lists. Other server events change nothing here.
   @impl true

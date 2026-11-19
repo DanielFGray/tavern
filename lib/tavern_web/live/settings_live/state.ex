@@ -155,21 +155,20 @@ defmodule TavernWeb.SettingsLive.State do
     |> assign(:channel_memberships, channel_memberships_map(current_user, channels))
   end
 
-  # Who is in the server and who is banned change together, so one refresh reads both. `:bans` is
-  # nil for a scope that may not list bans, which hides the Bans panel.
+  # Who is in the server, who is banned and whose deletion is scheduled change together, so one
+  # refresh reads all three. `:bans` and `:scheduled_deletions` are nil for a scope that may not
+  # list them, which hides their panels.
   def refresh_member_presence(socket) do
     scope = socket.assigns.current_scope
 
-    bans =
-      case Chat.list_bans(scope) do
-        {:ok, bans} -> bans
-        {:error, :forbidden} -> nil
-      end
-
     socket
     |> assign(:member_presence, Accounts.list_members(scope))
-    |> assign(:bans, bans)
+    |> assign(:bans, permitted_list(Chat.list_bans(scope)))
+    |> assign(:scheduled_deletions, permitted_list(Chat.list_scheduled_deletions(scope)))
   end
+
+  defp permitted_list({:ok, entries}), do: entries
+  defp permitted_list({:error, :forbidden}), do: nil
 
   def save_emoji(socket, emoji_params) do
     SharedHelpers.save_emoji(socket, emoji_params, &refresh_custom_emojis/1)

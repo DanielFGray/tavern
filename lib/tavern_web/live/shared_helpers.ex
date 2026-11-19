@@ -107,6 +107,22 @@ defmodule TavernWeb.Live.SharedHelpers do
     end
   end
 
+  def run_member_moderation(scope, subject_id, %{
+        "action" => "kick_schedule_deletion",
+        "reason" => reason
+      }) do
+    case Chat.kick_member_and_schedule_deletion(scope, subject_id, blank_to_nil(reason)) do
+      {:ok, updated_subject, moderation_case} ->
+        date = Calendar.strftime(updated_subject.membership.deletion_scheduled_at, "%b %-d, %Y")
+
+        {:ok, updated_subject, moderation_case,
+         "Member kicked. Their account will be deleted on #{date} unless they rejoin."}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   def run_member_moderation(scope, subject_id, %{"action" => "ban", "reason" => reason}) do
     case Chat.ban_member(scope, subject_id, blank_to_nil(reason)) do
       {:ok, updated_subject, moderation_case} ->

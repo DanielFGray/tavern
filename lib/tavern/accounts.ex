@@ -7,17 +7,27 @@ defmodule Tavern.Accounts do
 
   alias Ecto.Changeset
   alias Tavern.Accounts.Scope
+  alias Tavern.Chat.AuditLogEntry
   alias Tavern.Chat.BotToken
+  alias Tavern.Chat.ChannelMembership
+  alias Tavern.Chat.ChannelNotificationOverride
+  alias Tavern.Chat.ChannelPermissionOverwrite
+  alias Tavern.Chat.MediaAsset
+  alias Tavern.Chat.MediaAssets
+  alias Tavern.Chat.MemberRole
   alias Tavern.Chat.Membership
   alias Tavern.Chat.Invites
   alias Tavern.Chat.ServerSettings
+  alias Tavern.Chat.ThreadFollower
   alias Tavern.Chat.User
+  alias Tavern.Chat.UserNotificationSetting
   alias Tavern.Chat.UserSession
   alias Tavern.Chat.Visibility
   alias Tavern.Ephemeral
   alias Tavern.Repo
 
   @session_valid_days 30
+  @deletion_sweep_limit 500
   # An arbitrary constant that names "server ownership" among Postgres advisory locks.
   @ownership_lock_key 7_314_002_001
 
@@ -327,6 +337,53 @@ defmodule Tavern.Accounts do
 
   defp socket_id_for_hash(hash), do: "users_sessions:" <> Base.url_encode64(hash, padding: false)
 
+  @doc """
+  Deletes the account `user_id`. Every deletion path (a scheduled deletion, a prune) runs it.
+
+  The email is cleared and the username becomes a tombstone that registration never produces
+  (`User.deletion_changeset/2`), so both can register again. The display name becomes
+  "Deleted user", so every place that shows the account's messages shows that name. Profile
+  fields and images, sessions, bot tokens, roles, channel overwrites, channel read state, thread
+  follows and notification settings go, and the membership is deactivated. Messages, reactions,
+  poll ballots, moderation cases and audit entries stay.
+
+  `actor_id` names who deleted the account in the `account_deleted` audit entry. The deletion
+  sweep passes none. No permission is checked here: each caller decides who may delete.
+
+  Returns `{:ok, user}`, also for an account that is already deleted (then nothing is written),
+  or `{:error, reason}`: `:not_found`, `:bot` (bots and system accounts) or `:owner`.
+  """
+  def delete_account(user_id, actor_id \\ nil) do
+    case Ecto.UUID.cast(user_id) do
+      {:ok, user_id} ->
+        Repo.transact(fn -> delete_account_locked(user_id, actor_id) end)
+        |> after_account_deletion()
+
+      :error ->
+        {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Deletes each account whose scheduled deletion time (`deletion_scheduled_at` on the membership)
+  is at or before `now`, at most #{@deletion_sweep_limit} per call, and returns how many it
+  deleted.
+
+  Each account is deleted in its own transaction, which takes the membership row lock and checks
+  again under it that the deletion is due (`due_memberships/1`). A rejoin, a ban or a
+  cancellation that commits first keeps the account, and a row another node holds is skipped, so
+  nodes that sweep at the same time never delete one account twice.
+  `Tavern.Accounts.DeletionSweeper` calls this.
+  """
+  def delete_due_accounts(%DateTime{} = now) do
+    due_memberships(now)
+    |> order_by([membership], asc: membership.deletion_scheduled_at)
+    |> limit(@deletion_sweep_limit)
+    |> select([membership], membership.user_id)
+    |> Repo.all()
+    |> Enum.count(&delete_if_due(&1, now))
+  end
+
   def delete_bot_token(token) when is_binary(token) do
     hashed_token = hash_token(token)
     now = DateTime.utc_now()
@@ -526,6 +583,119 @@ defmodule Tavern.Accounts do
       true -> :offline
     end
   end
+
+  # The memberships whose account deletion is due at `now`: the date has passed, the member is
+  # still deactivated, and not banned. A ban clears the date (`Chat.ban_member/3`); the ban check
+  # is a second guard, because deleting a banned account would free its email.
+  defp due_memberships(now) do
+    from(membership in Membership,
+      where:
+        membership.deletion_scheduled_at <= ^now and not is_nil(membership.deactivated_at) and
+          fragment("coalesce(?->>'banned', 'false') <> 'true'", membership.flags)
+    )
+  end
+
+  defp delete_if_due(user_id, now) do
+    Repo.transact(fn ->
+      due =
+        due_memberships(now)
+        |> where([membership], membership.user_id == ^user_id)
+        |> lock("FOR UPDATE SKIP LOCKED")
+        |> select([membership], membership.id)
+        |> Repo.one()
+
+      if due, do: delete_account_locked(user_id, nil), else: {:error, :not_due}
+    end)
+    |> after_account_deletion()
+    |> case do
+      {:ok, _user} -> true
+      {:error, _reason} -> false
+    end
+  end
+
+  # Runs inside a transaction. The membership row is locked before the user row, the order every
+  # deletion path takes, so a sweep and a direct deletion of one account wait for each other
+  # instead of deadlocking. The account's state is read under those locks.
+  defp delete_account_locked(user_id, actor_id) do
+    membership =
+      from(membership in Membership, where: membership.user_id == ^user_id, lock: "FOR UPDATE")
+      |> Repo.one()
+
+    user = from(user in User, where: user.id == ^user_id, lock: "FOR UPDATE") |> Repo.one()
+
+    cond do
+      is_nil(user) -> {:error, :not_found}
+      user.bot or user.system -> {:error, :bot}
+      not is_nil(user.deleted_at) -> {:ok, {user, %{session_hashes: [], asset_ids: []}}}
+      membership && membership.is_owner -> {:error, :owner}
+      true -> {:ok, wipe_account!(user, membership, actor_id)}
+    end
+  end
+
+  defp wipe_account!(%User{} = user, membership, actor_id) do
+    now = DateTime.utc_now()
+
+    asset_ids =
+      Enum.reject(
+        [
+          user.avatar_asset_id,
+          user.banner_asset_id,
+          membership && membership.server_avatar_asset_id
+        ],
+        &is_nil/1
+      )
+
+    if membership, do: membership |> Membership.deleted_account_changeset(now) |> Repo.update!()
+
+    deleted_user = user |> User.deletion_changeset(now) |> Repo.update!()
+
+    for schema <- [
+          MemberRole,
+          ChannelMembership,
+          ChannelPermissionOverwrite,
+          ChannelNotificationOverride,
+          UserNotificationSetting,
+          ThreadFollower,
+          BotToken
+        ] do
+      Repo.delete_all(from(row in schema, where: row.user_id == ^user.id))
+    end
+
+    {_count, session_hashes} =
+      from(session in UserSession,
+        where: session.user_id == ^user.id,
+        select: session.token_hash
+      )
+      |> Repo.delete_all()
+
+    %AuditLogEntry{}
+    |> AuditLogEntry.changeset(%{
+      action_type: "account_deleted",
+      actor_user_id: actor_id,
+      subject_user_id: user.id,
+      target_type: "user",
+      target_id: user.id
+    })
+    |> Repo.insert!()
+
+    {deleted_user, %{session_hashes: session_hashes, asset_ids: asset_ids}}
+  end
+
+  # After the deletion commits: open LiveViews of the account disconnect (a reconnect finds no
+  # session), and its profile images leave the object store.
+  defp after_account_deletion({:ok, {user, cleanup}}) do
+    Enum.each(cleanup.session_hashes, fn hash ->
+      TavernWeb.Endpoint.broadcast(socket_id_for_hash(hash), "disconnect", %{})
+    end)
+
+    from(asset in MediaAsset, where: asset.id in ^cleanup.asset_ids)
+    |> Repo.all()
+    |> Enum.each(&MediaAssets.delete_media_asset/1)
+
+    {:ok, user}
+  end
+
+  defp after_account_deletion({:error, reason}), do: {:error, reason}
 
   defp membership_flag?(membership, key) do
     flags = membership.flags || %{}

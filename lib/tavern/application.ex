@@ -20,6 +20,9 @@ defmodule Tavern.Application do
       # Closes polls when their end time passes. Tests close polls by calling
       # `Tavern.Chat.Polls.close_due/1`, so they run without it.
       Application.get_env(:tavern, :poll_closer, true) && Tavern.Chat.PollCloser,
+      # Deletes accounts whose scheduled deletion has passed. Tests call
+      # `Tavern.Accounts.delete_due_accounts/1` instead.
+      Application.get_env(:tavern, :deletion_sweeper, true) && Tavern.Accounts.DeletionSweeper,
       # Start a worker by calling: Tavern.Worker.start_link(arg)
       # {Tavern.Worker, arg},
       # Start to serve requests, typically the last entry

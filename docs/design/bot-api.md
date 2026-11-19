@@ -14,6 +14,8 @@ Every serialized message (`Tavern.Bots.Serializer.serialize_message/1`: each mes
 - `@everyone` and `@here` are stored as a mention of the default role. They set `everyone: true` and are left out of `role_ids`.
 - The lists are preloaded by the scoped reads in `Tavern.Chat` (`@read_preloads`) and by the write path (`@message_preloads`), so the serializer runs no query.
 
+A message whose author deleted their account keeps its `author_id`. Its `author` has `display_name` `"Deleted user"` and a `deleted-<hex>` `username` (see accounts.md).
+
 ## `GET /api/v1/messages/:message_id`
 
 Returns `{"data": <serialized message>}`, the same shape as `message.created`. The read goes through `Tavern.Bots.get_message/2`, which calls `Chat.get_message/2` (scoped, with `@read_preloads`), so the serializer runs no query and the `mentions` lists are present.

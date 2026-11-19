@@ -12,6 +12,8 @@ defmodule Tavern.Chat.Membership do
     field(:last_seen_at, :utc_datetime_usec)
     field(:timeout_until, :utc_datetime_usec)
     field(:deactivated_at, :utc_datetime_usec)
+    # When the account is deleted unless the member rejoins first. Only a kicked member has one.
+    field(:deletion_scheduled_at, :utc_datetime_usec)
     field(:is_owner, :boolean, default: false)
     field(:flags, :map, default: %{})
 
@@ -54,10 +56,31 @@ defmodule Tavern.Chat.Membership do
   end
 
   @doc """
-  Reactivates a deactivated membership and drops its ban flags. Other flags stay.
+  Reactivates a deactivated membership, drops its ban flags and cancels a scheduled deletion, so an
+  active member never carries one. Other flags stay.
   """
   def reactivate_changeset(membership) do
     flags = Map.drop(membership.flags || %{}, ["banned", "ban_reason"])
-    change(membership, deactivated_at: nil, flags: flags)
+    change(membership, deactivated_at: nil, flags: flags, deletion_scheduled_at: nil)
+  end
+
+  @doc """
+  The membership of a deleted account: deactivated (an already deactivated one keeps its date and
+  flags), with its per-server profile, timeout and deletion schedule cleared.
+  """
+  def deleted_account_changeset(membership, deleted_at) do
+    change(membership,
+      deactivated_at: membership.deactivated_at || deleted_at,
+      timeout_until: nil,
+      nickname: nil,
+      pronouns: nil,
+      server_avatar_asset_id: nil,
+      deletion_scheduled_at: nil
+    )
+  end
+
+  @doc "Sets the date the account is deleted on, or clears it with `nil`."
+  def deletion_changeset(membership, deletion_scheduled_at) do
+    change(membership, deletion_scheduled_at: deletion_scheduled_at)
   end
 end

@@ -13,6 +13,7 @@ defmodule Tavern.Chat.AuditLogLine do
   alias Tavern.Chat.PermissionBits
 
   @action_types ~w(timeout_member kick_member ban_member unban_member member_rejoined
+                   account_deletion_scheduled account_deletion_canceled account_deleted
                    role_created role_updated role_moved role_deleted
                    member_role_added member_role_removed
                    channel_overwrite_updated channel_overwrite_deleted
@@ -44,6 +45,19 @@ defmodule Tavern.Chat.AuditLogLine do
 
   defp line("member_rejoined", actor, _subject, meta, _entry),
     do: "#{actor} rejoined via #{meta["invite_code"]}"
+
+  defp line("account_deletion_scheduled", actor, subject, meta, _entry),
+    do: "#{actor} scheduled the deletion of #{subject}" <> date_suffix(meta)
+
+  defp line("account_deletion_canceled", actor, subject, _meta, _entry),
+    do: "#{actor} canceled the deletion of #{subject}"
+
+  # The deletion sweep deletes with no actor.
+  defp line("account_deleted", _actor, subject, _meta, %AuditLogEntry{actor_user: nil}),
+    do: "The scheduled deletion removed the account #{subject}"
+
+  defp line("account_deleted", actor, subject, _meta, _entry),
+    do: "#{actor} deleted the account #{subject}"
 
   defp line("role_created", actor, _subject, meta, _entry),
     do: "#{actor} created role #{role_name(meta)}"
@@ -142,6 +156,15 @@ defmodule Tavern.Chat.AuditLogLine do
     |> Enum.filter(fn {_name, bit} -> (bits &&& bit) != 0 end)
     |> Enum.map_join(" ", fn {name, _bit} -> "#{sign}#{name}" end)
   end
+
+  defp date_suffix(%{"deletion_scheduled_at" => at}) when is_binary(at) do
+    case DateTime.from_iso8601(at) do
+      {:ok, datetime, _offset} -> " for " <> Calendar.strftime(datetime, "%b %-d, %Y")
+      {:error, _reason} -> ""
+    end
+  end
+
+  defp date_suffix(_meta), do: ""
 
   defp reason_suffix(reason) when is_binary(reason) and reason != "", do: ": " <> reason
   defp reason_suffix(_reason), do: ""

@@ -57,3 +57,7 @@ config :tavern, Tavern.Mailer, provider: :capture, from: "tavern@example.test"
 # Tests close polls by calling `Tavern.Chat.Polls.close_due/1` with a chosen time; a background
 # closer would query outside the test's sandbox.
 config :tavern, :poll_closer, false
+
+# Tests delete due accounts by calling `Tavern.Accounts.delete_due_accounts/1` with a chosen
+# time, for the same reason.
+config :tavern, :deletion_sweeper, false
