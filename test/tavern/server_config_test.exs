@@ -7,7 +7,9 @@ defmodule Tavern.Chat.ServerConfigTest do
   alias Tavern.Chat.Emoji
   alias Tavern.Chat.MediaAsset
   alias Tavern.Chat.ServerConfig
+  alias Tavern.Chat.ServerConfigListener
   alias Tavern.Chat.ServerSettings
+  alias Tavern.Chat.Topics
   alias Tavern.Repo
 
   setup do
@@ -128,6 +130,34 @@ defmodule Tavern.Chat.ServerConfigTest do
     assert is_nil(cleared.icon_asset_id)
     assert Repo.get(MediaAsset, asset.id)
     assert Repo.get(Emoji, emoji.id)
+  end
+
+  test "a settings write drops this node's cached copy and announces the change" do
+    owner = owner_fixture()
+    :ok = Topics.subscribe_server_settings()
+    _ = ServerConfig.get_server_settings()
+
+    assert {:ok, _} = ServerConfig.update_server_settings(scope_for(owner), %{"name" => "HQ"})
+
+    assert_receive :server_settings_changed
+    assert ServerConfig.get_server_settings().name == "HQ"
+  end
+
+  test "a settings change committed elsewhere replaces this node's cached copy on the broadcast" do
+    cached = ServerConfig.get_server_settings()
+
+    # Another node's write: the row changes, and this node's cache is not told.
+    {:ok, _} =
+      cached
+      |> Ecto.Changeset.change(%{name: "Changed elsewhere"})
+      |> Repo.insert_or_update()
+
+    assert ServerConfig.get_server_settings().name == cached.name
+
+    Topics.broadcast_server_settings_changed()
+    _ = :sys.get_state(ServerConfigListener)
+
+    assert ServerConfig.get_server_settings().name == "Changed elsewhere"
   end
 
   defp icon_upload(filename) do

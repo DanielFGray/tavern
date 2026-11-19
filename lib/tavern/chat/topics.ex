@@ -8,11 +8,13 @@ defmodule Tavern.Chat.Topics do
   happen in, so only processes subscribed to that channel receive them. A subscriber is
   responsible for subscribing only to channels its user can view.
 
-  Broadcasts skip the calling process: the caller has already applied its own change.
+  Broadcasts skip the calling process: the caller has already applied its own change. The
+  server settings event is the exception (see `broadcast_server_settings_changed/0`).
   """
 
   @pubsub Tavern.PubSub
   @server_topic "chat:server"
+  @server_settings_topic "chat:server_settings"
 
   def subscribe_server, do: Phoenix.PubSub.subscribe(@pubsub, @server_topic)
 
@@ -22,6 +24,20 @@ defmodule Tavern.Chat.Topics do
   def broadcast_channel(channel_id, event) do
     Phoenix.PubSub.broadcast_from(@pubsub, self(), channel_topic(channel_id), event)
   end
+
+  @doc """
+  Tells every node, the writer's own included, that the committed server settings changed.
+  Each node drops its cached copy, so the next read loads the new settings.
+
+  This is a plain broadcast, not `broadcast_from/4`, so a process that subscribes to the topic
+  (a test, for one) receives it too. The event carries no settings, so a receiver cannot apply a
+  copy that is older than the committed row.
+  """
+  def broadcast_server_settings_changed do
+    Phoenix.PubSub.broadcast(@pubsub, @server_settings_topic, :server_settings_changed)
+  end
+
+  def subscribe_server_settings, do: Phoenix.PubSub.subscribe(@pubsub, @server_settings_topic)
 
   @doc """
   Moves the calling process from the channel topics in `subscribed` to those in `wanted`.

@@ -14,6 +14,8 @@ defmodule Tavern.Application do
       Tavern.Accounts.LoginRateLimiter,
       {DNSCluster, query: Application.get_env(:tavern, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Tavern.PubSub},
+      # Drops this node's cached server settings when any node commits a change to them.
+      Tavern.Chat.ServerConfigListener,
       # Test processes that subscribe to captured mail (`Tavern.Mailer.Capture`); empty otherwise.
       Tavern.Mailer.Capture,
       # Link preview fetches (`Tavern.Chat.Embeds`). The cap bounds the outbound requests one

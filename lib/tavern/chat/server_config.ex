@@ -10,6 +10,7 @@ defmodule Tavern.Chat.ServerConfig do
   alias Tavern.Chat.MediaAsset
   alias Tavern.Chat.MediaAssets
   alias Tavern.Chat.ServerSettings
+  alias Tavern.Chat.Topics
   alias Tavern.Chat.Visibility
   alias Tavern.Repo
 
@@ -72,7 +73,10 @@ defmodule Tavern.Chat.ServerConfig do
   def reset_server_settings_cache, do: :persistent_term.erase(@cache_key)
 
   # Decides `manage_server`, then locks the settings row, then runs `fun` with it, in one
-  # transaction. The cache takes the new settings only after the commit.
+  # transaction. After the commit, this node drops its cached copy before it returns, so the
+  # writer's next read is current. The broadcast then drops the copy on every node, this one
+  # included: a reader that loaded the old row before the commit may have stored it after the
+  # erase, and only the later erase from the broadcast clears it.
   defp write_settings(scope, fun) do
     Repo.transact(fn ->
       with :ok <- Visibility.authorize_write(scope, :manage_server, :server) do
@@ -80,8 +84,12 @@ defmodule Tavern.Chat.ServerConfig do
       end
     end)
     |> tap(fn
-      {:ok, settings} -> :persistent_term.put(@cache_key, settings)
-      {:error, _reason} -> :ok
+      {:ok, _settings} ->
+        reset_server_settings_cache()
+        Topics.broadcast_server_settings_changed()
+
+      {:error, _reason} ->
+        :ok
     end)
   end
 

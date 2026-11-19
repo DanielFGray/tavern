@@ -22,7 +22,7 @@ Terms:
 The bot event stream, the client API, the audit log page, reconnect recovery and, later, federation all need "what changed since point N". Today:
 
 - broadcasts carry no number, and the bot stream cannot resume;
-- many writes broadcast nothing (timeout, kick, ban, bots, emojis, server settings);
+- many writes broadcast nothing (timeout, kick, ban, bots, emojis); server settings send only a cache invalidation, not an event;
 - `delete_message` and the reaction writes run outside a transaction;
 - `audit_log_entries` and the PubSub tuples describe the same changes in two shapes.
 
