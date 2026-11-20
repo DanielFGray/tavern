@@ -19,6 +19,7 @@ defmodule Tavern.Accounts.AccountDeletionTest do
   alias Tavern.Chat.Membership
   alias Tavern.Chat.Message
   alias Tavern.Chat.User
+  alias Tavern.ObjectStore
   alias Tavern.Repo
 
   setup do
@@ -35,6 +36,7 @@ defmodule Tavern.Accounts.AccountDeletionTest do
     test "wipes the identity, profile, roles, sessions and images, and keeps messages", ctx do
       avatar = media_asset_fixture(ctx.member, %{kind: :avatar})
       ctx.member |> Ecto.Changeset.change(avatar_asset_id: avatar.id) |> Repo.update!()
+      :ok = ObjectStore.put(avatar.storage_key, "avatar bytes", "image/png")
 
       ctx.member.membership
       |> Ecto.Changeset.change(nickname: "nick", pronouns: "they/them")
@@ -64,6 +66,7 @@ defmodule Tavern.Accounts.AccountDeletionTest do
       assert Repo.all(from(role in MemberRole, where: role.user_id == ^ctx.member.id)) == []
       assert is_nil(Accounts.get_user_by_session_token(token))
       assert is_nil(Repo.get(MediaAsset, avatar.id))
+      assert ObjectStore.get(avatar.storage_key) == {:error, :not_found}
 
       assert is_nil(
                Accounts.get_user_by_email_and_password("leaving@example.com", "supersecurepass")

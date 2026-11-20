@@ -16,16 +16,7 @@ defmodule TavernWeb.ServerLiveEmbedsTest do
   end
 
   test "the card renders when the fetch completes, and its author can remove it", %{conn: conn} do
-    conn = log_in_member_user(conn)
-    {:ok, view, _html} = live_hydrated(conn, ~p"/")
-
-    view
-    |> form("#message-form", %{message: %{body: "look https://site.test/a"}})
-    |> render_submit()
-
-    await_embed_fetches()
-
-    [message] = Chat.get_messages(scope_for(current_user_from_conn(conn)), latest_message_ids())
+    {conn, view, message} = post_link(conn, "look https://site.test/a")
     [embed] = message.embeds
 
     assert has_element?(view, "#embed-#{embed.id}")
@@ -39,22 +30,27 @@ defmodule TavernWeb.ServerLiveEmbedsTest do
   end
 
   test "a video card shows the stored thumbnail and no player until clicked", %{conn: conn} do
-    conn = log_in_member_user(conn)
-    {:ok, view, _html} = live_hydrated(conn, ~p"/")
-
-    view
-    |> form("#message-form", %{message: %{body: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"}})
-    |> render_submit()
-
-    await_embed_fetches()
-
-    [message] = Chat.get_messages(scope_for(current_user_from_conn(conn)), latest_message_ids())
-    [embed] = message.embeds
+    {_conn, view, %{embeds: [embed]}} =
+      post_link(conn, "https://www.youtube.com/watch?v=dQw4w9WgXcQ")
 
     player = "#embed-player-#{embed.id}[phx-hook][data-video-id='dQw4w9WgXcQ']"
     assert has_element?(view, player)
     assert has_element?(view, "#embed-play-#{embed.id} img[src^='/uploads/embeds/']")
     refute has_element?(view, "#embed-#{embed.id} iframe")
+  end
+
+  test "an image link's card is the stored image, linked to the file", %{conn: conn} do
+    {_conn, view, %{embeds: [embed]}} = post_link(conn, "https://images.site.test/cat.png")
+
+    assert has_element?(view, "#embed-#{embed.id}[data-kind='image']")
+    assert has_element?(view, "#embed-link-#{embed.id}[href='https://images.site.test/cat.png']")
+
+    assert has_element?(
+             view,
+             "#embed-link-#{embed.id} #embed-image-#{embed.id}[src^='/uploads/embeds/']"
+           )
+
+    assert has_element?(view, "#remove-embed-#{embed.id}")
   end
 
   test "another member's card has no remove button", %{conn: conn} do
@@ -73,13 +69,17 @@ defmodule TavernWeb.ServerLiveEmbedsTest do
     refute has_element?(view, "#remove-embed-#{embed.id}")
   end
 
-  test "pages allow frames only from this origin and the YouTube no-cookie player", %{
-    conn: conn
-  } do
-    [policy] = conn |> get(~p"/login") |> get_resp_header("content-security-policy")
+  # Logs in a member, sends `body` from the composer, waits for the embed fetch, and returns the
+  # conn, the view and the sent message as the member reads it.
+  defp post_link(conn, body) do
+    conn = log_in_member_user(conn)
+    {:ok, view, _html} = live_hydrated(conn, ~p"/")
 
-    assert policy =~ "frame-src 'self' https://www.youtube-nocookie.com;"
-    assert policy =~ "frame-ancestors 'self';"
+    view |> form("#message-form", %{message: %{body: body}}) |> render_submit()
+    await_embed_fetches()
+
+    [message] = Chat.get_messages(scope_for(current_user_from_conn(conn)), latest_message_ids())
+    {conn, view, message}
   end
 
   defp latest_message_ids do

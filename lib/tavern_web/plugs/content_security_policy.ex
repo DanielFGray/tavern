@@ -8,6 +8,12 @@ defmodule TavernWeb.Plugs.ContentSecurityPolicy do
   LiveDashboard's scripts in development. Frames come from this origin (the dev live-reload
   frame) and from YouTube's no-cookie player, which a video embed loads after a click.
 
+  Images come only from this origin and `data:` URLs (the icon masks in the stylesheet). Every
+  image a member supplies is stored and served from `/uploads`: avatars, custom emoji, server
+  icons and link embed images, YouTube thumbnails included. So an image from another host, such
+  as one an injected or hand-written `<img>` points at, is blocked, and reading a message tells
+  no other site the reader's address.
+
   Run it after `put_secure_browser_headers/2`, whose default policy this one replaces.
   """
 
@@ -28,6 +34,7 @@ defmodule TavernWeb.Plugs.ContentSecurityPolicy do
   defp policy(nonce) do
     "base-uri 'self'; frame-ancestors 'self'; " <>
       "frame-src 'self' https://www.youtube-nocookie.com; " <>
+      "img-src 'self' data:; " <>
       "script-src 'self' 'nonce-#{nonce}';"
   end
 end

@@ -1,8 +1,9 @@
 defmodule TavernWeb.ServerComponents.Embeds do
   @moduledoc """
   The link embed cards under a message: a page card (site name, linked title, two lines of
-  description, image) and a YouTube card that loads its player only when clicked. Every image
-  comes from `/uploads`, so showing a card contacts no other site.
+  description, image), an image card for a link to an image file (the image, linked to the
+  file), and a YouTube card that loads its player only when clicked. Every image comes from
+  `/uploads`, so showing a card contacts no other site.
   """
 
   use TavernWeb, :html
@@ -20,12 +21,18 @@ defmodule TavernWeb.ServerComponents.Embeds do
       id={"message-embeds-#{@message.id}"}
       class="mt-2 flex flex-col gap-2"
     >
-      <.embed_card
-        :for={embed <- @message.embeds}
-        embed={embed}
-        message={@message}
-        removable?={@removable?}
-      />
+      <%= for embed <- @message.embeds do %>
+        <%= if embed.kind == :image do %>
+          <.image_card
+            :if={embed.image_asset}
+            embed={embed}
+            message={@message}
+            removable?={@removable?}
+          />
+        <% else %>
+          <.embed_card embed={embed} message={@message} removable?={@removable?} />
+        <% end %>
+      <% end %>
     </div>
     <script :type={Phoenix.LiveView.ColocatedHook} name=".YouTubePlayer">
       // The player is a youtube-nocookie iframe made on the first click, so nothing loads from
@@ -68,18 +75,7 @@ defmodule TavernWeb.ServerComponents.Embeds do
         if(@embed.kind == :video, do: "border-red-500", else: "border-violet-500")
       ]}
     >
-      <button
-        :if={@removable?}
-        type="button"
-        id={"remove-embed-#{@embed.id}"}
-        phx-click="suppress_embeds"
-        phx-value-id={@message.id}
-        aria-label="Remove embeds"
-        title="Remove embeds"
-        class="absolute right-1.5 top-1.5 rounded-md p-1 text-base-content/40 transition hover:bg-base-200 hover:text-base-content focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary sm:opacity-0 sm:group-hover/embed:opacity-100 sm:focus-visible:opacity-100"
-      >
-        <.icon name="hero-x-mark" class="size-4" />
-      </button>
+      <.remove_button :if={@removable?} embed={@embed} message={@message} />
 
       <p
         :if={@embed.site_name}
@@ -146,6 +142,59 @@ defmodule TavernWeb.ServerComponents.Embeds do
         />
       <% end %>
     </div>
+    """
+  end
+
+  attr :embed, :map, required: true
+  attr :message, :map, required: true
+  attr :removable?, :boolean, required: true
+
+  # The image is the whole card, shown at its own aspect ratio and linked to the file. The card
+  # is at least 4rem square, so the remove button stays clear of a tiny image.
+  defp image_card(assigns) do
+    ~H"""
+    <div
+      id={"embed-#{@embed.id}"}
+      data-kind={@embed.kind}
+      class="group/embed relative w-fit min-w-16 max-w-[28rem] overflow-hidden rounded-md bg-base-100 shadow-sm ring-1 ring-base-300/60 transition hover:ring-base-300"
+    >
+      <.remove_button :if={@removable?} embed={@embed} message={@message} />
+      <a
+        href={@embed.url}
+        target="_blank"
+        rel="noopener noreferrer nofollow ugc"
+        id={"embed-link-#{@embed.id}"}
+        aria-label={"Open image from #{@embed.site_name || "link"}"}
+        class="flex min-h-16 items-center justify-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+      >
+        <img
+          src={Chat.asset_url(@embed.image_asset)}
+          alt=""
+          loading="lazy"
+          id={"embed-image-#{@embed.id}"}
+          class="block max-h-80 w-auto max-w-full object-contain"
+        />
+      </a>
+    </div>
+    """
+  end
+
+  attr :embed, :map, required: true
+  attr :message, :map, required: true
+
+  defp remove_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      id={"remove-embed-#{@embed.id}"}
+      phx-click="suppress_embeds"
+      phx-value-id={@message.id}
+      aria-label="Remove embeds"
+      title="Remove embeds"
+      class="absolute right-1.5 top-1.5 z-10 rounded-md bg-base-100/80 p-1 text-base-content/40 transition hover:bg-base-200 hover:text-base-content focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary sm:opacity-0 sm:group-hover/embed:opacity-100 sm:focus-visible:opacity-100"
+    >
+      <.icon name="hero-x-mark" class="size-4" />
+    </button>
     """
   end
 end

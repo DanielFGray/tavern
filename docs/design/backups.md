@@ -9,7 +9,7 @@ The platform (roamancer, `~/build/roamancer`) runs the backups. Tavern adds none
 | Store | Holds | Backed up by the platform | Restore need |
 | --- | --- | --- | --- |
 | Postgres, database `tavern` (`cartridge.json:4`) | Accounts, memberships, channels, messages, roles, settings, bots, and the `media_assets` rows that name each upload | Yes: nightly `pg_dumpall` | Required |
-| Object store bucket (`cartridge.json:6`) | Upload bytes: custom emoji, server and member avatars, banners, and cached link-preview images. `Tavern.Chat.MediaAssets.store_upload/4` writes them and `fetch_upload/1` reads them (`lib/tavern/chat/media_assets.ex:21-67`); `Tavern.Chat.Embeds` stores preview images (`lib/tavern/chat/embeds.ex:139`) | Yes: nightly restic copy of Garage's volume | Required |
+| Object store bucket (`cartridge.json:6`) | Upload bytes: custom emoji, server and member avatars, banners, and cached link-preview images. `Tavern.Chat.MediaAssets.store_upload/4` writes them and `fetch_upload/1` reads them (`lib/tavern/chat/media_assets.ex:26-72`); `Tavern.Chat.Embeds` stores preview images (`lib/tavern/chat/embeds.ex:127`) | Yes: nightly restic copy of Garage's volume | Required |
 | Valkey (`cartridge.json:5`) | Presence, typing and rate-limit counters | No | None |
 | OpenBao | `secret_key_base`, the Postgres logins, the bucket key's secret | No | See "Secrets" |
 
@@ -123,7 +123,7 @@ The steps are `nixos/backup-operations.md:137-161`: stop the `garage` job, resto
 
 Keep the database and the bucket consistent:
 
-- **Database newer than bucket** is the bad case: a `media_assets` row names an object the bucket lacks, and `/uploads/<key>` returns not found (`lib/tavern/chat/media_assets.ex:25-35`). Restoring Postgres alone, or restoring Garage from an older night than the database, does not cause this. Restoring Garage from a night older than the Postgres dump does.
+- **Database newer than bucket** is the bad case: a `media_assets` row names an object the bucket lacks, and `/uploads/<key>` returns not found (`lib/tavern/chat/media_assets.ex:26-36`). Restoring Postgres alone, or restoring Garage from an older night than the database, does not cause this. Restoring Garage from a night older than the Postgres dump does.
 - **Bucket newer than database** is harmless: the bucket holds objects that no row names.
 - After restoring only the database, nothing more is needed when you used the pair from one night (Garage 04:00 follows Postgres 03:00).
 - After restoring Garage alone, or when the pair is mismatched, list the rows that lack an object: dump `select storage_key from media_assets where storage_provider = 's3'`, list the bucket, and for each missing key re-upload the file or delete the row. The app has no tool for this check yet (see "Gaps").
@@ -177,5 +177,5 @@ These are things the platform or Tavern lacks. Platform gaps are filed in the ro
 | A one-database restore from the nightly backup takes a hand-run scratch cluster first | roamancer, task "Restore one app's database straight from the nightly backup" |
 | No `ops` path to dump or load a production database | roamancer, existing task "ops db: query, dump and load a production app database" |
 | `Tavern.Release` has no rollback function | rfchat task "Release.rollback" |
-| A restore returns deleted accounts' data, and nothing records which accounts to delete again | rfchat task "Re-apply account deletions after a restore" |
+| A restore returns deleted accounts' data, and nothing records which accounts to delete again | User decision 2026-11-20: narrow the window with shorter retention (roamancer task "Shorter backup retention for Tavern's database and uploads"), not a deletion ledger. The gap stays for accounts deleted after the restored snapshot. |
 | No check for `media_assets` rows whose object is missing | rfchat task "Find media_assets rows with no object" |

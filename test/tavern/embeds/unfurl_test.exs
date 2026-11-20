@@ -111,6 +111,48 @@ defmodule Tavern.Embeds.UnfurlTest do
     end
   end
 
+  describe "image files" do
+    test "a link to an image is an image preview of its bytes, typed by its magic bytes" do
+      stub(%{
+        {"site.test", "/cat.png"} => {"image/png", @png},
+        {"site.test", "/photo"} => {"text/html", @jpeg}
+      })
+
+      assert {:ok,
+              %{
+                kind: :image,
+                title: nil,
+                description: nil,
+                site_name: "site.test",
+                image: %{body: @png, content_type: "image/png"}
+              }} = Unfurl.preview("https://site.test/cat.png")
+
+      assert {:ok, %{kind: :image, image: %{content_type: "image/jpeg"}}} =
+               Unfurl.preview("https://site.test/photo")
+    end
+
+    test "an image over 5 MB, or a file that is neither image nor page, has no preview" do
+      stub(%{
+        {"site.test", "/huge.jpg"} => {"image/jpeg", @jpeg <> :binary.copy(<<0>>, 5_000_000)},
+        {"site.test", "/fake.png"} => {"image/png", "<svg onload=alert(1)>"}
+      })
+
+      assert Unfurl.preview("https://site.test/huge.jpg") == :error
+      assert Unfurl.preview("https://site.test/fake.png") == :error
+    end
+
+    test "a page over the image limit is still read from its first megabyte" do
+      page =
+        ~s(<head><meta property="og:title" content="Big page"></head>) <>
+          String.duplicate("<p>filler</p>", 600_000)
+
+      stub(%{{"site.test", "/big"} => {"text/html", page}})
+
+      assert byte_size(page) > 5_000_001
+      assert {:ok, %{kind: :link, title: "Big page"}} = Unfurl.preview("https://site.test/big")
+    end
+  end
+
   describe "YouTube" do
     test "takes the title from oEmbed and the thumbnail from i.ytimg.com" do
       test_pid = self()

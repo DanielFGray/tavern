@@ -136,6 +136,7 @@ defmodule TavernWeb.ServerLiveSettingsTest do
     view |> element("#delete-emoji-#{emoji.id}") |> render_click()
     refute Tavern.Repo.get(Chat.Emoji, emoji.id)
     assert build_conn() |> get(Chat.asset_url(emoji.asset)) |> response(404)
+    assert Tavern.ObjectStore.get(emoji.asset.storage_key) == {:error, :not_found}
   end
 
   test "an emoji delete from a page opened before the role was taken away is refused", %{

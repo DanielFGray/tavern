@@ -1,27 +1,30 @@
 # Link embeds
 
-Status: built. Task: "Link embeds: page previews and click-to-play YouTube, fetched by the server".
+Status: built. Tasks: "Link embeds: page previews and click-to-play YouTube, fetched by the server"; "Image links get a stored preview; markdown images render as links; CSP blocks remote images".
 
 ## Rule
 
 A message with links shows one card per link under its body, at most five, in the order the links are written:
 
 - A **link card** shows the page's site name, its title (linked to the page), two lines of description and its image.
+- An **image card** is for a link whose response is an image file (PNG, JPEG, GIF or WebP by its magic bytes). It shows the stored image at its own aspect ratio, linked to the file, and no text.
 - A **video card** is for a YouTube link. It shows the title, the channel name and the stored thumbnail with a play button. A click replaces the thumbnail with the player from `https://www.youtube-nocookie.com/embed/<id>?autoplay=1`. Nothing loads from YouTube before the click.
 
 The server fetches each link once, in the background, after the message write commits, and stores the preview. A viewer's browser never contacts the linked site. The server copies card images into the object store at fetch time, and `/uploads` serves them.
 
+Markdown image syntax (`![text](url)`) renders as a link to the image, with the text (or the URL when the text is empty) as the link text, never as an `<img>`. Its URL is a wanted link like any other, so an image file written that way gets an image card. An image written inside a link (`[![text](image)](page)`) renders as its text, linked to the page; the image URL and the page URL are both wanted links (a URL ends at `](`), so the image still gets its card. The rule lives in the client renderer (`md.renderer.rules.image` in `assets/js/chat_hooks.js`). The browser policy allows images only from this origin and `data:` URLs (`img-src` in `TavernWeb.Plugs.ContentSecurityPolicy`), so an image from another host is blocked even if one reached the page.
+
 Terms:
 
 - **Embed**: one stored preview, a row of `message_embeds`.
-- **Wanted links**: the links in a message body that get an embed (`Tavern.Embeds.Links.embeddable/1`). A link in angle brackets (`<https://...>`) or in a code span or block is not wanted. A deleted message and a message whose embeds were removed want none.
+- **Wanted links**: the links in a message body that get an embed (`Tavern.Embeds.Links.embeddable/1`). A URL ends at whitespace, an angle bracket or `](`. A link in angle brackets (`<https://...>`) or in a code span or block is not wanted. A deleted message and a message whose embeds were removed want none.
 - **Suppression**: removing a message's embeds. It sets `messages.suppress_embeds`, so later edits fetch nothing.
 
 ## Data
 
-`message_embeds` holds `message_id`, `position` (the link's index in the wanted links), `url`, `kind` (`link` or `video`), `provider` (`youtube` or none), `title`, `description`, `site_name`, `image_asset_id`, `video_id` and `fetched_at`. `(message_id, url)` is unique. For a video, `description` holds the channel name that oEmbed gives as `author_name`.
+`message_embeds` holds `message_id`, `position` (the link's index in the wanted links), `url`, `kind` (`link`, `image` or `video`), `provider` (`youtube` or none), `title`, `description`, `site_name`, `image_asset_id`, `video_id` and `fetched_at`. `(message_id, url)` is unique. For a video, `description` holds the channel name that oEmbed gives as `author_name`. An image embed has no title, description or video id; its site name is the host it was served from, and an image embed whose image could not be stored is not kept.
 
-An embed image is a `media_assets` row of kind `embed`, stored under `embeds/<uuid>.<ext>` with provider `s3`, like an emoji upload. The embed points at the asset; deleting a message's embeds deletes their asset rows in the same transaction and their objects after the commit.
+An embed image is a `media_assets` row of kind `embed`, stored under `embeds/<uuid>.<ext>` with provider `s3`, like an emoji upload. The embed points at the asset; deleting a message's embeds deletes their asset rows in the same transaction and their objects after the commit (`MediaAssets.delete_objects/1`, which every asset delete uses).
 
 ## Flow
 
@@ -52,7 +55,8 @@ All requests go through `Tavern.Embeds.SafeHTTP`, which guards against server-si
 - The server resolves the host itself. If any address is loopback, private (RFC 1918), link-local, CGNAT `100.64.0.0/10` (the tailnet), unique-local, multicast, reserved or unspecified, the fetch is refused. An IPv6 address that carries an IPv4 address (mapped, compatible, NAT64, 6to4) is judged by the IPv4 address. Every address must pass, so a DNS answer that mixes public and private addresses is refused.
 - The connection goes to the checked address (`Tavern.Embeds.PinnedAdapter`, a Req adapter over one Mint connection), with the host name for TLS verification, SNI and the Host header. A second DNS answer cannot redirect it.
 - Redirects are followed by hand, at most three, and each hop is checked again. So is the image URL.
-- One five-second budget covers all hops of one fetch. The HTML is read up to 1 MB and parsed truncated. Images are refused over 5 MB and accepted only as PNG, JPEG, GIF or WebP by their magic bytes, whatever the Content-Type says.
+- One five-second budget covers all hops of one fetch. A link is fetched once and its body read up to 5 MB plus one byte. When the bytes are a PNG, JPEG, GIF or WebP (magic bytes, whatever the Content-Type says), the link is an image file, refused over 5 MB. Otherwise, an HTML response is parsed from its first 1 MB. A card image named by a page is fetched by its own request, refused over 5 MB and accepted only by the same magic bytes.
+- One GET serves both cases because the type is known only from the response. The cost is that a page, or a file that is neither, can be read up to 5 MB before it is dropped, where a page alone needed 1 MB. A page over 1 MB must also deliver up to 5 MB inside the five-second budget, or it gets no card. A second fetch for an image cut off at 1 MB was the other choice; it pays a second request per large image instead.
 - Requests send `User-Agent: TavernBot (+link previews)`, ask for no compression and are not retried.
 - Stored text is made valid UTF-8, stripped of control characters, put on one line and capped (title 256, description 350, site name 100 characters).
 
@@ -70,6 +74,7 @@ The player is a colocated hook (`.YouTubePlayer` in `TavernWeb.ServerComponents.
 
 ## Limits
 
-- A link to an image file, or to any page that is not HTML, gets no card.
+- A link to a file that is neither HTML nor a PNG, JPEG, GIF or WebP image (an SVG, a PDF, a video) gets no card.
+- A message sent before image cards existed shows its markdown images as links and has no image card until it is edited; there is no backfill.
 - Pages in an encoding other than UTF-8 show replacement characters where bytes are invalid.
 - Deleting a channel removes its messages and embeds by cascade, but not the embed image assets or objects.

@@ -6,7 +6,10 @@ defmodule Tavern.EmbedTestHelpers do
 
   import ExUnit.Assertions
 
-  @png <<0x89, "PNG\r\n", 0x1A, "\n", 0::size(64)>>
+  # A real 1x1 PNG, so a browser in an e2e run can decode the stored card image.
+  @png Base.decode64!(
+         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="
+       )
 
   def png, do: @png
 

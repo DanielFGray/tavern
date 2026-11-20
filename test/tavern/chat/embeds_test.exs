@@ -50,6 +50,25 @@ defmodule Tavern.Chat.EmbedsTest do
              Tavern.Bots.serialize_message(read).embeds
   end
 
+  test "a link to an image file, written bare or as markdown image syntax, gets a stored image embed",
+       ctx do
+    message_fixture(ctx.channel, ctx.author, %{
+      body: "![a cat](https://images.site.test/cat.png) https://images.site.test/dog.png"
+    })
+
+    assert_receive {:message_updated, %{embeds: [cat, dog]}}, 5_000
+
+    for {embed, url} <- [
+          {cat, "https://images.site.test/cat.png"},
+          {dog, "https://images.site.test/dog.png"}
+        ] do
+      assert %{kind: :image, url: ^url, title: nil, site_name: "images.site.test"} = embed
+      assert %MediaAsset{kind: :embed, content_type: "image/png"} = embed.image_asset
+      assert {:ok, bytes, "image/png"} = MediaAssets.fetch_upload(embed.image_asset.storage_key)
+      assert bytes == png()
+    end
+  end
+
   test "a YouTube link gets a video embed", ctx do
     message_fixture(ctx.channel, ctx.author, %{body: "https://youtu.be/dQw4w9WgXcQ"})
 

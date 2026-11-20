@@ -16,6 +16,20 @@ defmodule Tavern.Embeds.LinksTest do
                ["https://en.wikipedia.org/wiki/Tavern_(disambiguation)"]
     end
 
+    test "the image URL in markdown image syntax is a link" do
+      body = ~S{![a cat](https://example.com/cat.png) ![](https://example.com/dog.gif "Dog")}
+
+      assert Links.embeddable(body) == [
+               "https://example.com/cat.png",
+               "https://example.com/dog.gif"
+             ]
+    end
+
+    test "a linked image gives both the image and the link target" do
+      assert Links.embeddable("[![a cat](https://example.com/cat.png)](https://example.com/cats)") ==
+               ["https://example.com/cat.png", "https://example.com/cats"]
+    end
+
     test "a link in angle brackets gets no embed" do
       assert Links.embeddable("quiet <https://example.com/quiet> loud https://example.com/loud") ==
                ["https://example.com/loud"]

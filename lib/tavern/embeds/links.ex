@@ -7,9 +7,11 @@ defmodule Tavern.Embeds.Links do
   @max_links 5
   @max_url_length 2048
 
-  # A URL runs to the next whitespace or angle bracket. The optional brackets around it are
-  # captured so a link written as `<https://...>` can be left without an embed, as Discord does.
-  @url_pattern ~r{(<?)(https?://[^\s<>]+)(>?)}i
+  # A URL runs to the next whitespace, angle bracket or `](`, where a markdown link's text ends
+  # and its target begins: in a linked image, `[![alt](https://img)](https://page)`, both URLs
+  # are links. The optional brackets around a URL are captured so a link written as
+  # `<https://...>` can be left without an embed, as Discord does.
+  @url_pattern ~r{(<?)(https?://(?:(?!\]\()[^\s<>])+)(>?)}i
 
   # Code is shown as written, so a link inside it is text, not a link.
   @fenced_code ~r/```.*?```/s

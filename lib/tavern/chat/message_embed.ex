@@ -12,7 +12,7 @@ defmodule Tavern.Chat.MessageEmbed do
   schema "message_embeds" do
     field(:position, :integer)
     field(:url, :string)
-    field(:kind, Ecto.Enum, values: [:link, :video])
+    field(:kind, Ecto.Enum, values: [:link, :image, :video])
     field(:provider, :string)
     field(:title, :string)
     field(:description, :string)

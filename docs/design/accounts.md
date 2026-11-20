@@ -37,9 +37,10 @@ It also:
 
 - deactivates the membership (`Membership.deleted_account_changeset/2`), keeping an earlier deactivation's date and flags, and clears the nickname, pronouns, server avatar, timeout and deletion schedule;
 - deletes the member roles, channel permission overwrites for the user, channel read state, notification settings and overrides, thread follows, bot tokens, and every `user_sessions` row of any context;
+- deletes the `media_assets` rows of the avatar, banner and server avatar;
 - writes an `account_deleted` audit entry with the actor (none for the sweep).
 
-After the commit, the account's open LiveViews get `"disconnect"`, and its avatar, banner and server avatar leave the object store. Both happen after the commit, so a reconnect finds no session and a rollback never loses an image.
+After the commit, the account's open LiveViews get `"disconnect"`, and the objects of those images leave the object store (`MediaAssets.delete_objects/1`). Both happen after the commit, so a reconnect finds no session and a rollback never loses an image.
 
 What stays: messages, reactions, poll ballots, invite uses, moderation cases, message reports and audit entries. They are the server's record, and other members' messages reply to and quote these messages. Invites the account created stay usable. An invite belongs to the server, and revoking one is a moderator's choice.
 

@@ -21,12 +21,32 @@ const md = new MarkdownIt({
   },
 })
 
+const LINK_ATTRIBUTES = [
+  ["target", "_blank"],
+  ["rel", "noopener noreferrer nofollow"],
+  ["class", "text-blue-300 underline decoration-[rgba(147,197,253,0.4)] underline-offset-2"],
+]
+
 const defaultLinkRenderer = md.renderer.rules.link_open || ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options))
 md.renderer.rules.link_open = (tokens, idx, options, env, self) => {
-  tokens[idx].attrSet("target", "_blank")
-  tokens[idx].attrSet("rel", "noopener noreferrer nofollow")
-  tokens[idx].attrJoin("class", "text-blue-300 underline decoration-[rgba(147,197,253,0.4)] underline-offset-2")
+  LINK_ATTRIBUTES.forEach(([name, value]) => tokens[idx].attrSet(name, value))
   return defaultLinkRenderer(tokens, idx, options, env, self)
+}
+
+// Markdown image syntax renders as a link to the image, never an <img>: a remote image would
+// tell its host who reads the message, and the page's policy blocks other hosts anyway. The
+// server shows a direct image link as a stored image card under the message instead. An image
+// written inside a link is only its text, so anchors never nest.
+md.renderer.rules.image = (tokens, idx, options, env, self) => {
+  const token = tokens[idx]
+  const src = token.attrGet("src") || ""
+  const text = self.renderInlineAsText(token.children || [], options, env) || src
+  if(insideLink(tokens, idx)) return escapeHtml(text)
+
+  const attributes = [["href", src], ...LINK_ATTRIBUTES]
+    .map(([name, value]) => `${name}="${escapeHtml(value)}"`)
+    .join(" ")
+  return `<a ${attributes}>${escapeHtml(text)}</a>`
 }
 
 const ComposerEntity = Mention.extend({
@@ -836,6 +856,16 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#39;")
+}
+
+// Whether the inline token at `idx` sits between a link_open and its link_close.
+function insideLink(tokens, idx) {
+  let depth = 0
+  for(let i = 0; i < idx; i++) {
+    if(tokens[i].type === "link_open") depth++
+    if(tokens[i].type === "link_close") depth--
+  }
+  return depth > 0
 }
 
 export { MessageListHook, ReactionPickerHook, RichComposerHook }

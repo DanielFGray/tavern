@@ -194,6 +194,27 @@ defmodule Tavern.TestSupport do
     }
   end
 
+  # Link previews in the e2e server answer from `Tavern.EmbedTestHelpers.stub_link_previews/1`
+  # (pages at site.test, PNGs at images.site.test). A `Req.Test` stub lives only as long as the
+  # process that owns it, so one unlinked process owns it and outlives this request.
+  defp execute("stub_link_previews", _payload) do
+    if is_nil(Process.whereis(:e2e_link_preview_stub)) do
+      caller = self()
+
+      pid =
+        spawn(fn ->
+          Tavern.EmbedTestHelpers.stub_link_previews(self())
+          send(caller, :stubbed)
+          discard_requests()
+        end)
+
+      Process.register(pid, :e2e_link_preview_stub)
+      receive do: (:stubbed -> :ok)
+    end
+
+    %{success: true}
+  end
+
   defp execute("delete_account", payload) do
     username = payload["username"] || raise "username is required"
     ensure_safe_test_identity!("#{username}@example.com", username)
@@ -291,6 +312,13 @@ defmodule Tavern.TestSupport do
   # ---------------------------------------------------------------------------
   # Helpers
   # ---------------------------------------------------------------------------
+
+  # The stub reports each request to its owner; the owner drops the reports and lives on.
+  defp discard_requests do
+    receive do
+      _report -> discard_requests()
+    end
+  end
 
   defp upsert_test_user!(payload) do
     email = payload["email"] || raise "email is required"

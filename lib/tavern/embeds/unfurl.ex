@@ -1,10 +1,10 @@
 defmodule Tavern.Embeds.Unfurl do
   @moduledoc """
   Turns one link into a preview: a page's Open Graph or Twitter card, falling back to its
-  `<title>` and meta description, or a YouTube video's title and thumbnail from YouTube's
-  oEmbed endpoint. Every request goes through `Tavern.Embeds.SafeHTTP`.
+  `<title>` and meta description, an image file itself, or a YouTube video's title and
+  thumbnail from YouTube's oEmbed endpoint. Every request goes through `Tavern.Embeds.SafeHTTP`.
 
-  A preview is a map with `:url`, `:kind` (`:link` or `:video`), `:provider`, `:title`,
+  A preview is a map with `:url`, `:kind` (`:link`, `:image` or `:video`), `:provider`, `:title`,
   `:description`, `:site_name`, `:video_id` and `:image` (`nil`, or `%{body: bytes,
   content_type: type}` for a PNG, JPEG, GIF or WebP checked by its magic bytes).
   """
@@ -22,11 +22,13 @@ defmodule Tavern.Embeds.Unfurl do
   @max_site_name 100
 
   @html_types ["text/html", "application/xhtml+xml"]
+  @image_types "image/png,image/jpeg,image/gif,image/webp"
 
   @doc """
   The preview of `url` as `{:ok, preview}`, or `:error` when the link cannot be fetched or has
   nothing to show (no title and no description). A preview image that fails its checks is left
-  out; the rest of the preview is kept.
+  out; the rest of the preview is kept. A link whose body is an image by its magic bytes is an
+  `:image` preview of that image, with no title.
   """
   def preview(url) when is_binary(url) do
     case Links.youtube_video_id(url) do
@@ -67,14 +69,48 @@ defmodule Tavern.Embeds.Unfurl do
     end
   end
 
+  # One GET serves both a page and an image file. The body is read up to the image limit plus one
+  # byte, so a longer body is an image over the limit, or a page whose first megabyte is parsed.
+  # The magic bytes decide which, whatever the Content-Type says.
   defp page(url) do
-    with {:ok, %{url: final_url, content_type: content_type, body: body}} <-
-           SafeHTTP.get(url,
-             max_bytes: @max_html_bytes,
-             accept: "text/html,application/xhtml+xml"
-           ),
-         true <- html?(content_type),
-         document = LazyHTML.from_document(body),
+    case SafeHTTP.get(url,
+           max_bytes: @max_image_bytes + 1,
+           accept: "text/html,application/xhtml+xml,#{@image_types};q=0.9"
+         ) do
+      {:ok, %{body: body} = response} ->
+        case MediaAssets.image_type(body) do
+          {:ok, content_type} -> image_file(url, response, content_type)
+          :error -> html_page(url, response)
+        end
+
+      {:error, _reason} ->
+        :error
+    end
+  end
+
+  defp image_file(_url, %{body: body}, _content_type) when byte_size(body) > @max_image_bytes,
+    do: :error
+
+  defp image_file(url, %{url: final_url, body: body}, content_type) do
+    {:ok,
+     %{
+       url: url,
+       kind: :image,
+       provider: nil,
+       title: nil,
+       description: nil,
+       site_name: host_name(final_url),
+       video_id: nil,
+       image: %{body: body, content_type: content_type}
+     }}
+  end
+
+  defp html_page(url, %{url: final_url, content_type: content_type, body: body}) do
+    with true <- html?(content_type),
+         document =
+           body
+           |> binary_part(0, min(byte_size(body), @max_html_bytes))
+           |> LazyHTML.from_document(),
          meta = meta_tags(document),
          title when title != nil <- page_title(meta, document) || meta_description(meta) do
       description = meta_description(meta)
@@ -154,7 +190,7 @@ defmodule Tavern.Embeds.Unfurl do
            SafeHTTP.get(url,
              max_bytes: @max_image_bytes,
              over_limit: :refuse,
-             accept: "image/png,image/jpeg,image/gif,image/webp"
+             accept: @image_types
            ),
          {:ok, content_type} <- MediaAssets.image_type(body) do
       %{body: body, content_type: content_type}

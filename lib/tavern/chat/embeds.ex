@@ -9,7 +9,7 @@ defmodule Tavern.Chat.Embeds do
 
   The message writes in `Tavern.Chat.Messages` call `prune/1` inside their own transaction, so an edit
   drops the embeds of links it removed, and a deletion or a suppression drops them all. Image
-  objects are deleted after the transaction commits (`delete_objects/1`).
+  objects are deleted after the transaction commits (`MediaAssets.delete_objects/1`).
   """
 
   import Ecto.Query, warn: false
@@ -72,12 +72,12 @@ defmodule Tavern.Chat.Embeds do
       on_timeout: :kill_task
     )
     |> Enum.flat_map(fn
-      {:ok, {:ok, preview}} -> [preview]
+      {:ok, {:ok, preview}} -> put_image_object(preview, message_id)
       _failed -> []
     end)
     |> case do
       [] -> :none
-      previews -> previews |> Enum.map(&put_image_object(&1, message_id)) |> store(message_id)
+      previews -> store(previews, message_id)
     end
   end
 
@@ -85,7 +85,7 @@ defmodule Tavern.Chat.Embeds do
   Drops the embeds `message` no longer wants and puts the rest in its link order. Must run
   inside the transaction that wrote the message, with the message row locked. A deleted or
   suppressed message wants none. Returns `{kept_urls, image_keys}`: the storage keys go to
-  `delete_objects/1` after the commit.
+  `MediaAssets.delete_objects/1` after the commit.
   """
   def prune(%Message{} = message) do
     wanted = wanted_urls(message)
@@ -112,49 +112,39 @@ defmodule Tavern.Chat.Embeds do
     {Enum.map(kept, & &1.url), Enum.map(assets, & &1.storage_key)}
   end
 
-  @doc """
-  Deletes image objects after the transaction that dropped their rows has committed. A failed
-  delete leaves an object no row names, which `/uploads` does not serve.
-  """
-  def delete_objects(storage_keys) do
-    Enum.each(storage_keys, fn key ->
-      case ObjectStore.delete(key) do
-        :ok -> :ok
-        {:error, reason} -> Logger.warning("embed image #{key} not deleted: #{inspect(reason)}")
-      end
-    end)
-  end
-
   defp wanted_urls(%Message{deleted_at: nil, suppress_embeds: false, body: body}),
     do: Links.embeddable(body)
 
   defp wanted_urls(%Message{}), do: []
 
   # The image bytes go to the object store before the transaction, so the transaction holds no
-  # lock during network I/O. A preview whose image cannot be stored keeps its text. The log names
-  # the message, not the URL: a member posted the URL.
+  # lock during network I/O. A link preview whose image cannot be stored keeps its text; an image
+  # preview is only its image, so it is dropped. The log names the message, not the URL: a member
+  # posted the URL.
   defp put_image_object(%{image: %{body: body, content_type: content_type}} = preview, message_id) do
     key = "#{@upload_dir}/#{Ecto.UUID.generate()}#{MediaAssets.extension(content_type)}"
 
     case ObjectStore.put(key, body, content_type) do
       :ok ->
-        %{
-          preview
-          | image: %{
-              storage_key: key,
-              content_type: content_type,
-              byte_size: byte_size(body),
-              sha256: :crypto.hash(:sha256, body) |> Base.encode16(case: :lower)
-            }
-        }
+        [
+          %{
+            preview
+            | image: %{
+                storage_key: key,
+                content_type: content_type,
+                byte_size: byte_size(body),
+                sha256: :crypto.hash(:sha256, body) |> Base.encode16(case: :lower)
+              }
+          }
+        ]
 
       {:error, reason} ->
         Logger.warning("embed image for message #{message_id} not stored: #{inspect(reason)}")
-        %{preview | image: nil}
+        if preview.kind == :image, do: [], else: [%{preview | image: nil}]
     end
   end
 
-  defp put_image_object(preview, _message_id), do: preview
+  defp put_image_object(preview, _message_id), do: [preview]
 
   defp store(previews, message_id) do
     Repo.transact(fn ->
@@ -187,12 +177,16 @@ defmodule Tavern.Chat.Embeds do
     end)
     |> case do
       {:ok, {message, stored}} ->
-        previews |> Enum.reject(&(&1.url in stored)) |> image_keys() |> delete_objects()
+        previews
+        |> Enum.reject(&(&1.url in stored))
+        |> image_keys()
+        |> MediaAssets.delete_objects()
+
         Topics.broadcast_channel(message.channel_id, {:message_updated, message})
         {:ok, message}
 
       {:error, _reason} ->
-        previews |> image_keys() |> delete_objects()
+        previews |> image_keys() |> MediaAssets.delete_objects()
         :none
     end
   end

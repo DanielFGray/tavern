@@ -17,6 +17,7 @@ defmodule Tavern.Chat.Messages do
   alias Tavern.Chat.Embeds
   alias Tavern.Chat.Emojis
   alias Tavern.Chat.Ids
+  alias Tavern.Chat.MediaAssets
   alias Tavern.Chat.Mentions
   alias Tavern.Chat.Message
   alias Tavern.Chat.MessageRows
@@ -245,7 +246,7 @@ defmodule Tavern.Chat.Messages do
       end)
       |> case do
         {:ok, {message, embedded_urls, image_keys, retagged}} ->
-          Embeds.delete_objects(image_keys)
+          MediaAssets.delete_objects(image_keys)
           broadcast(:message_updated, message)
           # A thread whose tags changed is redrawn wherever it is listed, as for a rename.
           if retagged, do: Topics.broadcast_server({:channel_updated, retagged})
@@ -533,7 +534,7 @@ defmodule Tavern.Chat.Messages do
   end
 
   defp delete_dropped_images({:ok, {message, image_keys}}) do
-    Embeds.delete_objects(image_keys)
+    MediaAssets.delete_objects(image_keys)
     {:ok, message}
   end
 

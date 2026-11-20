@@ -4,8 +4,6 @@ defmodule Tavern.Chat.ServerConfig do
   import Ecto.Changeset, only: [put_change: 3]
   import Ecto.Query, warn: false
 
-  require Logger
-
   @cache_key {__MODULE__, :server_settings}
 
   alias Tavern.Accounts.Scope
@@ -14,7 +12,6 @@ defmodule Tavern.Chat.ServerConfig do
   alias Tavern.Chat.ServerSettings
   alias Tavern.Chat.Topics
   alias Tavern.Chat.Visibility
-  alias Tavern.ObjectStore
   alias Tavern.Repo
 
   def get_server_settings do
@@ -87,7 +84,7 @@ defmodule Tavern.Chat.ServerConfig do
   # included: a reader that loaded the old row before the commit may have stored it after the
   # erase, and only the later erase from the broadcast clears it.
   #
-  # `fun` returns `{:ok, {settings, retired_key}}`. The retired icon's object is deleted only
+  # `fun` returns `{:ok, {settings, retired_keys}}`. The retired icon's object is deleted only
   # after the commit: a rollback keeps the old row, which must still find its object.
   defp write_settings(scope, fun) do
     Repo.transact(fn ->
@@ -96,8 +93,8 @@ defmodule Tavern.Chat.ServerConfig do
       end
     end)
     |> case do
-      {:ok, {settings, retired_key}} ->
-        delete_retired_icon(retired_key)
+      {:ok, {settings, retired_keys}} ->
+        MediaAssets.delete_objects(retired_keys)
         reset_server_settings_cache()
         Topics.broadcast_server_settings_changed()
         {:ok, settings}
@@ -112,8 +109,8 @@ defmodule Tavern.Chat.ServerConfig do
            server_settings
            |> settings_changeset(name_attrs, icon_change)
            |> Repo.insert_or_update(),
-         {:ok, retired_key} <- retire_icon_asset(server_settings.icon_asset, icon_change) do
-      {:ok, {Repo.preload(settings, [:icon_asset], force: true), retired_key}}
+         {:ok, retired_keys} <- retire_icon_asset(server_settings.icon_asset, icon_change) do
+      {:ok, {Repo.preload(settings, [:icon_asset], force: true), retired_keys}}
     end
   end
 
@@ -132,25 +129,12 @@ defmodule Tavern.Chat.ServerConfig do
 
   # Only a purpose-built server icon may be deleted when the icon changes; an emoji or other
   # kind pointed here by an old write must stay so manage_emojis cannot be bypassed. Drops the
-  # row and returns the storage key, for `delete_retired_icon/1` after the commit.
+  # row and returns its storage key, for `MediaAssets.delete_objects/1` after the commit.
   defp retire_icon_asset(%MediaAsset{kind: :server_icon} = asset, {:replace, _icon_asset_id}) do
-    with {:ok, _asset} <- Repo.delete(asset), do: {:ok, asset.storage_key}
+    MediaAssets.delete_asset_row(asset)
   end
 
-  defp retire_icon_asset(_asset, _icon_change), do: {:ok, nil}
-
-  # A failed delete leaves an object no row names, which `/uploads` does not serve.
-  defp delete_retired_icon(nil), do: :ok
-
-  defp delete_retired_icon(storage_key) do
-    case ObjectStore.delete(storage_key) do
-      :ok ->
-        :ok
-
-      {:error, reason} ->
-        Logger.warning("server icon #{storage_key} not deleted: #{inspect(reason)}")
-    end
-  end
+  defp retire_icon_asset(_asset, _icon_change), do: {:ok, []}
 
   defp name_attrs(attrs) do
     attrs

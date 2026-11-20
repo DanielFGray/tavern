@@ -5,7 +5,6 @@ defmodule Tavern.Chat.Emojis do
 
   alias Tavern.Accounts.Scope
   alias Tavern.Chat.Emoji
-  alias Tavern.Chat.MediaAsset
   alias Tavern.Chat.MediaAssets
   alias Tavern.Chat.Visibility
   alias Tavern.ProductEvents
@@ -72,20 +71,25 @@ defmodule Tavern.Chat.Emojis do
   @doc """
   Deletes a custom emoji and its asset. Needs `manage_emojis_and_stickers` now, in the database.
   Returns `{:error, :forbidden}` without it and `{:error, :not_found}` for a missing emoji.
+  The asset row goes in the same transaction; its object is deleted after the commit.
   """
   def delete_custom_emoji(%Scope{} = scope, emoji_id) do
     Repo.transact(fn ->
       with :ok <- Visibility.authorize_write(scope, :manage_emojis_and_stickers, :server),
            {:ok, emoji} <- lock_emoji(emoji_id),
-           {:ok, deleted_emoji} <- Repo.delete(emoji) do
-        case deleted_emoji.asset do
-          %MediaAsset{} = asset -> MediaAssets.delete_media_asset(asset)
-          _ -> {:ok, nil}
-        end
-
-        {:ok, deleted_emoji}
+           {:ok, deleted_emoji} <- Repo.delete(emoji),
+           {:ok, storage_keys} <- MediaAssets.delete_asset_row(deleted_emoji.asset) do
+        {:ok, {deleted_emoji, storage_keys}}
       end
     end)
+    |> case do
+      {:ok, {deleted_emoji, storage_keys}} ->
+        MediaAssets.delete_objects(storage_keys)
+        {:ok, deleted_emoji}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   defp lock_emoji(emoji_id) do

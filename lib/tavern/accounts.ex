@@ -1072,9 +1072,13 @@ defmodule Tavern.Accounts do
       )
       |> Repo.delete_all()
 
+    {_count, storage_keys} =
+      from(asset in MediaAsset, where: asset.id in ^asset_ids, select: asset.storage_key)
+      |> Repo.delete_all()
+
     AuditLog.record!(actor_id, "account_deleted", user.id, {"user", user.id})
 
-    {deleted_user, %{session_hashes: session_hashes, asset_ids: asset_ids}}
+    {deleted_user, %{session_hashes: session_hashes, storage_keys: storage_keys}}
   end
 
   # After the deletion commits: open LiveViews of the account disconnect (a reconnect finds no
@@ -1087,9 +1091,7 @@ defmodule Tavern.Accounts do
       TavernWeb.Endpoint.broadcast(socket_id_for_hash(hash), "disconnect", %{})
     end)
 
-    from(asset in MediaAsset, where: asset.id in ^cleanup.asset_ids)
-    |> Repo.all()
-    |> Enum.each(&MediaAssets.delete_media_asset/1)
+    MediaAssets.delete_objects(cleanup.storage_keys)
 
     ProductEvents.record({:member_deleted, user.id, actor_id})
     {:ok, user}

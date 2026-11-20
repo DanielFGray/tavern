@@ -1,7 +1,7 @@
 defmodule TavernWeb.Plugs.ContentSecurityPolicyTest do
   @moduledoc """
-  Pages run scripts only from this origin or with the request's nonce, and the root layout's
-  inline theme script carries that nonce.
+  Pages run scripts only from this origin or with the request's nonce, the root layout's inline
+  theme script carries that nonce, and images load only from this origin.
   """
   use TavernWeb.ConnCase, async: true
 
@@ -16,6 +16,15 @@ defmodule TavernWeb.Plugs.ContentSecurityPolicyTest do
            |> LazyHTML.from_document()
            |> LazyHTML.query("head script:not([src])")
            |> LazyHTML.attribute("nonce") == [nonce]
+  end
+
+  test "frames come from this origin and the YouTube no-cookie player, images from this origin",
+       %{conn: conn} do
+    [policy] = conn |> get(~p"/login") |> get_resp_header("content-security-policy")
+
+    assert policy =~ "frame-src 'self' https://www.youtube-nocookie.com;"
+    assert policy =~ "frame-ancestors 'self';"
+    assert policy =~ "img-src 'self' data:;"
   end
 
   test "each response has its own nonce", %{conn: conn} do

@@ -1,8 +1,13 @@
 defmodule Tavern.Chat.MediaAssets do
   @moduledoc """
-  Uploaded images. Each asset's bytes live in `Tavern.ObjectStore` under its `storage_key`,
-  and the app serves them at `asset_url/1`.
+  Stored images: uploads and link embed images. Each asset's bytes live in
+  `Tavern.ObjectStore` under its `storage_key`, and the app serves them at `asset_url/1`.
+
+  An asset row is deleted inside the transaction of the write that drops it, and its object
+  after that transaction commits (`delete_objects/1`).
   """
+
+  require Logger
 
   alias Tavern.Accounts.Scope
   alias Tavern.Chat.MediaAsset
@@ -66,10 +71,30 @@ defmodule Tavern.Chat.MediaAssets do
     end
   end
 
-  def delete_media_asset(%MediaAsset{storage_key: storage_key} = asset) do
-    with :ok <- ObjectStore.delete(storage_key) do
-      Repo.delete(asset)
-    end
+  @doc """
+  Deletes the asset's row (none for `nil`) and returns `{:ok, storage_keys}` for
+  `delete_objects/1`. Call it inside the transaction of the write that drops the asset, and
+  pass the keys to `delete_objects/1` after that transaction commits.
+  """
+  def delete_asset_row(%MediaAsset{} = asset) do
+    with {:ok, asset} <- Repo.delete(asset), do: {:ok, [asset.storage_key]}
+  end
+
+  def delete_asset_row(nil), do: {:ok, []}
+
+  @doc """
+  Deletes the objects stored under `storage_keys`. Call it after the transaction that deleted
+  their asset rows has committed: a rollback keeps the rows, which must still find their
+  objects. A failed delete is logged and leaves an object no row names, which `/uploads` does
+  not serve.
+  """
+  def delete_objects(storage_keys) when is_list(storage_keys) do
+    Enum.each(storage_keys, fn key ->
+      case ObjectStore.delete(key) do
+        :ok -> :ok
+        {:error, reason} -> Logger.warning("object #{key} not deleted: #{inspect(reason)}")
+      end
+    end)
   end
 
   @doc """
