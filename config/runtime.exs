@@ -101,6 +101,13 @@ if config_env() == :prod do
 
   config :tavern, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
+  # The platform sets the OpenObserve OTLP endpoint in every job; the exporters append
+  # `/v1/traces` and `/v1/logs` to it. Without it a deploy exports nothing. Spans leave through
+  # `Tavern.Observability.Redaction`, which wraps the OTLP exporter.
+  if System.get_env("OTEL_EXPORTER_OTLP_ENDPOINT") do
+    config :opentelemetry, traces_exporter: {Tavern.Observability.Redaction, %{}}
+  end
+
   # Invite mail. With MAIL_PROVIDER unset no provider is configured, so Settings cannot turn
   # on invite requests; there is no fallback provider.
   config :tavern, Tavern.Mailer,

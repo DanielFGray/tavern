@@ -93,9 +93,13 @@ defmodule TavernWeb.ServerLive.Events do
       {:ok, module} ->
         module.handle_event(event, params, socket)
 
-      # A client can send any name, and a stale page can send one no longer handled.
+      # A client can send any name, and a stale page can send one no longer handled. The log keeps
+      # only the start of it: a client chose the text.
       :error ->
-        Logger.warning("ServerLive ignored an unknown event: #{inspect(event)}")
+        Logger.warning(
+          "ServerLive ignored an unknown event: #{inspect(String.slice(event, 0, 40))}"
+        )
+
         {:noreply, socket}
     end
   end

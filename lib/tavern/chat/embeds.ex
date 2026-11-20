@@ -77,7 +77,7 @@ defmodule Tavern.Chat.Embeds do
     end)
     |> case do
       [] -> :none
-      previews -> previews |> Enum.map(&put_image_object/1) |> store(message_id)
+      previews -> previews |> Enum.map(&put_image_object(&1, message_id)) |> store(message_id)
     end
   end
 
@@ -131,8 +131,9 @@ defmodule Tavern.Chat.Embeds do
   defp wanted_urls(%Message{}), do: []
 
   # The image bytes go to the object store before the transaction, so the transaction holds no
-  # lock during network I/O. A preview whose image cannot be stored keeps its text.
-  defp put_image_object(%{image: %{body: body, content_type: content_type}} = preview) do
+  # lock during network I/O. A preview whose image cannot be stored keeps its text. The log names
+  # the message, not the URL: a member posted the URL.
+  defp put_image_object(%{image: %{body: body, content_type: content_type}} = preview, message_id) do
     key = "#{@upload_dir}/#{Ecto.UUID.generate()}#{MediaAssets.extension(content_type)}"
 
     case ObjectStore.put(key, body, content_type) do
@@ -148,12 +149,12 @@ defmodule Tavern.Chat.Embeds do
         }
 
       {:error, reason} ->
-        Logger.warning("embed image for #{preview.url} not stored: #{inspect(reason)}")
+        Logger.warning("embed image for message #{message_id} not stored: #{inspect(reason)}")
         %{preview | image: nil}
     end
   end
 
-  defp put_image_object(preview), do: preview
+  defp put_image_object(preview, _message_id), do: preview
 
   defp store(previews, message_id) do
     Repo.transact(fn ->

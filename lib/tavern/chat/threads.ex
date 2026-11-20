@@ -306,8 +306,13 @@ defmodule Tavern.Chat.Threads do
                :ok <- validate_thread_host(parent),
                %Message{} = starter <- MessageRows.lock_live_message(starter_message_id) do
             case thread_for_starter(starter.id) do
-              nil -> insert_thread(scope, parent, starter, attrs)
-              existing -> existing_thread(scope, existing.id)
+              nil ->
+                with {:ok, thread} <- insert_thread(scope, parent, starter, attrs),
+                     do: {:ok, {:created, thread}}
+
+              existing ->
+                with {:ok, thread} <- existing_thread(scope, existing.id),
+                     do: {:ok, {:existing, thread}}
             end
           else
             nil -> {:error, :not_found}
@@ -315,13 +320,18 @@ defmodule Tavern.Chat.Threads do
           end
         end)
 
+      # Only a new thread is broadcast: views already list an existing one, and each broadcast
+      # counts a `thread.created` product event.
       case result do
-        {:ok, %Channel{} = thread} ->
+        {:ok, {:created, thread}} ->
           Topics.broadcast_server({:channel_created, thread})
           {:ok, thread}
 
-        other ->
-          other
+        {:ok, {:existing, thread}} ->
+          {:ok, thread}
+
+        error ->
+          error
       end
     else
       :error -> {:error, :not_found}

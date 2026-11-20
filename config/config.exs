@@ -70,6 +70,12 @@ config :logger, :default_formatter,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+# OpenTelemetry (`Tavern.Observability`). Nothing is exported unless config/runtime.exs turns
+# the exporter on in a deploy. Every trace is sampled.
+config :opentelemetry,
+  traces_exporter: :none,
+  resource: %{service: %{name: "tavern"}}
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

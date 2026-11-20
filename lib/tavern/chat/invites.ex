@@ -17,6 +17,7 @@ defmodule Tavern.Chat.Invites do
   alias Tavern.Chat.InviteUse
   alias Tavern.Chat.User
   alias Tavern.Chat.Visibility
+  alias Tavern.ProductEvents
   alias Tavern.Repo
 
   # A URL-safe alphabet without the pairs that read alike on paper (0/O, 1/l/I).
@@ -39,6 +40,10 @@ defmodule Tavern.Chat.Invites do
              |> Repo.insert() do
         {:ok, Repo.preload(invite, [:channel, :inviter])}
       end
+    end)
+    |> tap(fn
+      {:ok, invite} -> ProductEvents.record({:invite_created, invite})
+      {:error, _reason} -> :ok
     end)
   end
 

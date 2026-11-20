@@ -27,6 +27,7 @@ defmodule Tavern.Accounts do
   alias Tavern.Chat.UserSession
   alias Tavern.Chat.Visibility
   alias Tavern.Ephemeral
+  alias Tavern.ProductEvents
   alias Tavern.Repo
 
   @session_valid_days 30
@@ -114,7 +115,7 @@ defmodule Tavern.Accounts do
       |> Repo.one()
 
     if user do
-      touch_session(token)
+      touch_session(token, user)
       heartbeat_presence(user)
     end
 
@@ -140,6 +141,10 @@ defmodule Tavern.Accounts do
          |> Repo.preload([:membership, member_roles: :role])
          |> Map.put(:membership, membership)}
       end
+    end)
+    |> tap(fn
+      {:ok, user} -> ProductEvents.record({:member_signed_up, user, invite_code != nil})
+      {:error, _reason} -> :ok
     end)
   end
 
@@ -295,12 +300,12 @@ defmodule Tavern.Accounts do
           |> Changeset.put_change(:confirmed_at, user.confirmed_at || DateTime.utc_now())
           |> Repo.update()
           |> case do
-            {:ok, user} -> {:ok, user}
+            {:ok, updated} -> {:ok, {user.confirmed_at, updated}}
             {:error, _changeset} -> {:error, :email_taken}
           end
       end
     end)
-    |> broadcast_email_confirmed()
+    |> after_email_confirmed()
   end
 
   # --- Verification --------------------------------------------------------------------------
@@ -377,23 +382,27 @@ defmodule Tavern.Accounts do
         {_row, user} ->
           delete_email_tokens!(user.id, :confirm)
 
-          {:ok,
-           user
-           |> Changeset.change(confirmed_at: user.confirmed_at || DateTime.utc_now())
-           |> Repo.update!()}
+          confirmed =
+            user
+            |> Changeset.change(confirmed_at: user.confirmed_at || DateTime.utc_now())
+            |> Repo.update!()
+
+          {:ok, {user.confirmed_at, confirmed}}
       end
     end)
-    |> broadcast_email_confirmed()
+    |> after_email_confirmed()
   end
 
-  # Tells every open view, after the commit, that `user` confirmed an email: the member's own
-  # views may have lost the Unverified role, and managers' member lists show a badge.
-  defp broadcast_email_confirmed({:ok, %User{} = user} = result) do
+  # After the commit: tells every open view that `user` confirmed an email (the member's own
+  # views may have lost the Unverified role, and managers' member lists show a badge), and counts
+  # the account verified when it had never confirmed an address before.
+  defp after_email_confirmed({:ok, {previously_confirmed_at, %User{} = user}}) do
     Topics.broadcast_server({:email_confirmed, user.id})
-    result
+    if is_nil(previously_confirmed_at), do: ProductEvents.record({:member_verified, user.id})
+    {:ok, user}
   end
 
-  defp broadcast_email_confirmed(error), do: error
+  defp after_email_confirmed(error), do: error
 
   defp request_email_change(%User{} = user, changeset) do
     with {:ok, draft} <- Changeset.apply_action(changeset, :update),
@@ -516,14 +525,18 @@ defmodule Tavern.Accounts do
   def generate_user_session_token(%User{} = user, attrs \\ %{}) do
     now = DateTime.utc_now()
 
-    insert_token!(&UserSession.session_changeset/2, %{
-      user_id: user.id,
-      context: "session",
-      expires_at: DateTime.add(now, @session_valid_days * 86_400, :second),
-      last_seen_at: now,
-      user_agent: Map.get(attrs, :user_agent),
-      ip_address: Map.get(attrs, :ip_address)
-    })
+    token =
+      insert_token!(&UserSession.session_changeset/2, %{
+        user_id: user.id,
+        context: "session",
+        expires_at: DateTime.add(now, @session_valid_days * 86_400, :second),
+        last_seen_at: now,
+        user_agent: Map.get(attrs, :user_agent),
+        ip_address: Map.get(attrs, :ip_address)
+      })
+
+    ProductEvents.record({:session_seen, user.id})
+    token
   end
 
   # Inserts a `user_sessions` row for a fresh random token and returns the token. The row keeps
@@ -597,7 +610,7 @@ defmodule Tavern.Accounts do
     case Ecto.UUID.cast(user_id) do
       {:ok, user_id} ->
         Repo.transact(fn -> delete_account_locked(user_id, actor_id) end)
-        |> after_account_deletion()
+        |> after_account_deletion(actor_id)
 
       :error ->
         {:error, :not_found}
@@ -790,7 +803,9 @@ defmodule Tavern.Accounts do
     )
   end
 
-  defp touch_session(token) do
+  # Stamps the session's last use at most once per 5 minutes. Each stamp, like each new session,
+  # is a `session.seen` product event: the member had Tavern open.
+  defp touch_session(token, %User{id: user_id}) do
     hashed_token = hash_token(token)
     threshold = DateTime.add(DateTime.utc_now(), -300, :second)
 
@@ -799,6 +814,10 @@ defmodule Tavern.Accounts do
       where: is_nil(session.last_seen_at) or session.last_seen_at < ^threshold
     )
     |> Repo.update_all(set: [last_seen_at: DateTime.utc_now()])
+    |> case do
+      {0, _rows} -> :ok
+      {_stamped, _rows} -> ProductEvents.record({:session_seen, user_id})
+    end
   end
 
   defp heartbeat_presence(%User{id: user_id}) do
@@ -837,7 +856,7 @@ defmodule Tavern.Accounts do
 
       if due, do: delete_account_locked(user_id, nil), else: {:error, :not_due}
     end)
-    |> after_account_deletion()
+    |> after_account_deletion(nil)
     |> case do
       {:ok, _user} -> true
       {:error, _reason} -> false
@@ -857,7 +876,7 @@ defmodule Tavern.Accounts do
     cond do
       is_nil(user) -> {:error, :not_found}
       user.bot or user.system -> {:error, :bot}
-      not is_nil(user.deleted_at) -> {:ok, {user, %{session_hashes: [], asset_ids: []}}}
+      not is_nil(user.deleted_at) -> {:ok, {user, :already_deleted}}
       membership && membership.is_owner -> {:error, :owner}
       true -> {:ok, wipe_account!(user, membership, actor_id)}
     end
@@ -905,8 +924,11 @@ defmodule Tavern.Accounts do
   end
 
   # After the deletion commits: open LiveViews of the account disconnect (a reconnect finds no
-  # session), and its profile images leave the object store.
-  defp after_account_deletion({:ok, {user, cleanup}}) do
+  # session), its profile images leave the object store, and the deletion is a product event.
+  # An account that was already deleted had nothing written.
+  defp after_account_deletion({:ok, {user, :already_deleted}}, _actor_id), do: {:ok, user}
+
+  defp after_account_deletion({:ok, {user, cleanup}}, actor_id) do
     Enum.each(cleanup.session_hashes, fn hash ->
       TavernWeb.Endpoint.broadcast(socket_id_for_hash(hash), "disconnect", %{})
     end)
@@ -915,10 +937,11 @@ defmodule Tavern.Accounts do
     |> Repo.all()
     |> Enum.each(&MediaAssets.delete_media_asset/1)
 
+    ProductEvents.record({:member_deleted, user.id, actor_id})
     {:ok, user}
   end
 
-  defp after_account_deletion({:error, reason}), do: {:error, reason}
+  defp after_account_deletion({:error, reason}, _actor_id), do: {:error, reason}
 
   defp membership_flag?(membership, key) do
     flags = membership.flags || %{}

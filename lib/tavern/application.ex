@@ -7,6 +7,9 @@ defmodule Tavern.Application do
 
   @impl true
   def start(_type, _args) do
+    # Before the endpoint and the Repo start, so their first request and query are traced.
+    :ok = Tavern.Observability.setup()
+
     children = [
       TavernWeb.Telemetry,
       Tavern.Repo,

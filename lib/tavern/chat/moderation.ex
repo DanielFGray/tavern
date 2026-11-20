@@ -20,6 +20,7 @@ defmodule Tavern.Chat.Moderation do
   alias Tavern.Chat.Topics
   alias Tavern.Chat.User
   alias Tavern.Chat.Visibility
+  alias Tavern.ProductEvents
   alias Tavern.Repo
 
   # How long a member kicked by `kick_member_and_schedule_deletion/3` has to rejoin.
@@ -123,8 +124,12 @@ defmodule Tavern.Chat.Moderation do
       end
     end)
     |> tap(fn
-      {:ok, subject, _moderation_case} -> DeletionNotice.deliver(subject, deletion_at)
-      {:error, _reason} -> :ok
+      {:ok, subject, _moderation_case} ->
+        ProductEvents.record({:member_deletion_scheduled, scope.user_id, subject.id})
+        DeletionNotice.deliver(subject, deletion_at)
+
+      {:error, _reason} ->
+        :ok
     end)
   end
 
@@ -315,8 +320,12 @@ defmodule Tavern.Chat.Moderation do
       end
     end)
     |> tap(fn
-      {:ok, _membership} -> Topics.broadcast_server(:roles_changed)
-      {:error, _reason} -> :ok
+      {:ok, _membership} ->
+        Topics.broadcast_server(:roles_changed)
+        ProductEvents.record({:member_rejoined, user_id})
+
+      {:error, _reason} ->
+        :ok
     end)
   end
 
@@ -422,8 +431,12 @@ defmodule Tavern.Chat.Moderation do
         end
       end)
       |> case do
-        {:ok, {subject, moderation_case}} -> {:ok, subject, moderation_case}
-        {:error, reason} -> {:error, reason}
+        {:ok, {subject, moderation_case}} ->
+          ProductEvents.record({:member_moderated, moderation_case})
+          {:ok, subject, moderation_case}
+
+        {:error, reason} ->
+          {:error, reason}
       end
     end
   end

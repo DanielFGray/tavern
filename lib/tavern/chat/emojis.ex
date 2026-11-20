@@ -8,6 +8,7 @@ defmodule Tavern.Chat.Emojis do
   alias Tavern.Chat.MediaAsset
   alias Tavern.Chat.MediaAssets
   alias Tavern.Chat.Visibility
+  alias Tavern.ProductEvents
   alias Tavern.Repo
 
   @doc """
@@ -59,6 +60,10 @@ defmodule Tavern.Chat.Emojis do
              |> Repo.insert() do
         {:ok, Repo.preload(emoji, [:asset, :creator, :emoji_roles])}
       end
+    end)
+    |> tap(fn
+      {:ok, _emoji} -> ProductEvents.record({:upload_created, scope.user_id, :emoji})
+      {:error, _reason} -> :ok
     end)
   end
 

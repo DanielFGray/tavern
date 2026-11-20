@@ -117,7 +117,7 @@ defmodule Tavern.MailerTest do
       end)
 
       with_config(cloudflare_config(), fn ->
-        assert {:error, "permanently bounced: to@example.com"} = Mailer.deliver(@email)
+        assert {:error, "permanently bounced"} = Mailer.deliver(@email)
       end)
     end
 

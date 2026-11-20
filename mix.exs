@@ -11,7 +11,18 @@ defmodule Tavern.MixProject do
       aliases: aliases(),
       deps: deps(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
-      listeners: [Phoenix.CodeReloader]
+      listeners: [Phoenix.CodeReloader],
+      releases: releases()
+    ]
+  end
+
+  # As the OpenTelemetry Erlang docs advise: the exporter first, and the SDK temporary, so a
+  # crashed SDK stops tracing instead of stopping the release.
+  defp releases do
+    [
+      tavern: [
+        applications: [opentelemetry_exporter: :permanent, opentelemetry: :temporary]
+      ]
     ]
   end
 
@@ -67,7 +78,14 @@ defmodule Tavern.MixProject do
       {:req, "~> 0.5"},
       {:mint, "~> 1.7"},
       {:dns_cluster, "~> 0.2.0"},
-      {:bandit, "~> 1.5"}
+      {:bandit, "~> 1.5"},
+      {:opentelemetry, "~> 1.7"},
+      {:opentelemetry_api, "~> 1.5"},
+      {:opentelemetry_exporter, "~> 1.11"},
+      {:opentelemetry_experimental, "~> 0.6.0"},
+      {:opentelemetry_bandit, "~> 0.3.0"},
+      {:opentelemetry_phoenix, "~> 2.0"},
+      {:opentelemetry_ecto, "~> 1.2"}
     ]
   end
 

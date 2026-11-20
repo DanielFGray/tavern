@@ -10,7 +10,13 @@ defmodule Tavern.Chat.Topics do
 
   Broadcasts skip the calling process: the caller has already applied its own change. The
   server settings event is the exception (see `broadcast_server_settings_changed/0`).
+
+  Callers broadcast after their transaction commits, so each server and channel broadcast also
+  goes to `Tavern.ProductEvents`, which emits the product event it stands for, if any. Each
+  broadcast happens once, on the writing node, so each event is counted once.
   """
+
+  alias Tavern.ProductEvents
 
   @pubsub Tavern.PubSub
   @server_topic "chat:server"
@@ -18,11 +24,16 @@ defmodule Tavern.Chat.Topics do
 
   def subscribe_server, do: Phoenix.PubSub.subscribe(@pubsub, @server_topic)
 
-  def broadcast_server(event),
-    do: Phoenix.PubSub.broadcast_from(@pubsub, self(), @server_topic, event)
+  def broadcast_server(event) do
+    result = Phoenix.PubSub.broadcast_from(@pubsub, self(), @server_topic, event)
+    ProductEvents.record(event)
+    result
+  end
 
   def broadcast_channel(channel_id, event) do
-    Phoenix.PubSub.broadcast_from(@pubsub, self(), channel_topic(channel_id), event)
+    result = Phoenix.PubSub.broadcast_from(@pubsub, self(), channel_topic(channel_id), event)
+    ProductEvents.record(event)
+    result
   end
 
   @doc """

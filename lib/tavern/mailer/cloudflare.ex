@@ -42,11 +42,10 @@ defmodule Tavern.Mailer.Cloudflare do
     end
   end
 
-  defp bounced(%{"permanent_bounces" => [_ | _] = addresses}),
-    do: {:error, "permanently bounced: #{Enum.join(addresses, ", ")}"}
+  # The reason is logged, so it names no address: the caller knows whom it mailed.
+  defp bounced(%{"permanent_bounces" => [_ | _]}), do: {:error, "permanently bounced"}
 
-  defp bounced(%{"suppressed_recipients" => [_ | _] = addresses}),
-    do: {:error, "suppressed recipient: #{Enum.join(addresses, ", ")}"}
+  defp bounced(%{"suppressed_recipients" => [_ | _]}), do: {:error, "suppressed recipient"}
 
   defp bounced(_result), do: :ok
 
