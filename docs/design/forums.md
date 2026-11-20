@@ -14,7 +14,7 @@ A post is a `:thread_public` channel row whose parent is the forum. Its name is 
 2. Lock the forum row. A channel that is not a forum answers `{:error, :not_found}`.
 3. Apply the forum's slowmode to posts: the author's newest post in the forum must be older than `slowmode_seconds`, unless the author may `:bypass_slowmode`. A refusal is `{:error, {:slowmode, seconds_left}}`.
 4. Insert the thread and follow it as its creator (`:created`).
-5. Write the first message with `Chat.Messages.write_message/3`, which stores mentions and follows as a normal message does. Step 1 already decided the send right: creating a public thread needs `:send_messages` in the host (`Visibility`), so the poster needs both rights.
+5. Write the first message with `Chat.Messages.write_message/3`, which stores mentions and follows as a normal message does. Step 1 already decided the send right: creating a public thread needs `:send_messages` in the host (`Visibility`), so the poster needs both rights. `write_message/3` also counts the post against the author's send limit (rate-limits.md); over it, the post is `{:error, {:rate_limited, seconds}}` and the transaction rolls the thread back.
 6. Set `starter_message_id` and the hashtags.
 
 After the commit it broadcasts `{:channel_created, thread}` on the server topic, then the message events. The new thread is in every session's channel list before its message arrives.

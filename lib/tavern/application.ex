@@ -14,7 +14,8 @@ defmodule Tavern.Application do
       TavernWeb.Telemetry,
       Tavern.Repo,
       Tavern.Valkey,
-      Tavern.Accounts.LoginRateLimiter,
+      # The node-local counts `Tavern.RateLimit` keeps while Valkey is unreachable.
+      Tavern.RateLimit,
       {DNSCluster, query: Application.get_env(:tavern, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Tavern.PubSub},
       # Drops this node's cached server settings when any node commits a change to them.

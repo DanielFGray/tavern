@@ -16,6 +16,11 @@ defmodule Tavern.Ephemeral do
   @presence_recent_ttl 3600
   @typing_ttl 8
 
+  # A rate-limit check runs inside a send's transaction, so a hung Valkey must not hold it for
+  # the client's default 5 s: past this, the call reports Valkey unavailable and the limit applies
+  # its outage policy (`Tavern.RateLimit`).
+  @rate_limit_timeout_ms 250
+
   def presence_online_ttl, do: @presence_online_ttl
   def presence_recent_ttl, do: @presence_recent_ttl
   def typing_ttl, do: @typing_ttl
@@ -89,11 +94,14 @@ defmodule Tavern.Ephemeral do
     expires_at = now + window_seconds
     key = namespaced(key)
 
-    case Valkey.pipeline([
-           ["INCR", key],
-           ["EXPIRE", key, Integer.to_string(window_seconds), "NX"],
-           ["TTL", key]
-         ]) do
+    case Valkey.pipeline(
+           [
+             ["INCR", key],
+             ["EXPIRE", key, Integer.to_string(window_seconds), "NX"],
+             ["TTL", key]
+           ],
+           timeout: @rate_limit_timeout_ms
+         ) do
       {:ok, [count, _expire, ttl]} when is_integer(count) and is_integer(ttl) ->
         {:ok, count, now + max(ttl, 0)}
 
@@ -114,10 +122,13 @@ defmodule Tavern.Ephemeral do
       when is_binary(key) and is_integer(window_seconds) do
     key = namespaced(key)
 
-    case Valkey.pipeline([
-           ["DECR", key],
-           ["EXPIRE", key, Integer.to_string(window_seconds), "NX"]
-         ]) do
+    case Valkey.pipeline(
+           [
+             ["DECR", key],
+             ["EXPIRE", key, Integer.to_string(window_seconds), "NX"]
+           ],
+           timeout: @rate_limit_timeout_ms
+         ) do
       {:ok, _results} -> :ok
       {:error, _reason} -> :error
     end

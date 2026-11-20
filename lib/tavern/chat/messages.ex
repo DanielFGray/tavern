@@ -22,6 +22,7 @@ defmodule Tavern.Chat.Messages do
   alias Tavern.Chat.MessageRows
   alias Tavern.Chat.Poll
   alias Tavern.Chat.Reaction
+  alias Tavern.Chat.SendLimit
   alias Tavern.Chat.Slowmode
   alias Tavern.Chat.ThreadFollows
   alias Tavern.Chat.Threads
@@ -135,7 +136,8 @@ defmodule Tavern.Chat.Messages do
   Creates a message in a channel or thread the scope may send to, and broadcasts it. The message
   comes back with its write preloads (`MessageRows.reload_message/1`), the same shape the broadcast carries. A channel the scope
   may not view is `{:error, :not_found}`; a visible one it may not send to is `{:error,
-  :forbidden}`.
+  :forbidden}`. A send refused by slowmode is `{:error, {:slowmode, seconds}}`, and one over the
+  member's send limit is `{:error, {:rate_limited, seconds}}`.
   """
   def create_message(%Scope{} = scope, channel_id, attrs),
     do: send_message(scope, channel_id, attrs, &{:ok, &1})
@@ -175,10 +177,13 @@ defmodule Tavern.Chat.Messages do
   Inserts a message the caller has authorized, with its mentions and the follows it makes. `attrs`
   have string keys and a decoded `"metadata"` map, as `normalize_attrs/1` returns them. Runs
   inside the caller's transaction; `publish_message/1` takes the result after the commit.
-  `create_message/3` and a forum post's first message (`Tavern.Chat.Forums`) share it.
+  `create_message/3` and a forum post's first message (`Tavern.Chat.Forums`) share it, so the
+  member's send limit (`Tavern.Chat.SendLimit`) is counted here, before any other query: over it,
+  the write is `{:error, {:rate_limited, seconds}}`.
   """
   def write_message(%Scope{} = scope, channel_id, attrs) do
-    with :ok <- validate_reply_target(channel_id, attrs),
+    with :ok <- SendLimit.admit(scope.user_id),
+         :ok <- validate_reply_target(channel_id, attrs),
          :ok <- Mentions.authorize(scope, channel_id, attrs),
          {:ok, message} <-
            %Message{channel_id: channel_id, author_id: scope.user_id}

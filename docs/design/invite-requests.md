@@ -7,7 +7,7 @@ How a stranger asks to join an invite-only server, how a moderator answers, and 
 - An invite-only server can turn on **Accept invite requests** (Settings > Server, in the server settings form). The sign-up page then shows a "Request an invite" form that takes only an email address.
 - A member who holds `manage_applications` sees the **Requests** queue in Settings > Server. The owner and administrators pass, as for every bit.
 - **Approve** binds a one-use invite to the request and mails its link. **Deny** records the decision and mails nothing. **Deny all from this IP** denies every pending request from one address at once. **Resend** mails an approved request's link again.
-- `Tavern.Chat.InviteRequests` holds the rules; `Tavern.Chat` delegates to it. `Tavern.Chat.InviteRequestLimits` holds the abuse limits. `Tavern.Mailer` sends the mail.
+- `Tavern.Chat.InviteRequests` holds the rules; `Tavern.Chat` delegates to it. `Tavern.Chat.InviteRequestLimits` holds the abuse limits, counted by `Tavern.RateLimit` (rate-limits.md). `Tavern.Mailer` sends the mail.
 
 Terms:
 

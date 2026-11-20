@@ -30,6 +30,11 @@ config :tavern, Tavern.Chat.InviteRequests,
 # a second answer 429 with Retry-After.
 config :tavern, Tavern.Bots, message_edits_per_second: 2
 
+# Messages one member (a person or a bot) may send across every channel and thread, as
+# {messages, seconds} windows. A fast typist stays under both; a script meets the first within
+# seconds and the second within minutes. docs/design/rate-limits.md
+config :tavern, Tavern.Chat.SendLimit, windows: [{10, 10}, {120, 300}]
+
 # Configure the endpoint
 config :tavern, TavernWeb.Endpoint,
   url: [host: "localhost"],

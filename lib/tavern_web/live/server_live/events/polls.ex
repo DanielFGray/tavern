@@ -71,6 +71,9 @@ defmodule TavernWeb.ServerLive.Events.Polls do
           {:error, {:slowmode, seconds_left}} ->
             {:noreply, put_flash(socket, :error, Helpers.slowmode_message(seconds_left))}
 
+          {:error, {:rate_limited, seconds_left}} ->
+            {:noreply, put_flash(socket, :error, Helpers.send_limit_message(seconds_left))}
+
           {:error, _reason} ->
             {:noreply,
              put_flash(socket, :error, "You do not have permission to send a poll here.")}

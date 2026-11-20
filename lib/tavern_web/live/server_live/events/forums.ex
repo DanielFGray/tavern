@@ -5,6 +5,7 @@ defmodule TavernWeb.ServerLive.Events.Forums do
 
   import Phoenix.LiveView, only: [put_flash: 3, push_patch: 2]
 
+  alias TavernWeb.ServerLive.Events.Helpers
   alias TavernWeb.ServerLive.ForumNav
 
   @events ~w(
@@ -56,6 +57,9 @@ defmodule TavernWeb.ServerLive.Events.Forums do
 
       {:error, {:slowmode, seconds}, socket} ->
         {:noreply, put_flash(socket, :error, "Slowmode is on. Wait #{seconds}s to post again.")}
+
+      {:error, {:rate_limited, seconds}, socket} ->
+        {:noreply, put_flash(socket, :error, Helpers.send_limit_message(seconds))}
 
       {:error, _refusal, socket} ->
         {:noreply, put_flash(socket, :error, "You do not have permission to post here.")}

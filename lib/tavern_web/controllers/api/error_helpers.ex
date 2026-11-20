@@ -35,7 +35,10 @@ defmodule TavernWeb.API.ErrorHelpers do
     })
   end
 
-  @doc "429 for more edits of one message than the cap allows, with the wait in `retry_after` seconds."
+  @doc """
+  429 for a request over a rate limit (`Tavern.RateLimit`): too many messages from one member, or
+  too many edits of one message. The wait is in `retry_after` seconds.
+  """
   def render_rate_limited(conn, seconds_left) do
     conn
     |> put_resp_header("retry-after", Integer.to_string(seconds_left))
@@ -43,7 +46,7 @@ defmodule TavernWeb.API.ErrorHelpers do
     |> json(%{
       error: %{
         code: "rate_limited",
-        message: "Too many edits of this message. Wait #{seconds_left}s.",
+        message: "Rate limit reached. Wait #{seconds_left}s before trying again.",
         retry_after: seconds_left
       }
     })

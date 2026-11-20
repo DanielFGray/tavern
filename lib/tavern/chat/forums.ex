@@ -44,7 +44,8 @@ defmodule Tavern.Chat.Forums do
   last post there. The creator follows the post.
 
   Returns `{:ok, thread}`; `{:error, changeset}` for a title or body the form refuses;
-  `{:error, {:slowmode, seconds}}`; `{:error, :forbidden}` for a visible forum the scope may not
+  `{:error, {:slowmode, seconds}}`; `{:error, {:rate_limited, seconds}}` over the author's send
+  limit (`Tavern.Chat.SendLimit`); `{:error, :forbidden}` for a visible forum the scope may not
   post in; `{:error, :not_found}` for a hidden channel, a missing one or one that is not a forum.
   """
   def create_post(%Scope{} = scope, forum_id, attrs) do

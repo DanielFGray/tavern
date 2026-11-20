@@ -21,7 +21,7 @@ The question is the message body. `Message.kind` has no poll value: a message is
 - `duration_minutes`: 60 to 10080 (1 hour to 7 days), or nil for a poll ended by hand.
 - `max_voters`, `voter_user_ids`, `voter_role_ids`, `multi_select`, `anonymous`, `allow_other`.
 
-It sends the message through `Chat.Messages.send_message/4`, so the send rules apply unchanged: `Visibility.authorize_write`, timeouts, slowmode, locked and archived threads. A message to an archived thread reopens it, as any message does. The poll rows are written in the same transaction as the message.
+It sends the message through `Chat.Messages.send_message/4`, so the send rules apply unchanged: `Visibility.authorize_write`, timeouts, slowmode, the per-member send limit (rate-limits.md), locked and archived threads. A message to an archived thread reopens it, as any message does. The poll rows are written in the same transaction as the message.
 
 ## Who may vote
 

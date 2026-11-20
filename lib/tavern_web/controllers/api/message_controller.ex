@@ -62,6 +62,9 @@ defmodule TavernWeb.API.MessageController do
       {:error, {:slowmode, seconds_left}} ->
         ErrorHelpers.render_slowmode(conn, seconds_left)
 
+      {:error, {:rate_limited, seconds_left}} ->
+        ErrorHelpers.render_rate_limited(conn, seconds_left)
+
       {:error, reason} ->
         ErrorHelpers.render_error(
           conn,

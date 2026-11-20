@@ -69,3 +69,7 @@ config :tavern, :poll_closer, false
 # Tests delete due accounts by calling `Tavern.Accounts.delete_due_accounts/1` with a chosen
 # time, for the same reason.
 config :tavern, :deletion_sweeper, false
+
+# Fixtures and the e2e seed commands send dozens of messages from one author within a second,
+# as a script would. Tests of the send limit set their own windows.
+config :tavern, Tavern.Chat.SendLimit, windows: [{10_000, 10}]

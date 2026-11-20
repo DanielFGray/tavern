@@ -40,3 +40,7 @@ A bot sees who reacted through two events, and what a message holds through a su
 ## `GET /api/v1/channels/:id/messages`
 
 Lists a page of messages, oldest first, with `after` and `before` cursors. A deleted message is not listed; its `message.deleted` event still arrives, and a cursor may name a deleted message. Read one deleted message by id with `GET /api/v1/messages/:message_id`, which still returns it.
+
+## Rate limits
+
+A bot is a member, so its messages count against the per-member send limit (rate-limits.md), as a person's do. A message send, a poll and the `send_message` command over the limit answer 429 `rate_limited` with `retry_after` seconds and a `Retry-After` header. Edits of one message have their own cap (`Tavern.Bots.EditLimit`) and answer the same way.

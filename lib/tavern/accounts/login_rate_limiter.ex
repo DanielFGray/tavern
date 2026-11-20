@@ -1,11 +1,16 @@
 defmodule Tavern.Accounts.LoginRateLimiter do
-  @moduledoc false
+  @moduledoc """
+  The login limits, counted by `Tavern.RateLimit`. A login attempt counts against its client IP
+  (20 in 5 minutes) and against its IP and email together (5 in 5 minutes). A mail that carries
+  an email link counts against its account. Keys hold a hash of the IP and email, so Valkey never
+  holds an address.
 
-  use GenServer
+  The limits count locally through a Valkey outage: Valkey must not be able to stop logins.
+  """
 
-  alias Tavern.Ephemeral
+  alias Tavern.RateLimit
 
-  @table :tavern_login_rate_limiter
+  @namespace "login:"
   @ip_window_seconds 300
   @ip_limit 20
   @credential_window_seconds 300
@@ -13,29 +18,16 @@ defmodule Tavern.Accounts.LoginRateLimiter do
   @email_link_window_seconds 900
   @email_link_limit 3
 
-  def start_link(opts \\ []) do
-    GenServer.start_link(__MODULE__, opts, name: __MODULE__)
-  end
-
+  @doc "Counts one login attempt. Returns `:ok` or `{:error, retry_after_seconds}`."
   def check_attempt(ip_address, email) do
-    now = System.system_time(:second)
+    ip_address = normalize_ip(ip_address)
 
-    retry_after =
-      Enum.reduce(login_keys(ip_address, email), nil, fn {key, limit, window_seconds},
-                                                         retry_after ->
-        {count, reset_at} = bump_bucket(key, window_seconds, now)
-
-        if count > limit do
-          max(retry_after || 0, max(reset_at - now, 1))
-        else
-          retry_after
-        end
-      end)
-
-    case retry_after do
-      nil -> :ok
-      seconds -> {:error, seconds}
-    end
+    [
+      {key({:ip, ip_address}), @ip_limit, @ip_window_seconds},
+      {credential_key(ip_address, email), @credential_limit, @credential_window_seconds}
+    ]
+    |> RateLimit.hit(:count_locally)
+    |> result()
   end
 
   @doc """
@@ -44,94 +36,25 @@ defmodule Tavern.Accounts.LoginRateLimiter do
   #{@email_link_window_seconds} seconds. Returns `:ok` or `{:error, retry_after_seconds}`.
   """
   def check_email_link(user_id) do
-    now = System.system_time(:second)
-    key = {:email_link, user_id}
-    {count, reset_at} = bump_bucket(key, @email_link_window_seconds, now)
-
-    if count > @email_link_limit, do: {:error, max(reset_at - now, 1)}, else: :ok
+    [{key({:email_link, user_id}), @email_link_limit, @email_link_window_seconds}]
+    |> RateLimit.hit(:count_locally)
+    |> result()
   end
 
+  @doc "Ends the IP-and-email window after a successful login. The per-IP count stays."
   def clear_attempts(ip_address, email) do
-    key = credential_key(ip_address, email)
-    clear_remote_bucket(key)
-    :ets.delete(@table, key)
-
-    :ok
+    RateLimit.clear(credential_key(normalize_ip(ip_address), email))
   end
 
-  def reset! do
-    :ets.delete_all_objects(@table)
+  def reset!, do: RateLimit.reset!(@namespace)
 
-    _ = Ephemeral.clear_rate_limit_namespace(login_rate_limit_prefix())
+  defp result(:ok), do: :ok
+  defp result({:error, {:rate_limited, seconds}}), do: {:error, seconds}
 
-    :ok
-  end
+  defp credential_key(ip_address, email),
+    do: key({:credential, ip_address, normalize_email(email)})
 
-  @impl true
-  def init(_opts) do
-    :ets.new(@table, [
-      :named_table,
-      :public,
-      :set,
-      read_concurrency: true,
-      write_concurrency: true
-    ])
-
-    {:ok, %{}}
-  end
-
-  defp login_keys(ip_address, email) do
-    normalized_ip = normalize_ip(ip_address)
-    normalized_email = normalize_email(email)
-
-    [
-      {{:ip, normalized_ip}, @ip_limit, @ip_window_seconds},
-      {credential_key(normalized_ip, normalized_email), @credential_limit,
-       @credential_window_seconds}
-    ]
-  end
-
-  defp credential_key(ip_address, email) do
-    {:credential, normalize_ip(ip_address), normalize_email(email)}
-  end
-
-  defp bump_bucket(key, window_seconds, now) do
-    case remote_bump_bucket(key, window_seconds, now) do
-      {:ok, count, reset_at} ->
-        {count, reset_at}
-
-      :unavailable ->
-        local_bump_bucket(key, window_seconds, now)
-    end
-  end
-
-  # Each step is one atomic ets call: the delete removes only a window that has ended, and
-  # update_counter inserts a fresh window when the row is missing, so concurrent callers never
-  # read a row that another caller deletes.
-  defp local_bump_bucket(key, window_seconds, now) do
-    :ets.select_delete(@table, [{{key, :_, :"$1"}, [{:"=<", :"$1", now}], [true]}])
-
-    [count, reset_at] =
-      :ets.update_counter(@table, key, [{2, 1}, {3, 0}], {key, 0, now + window_seconds})
-
-    {count, reset_at}
-  end
-
-  defp remote_bump_bucket(key, window_seconds, now) do
-    case Ephemeral.increment_rate_limit(remote_key(key), window_seconds, now) do
-      {:ok, count, reset_at} -> {:ok, count, reset_at}
-      {:error, :unavailable} -> :unavailable
-    end
-  end
-
-  defp clear_remote_bucket(key) do
-    _ = Ephemeral.clear_rate_limit(remote_key(key))
-    :ok
-  end
-
-  defp remote_key(key), do: login_rate_limit_prefix() <> Integer.to_string(:erlang.phash2(key))
-
-  defp login_rate_limit_prefix, do: "rate_limit:login:"
+  defp key(term), do: @namespace <> Integer.to_string(:erlang.phash2(term))
 
   defp normalize_ip(nil), do: "unknown"
   defp normalize_ip(ip_address) when is_binary(ip_address), do: ip_address

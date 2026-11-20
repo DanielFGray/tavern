@@ -416,6 +416,9 @@ defmodule TavernWeb.ServerLive.Events.Messages do
             {:error, {:slowmode, seconds_left}} ->
               put_flash(socket, :error, Helpers.slowmode_message(seconds_left))
 
+            {:error, {:rate_limited, seconds_left}} ->
+              put_flash(socket, :error, Helpers.send_limit_message(seconds_left))
+
             {:error, :forbidden} ->
               refuse_send(socket, kind, no_send_permission(noun))
 

@@ -38,6 +38,9 @@ defmodule TavernWeb.API.PollController do
       {:error, {:slowmode, seconds_left}} ->
         ErrorHelpers.render_slowmode(conn, seconds_left)
 
+      {:error, {:rate_limited, seconds_left}} ->
+        ErrorHelpers.render_rate_limited(conn, seconds_left)
+
       {:error, :unauthorized} ->
         unauthorized(conn)
     end
