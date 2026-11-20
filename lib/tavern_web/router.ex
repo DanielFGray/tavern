@@ -43,18 +43,20 @@ defmodule TavernWeb.Router do
     plug(TavernWeb.Plugs.RequireBotAuth)
   end
 
-  pipeline :test_support do
-    plug(:accepts, ["json", "html"])
-    plug(:fetch_session)
-  end
-
   # The platform health check: no session, no auth, no CSRF.
   get("/healthz", TavernWeb.HealthController, :show)
 
   # Uploaded files: public, like the static assets, with no session.
   get("/uploads/*key", TavernWeb.UploadController, :show)
 
-  if Application.compile_env(:tavern, :env) in [:dev, :test] do
+  # Login-as-anyone commands for e2e specs. The controller lives in test/support, which only
+  # MIX_ENV=test compiles, so dev and prod have neither the route nor the code.
+  if Application.compile_env(:tavern, :env) == :test do
+    pipeline :test_support do
+      plug(:accepts, ["json", "html"])
+      plug(:fetch_session)
+    end
+
     scope "/api/testing", TavernWeb do
       pipe_through(:test_support)
 

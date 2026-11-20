@@ -1,4 +1,4 @@
-defmodule Tavern.Redis do
+defmodule Tavern.Valkey do
   @moduledoc false
 
   @name __MODULE__

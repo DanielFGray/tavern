@@ -26,10 +26,6 @@ defmodule Tavern.Chat.VisibilityTest do
   defp can?(user, action, target),
     do: Visibility.can?(%Scope{user_id: user.id}, action, target)
 
-  # The test database may hold no default role; the partial unique index allows only one.
-  defp default_role,
-    do: Chat.default_role() || role_fixture(%{name: "Everyone", is_default: true, permissions: 0})
-
   defp set_membership(user, attrs),
     do: Repo.update_all(from(m in Membership, where: m.user_id == ^user.id), set: attrs)
 

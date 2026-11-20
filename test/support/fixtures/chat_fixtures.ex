@@ -155,6 +155,15 @@ defmodule Tavern.ChatFixtures do
     role
   end
 
+  @doc """
+  The @everyone role. The test database may hold none, and a partial unique index allows only
+  one, so this creates it when absent.
+  """
+  def default_role do
+    Repo.get_by(Role, is_default: true) ||
+      role_fixture(%{name: "Everyone", is_default: true, permissions: 0})
+  end
+
   def channel_manager_fixture(attrs \\ %{}) do
     role =
       role_fixture(%{

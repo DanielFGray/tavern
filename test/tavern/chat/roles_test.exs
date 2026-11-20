@@ -190,7 +190,7 @@ defmodule Tavern.Chat.RolesTest do
     end
 
     test "an edit to the default role's permissions survives the next bootstrap", ctx do
-      default = Chat.default_role()
+      default = default_role()
       edited = bits([:view_channel, :send_messages, :add_reactions])
 
       assert {:ok, _} =
@@ -201,7 +201,7 @@ defmodule Tavern.Chat.RolesTest do
     end
 
     test "the default role takes only permission edits", ctx do
-      default = Chat.default_role()
+      default = default_role()
 
       assert {:ok, role} =
                Chat.update_role(scope_for(ctx.owner), default.id, %{
@@ -258,7 +258,7 @@ defmodule Tavern.Chat.RolesTest do
 
     test "the default role cannot move", ctx do
       assert {:error, :forbidden} =
-               Chat.move_role(scope_for(ctx.owner), Chat.default_role().id, :up)
+               Chat.move_role(scope_for(ctx.owner), default_role().id, :up)
     end
   end
 
@@ -289,7 +289,7 @@ defmodule Tavern.Chat.RolesTest do
     end
 
     test "the default role cannot be deleted", ctx do
-      assert {:error, :forbidden} = Chat.delete_role(scope_for(ctx.owner), Chat.default_role().id)
+      assert {:error, :forbidden} = Chat.delete_role(scope_for(ctx.owner), default_role().id)
     end
   end
 
@@ -356,7 +356,7 @@ defmodule Tavern.Chat.RolesTest do
     end
 
     test "the default role is never given or taken", ctx do
-      default = Chat.default_role()
+      default = default_role()
 
       assert {:error, :forbidden} =
                Chat.add_member_role(scope_for(ctx.owner), ctx.member.id, default.id)
@@ -423,7 +423,7 @@ defmodule Tavern.Chat.RolesTest do
         channel_fixture(%{name: "Private", slug: unique_slug()})
 
       channel_permission_overwrite_fixture(private, %{
-        role_id: Chat.default_role().id,
+        role_id: default_role().id,
         deny_permissions: bits([:view_channel]),
         allow_permissions: 0
       })

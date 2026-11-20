@@ -54,8 +54,6 @@ defmodule TavernWeb.ServerLive.Events.Messages do
   end
 
   def handle_event("toggle_message_controls", %{"id" => message_id}, socket) do
-    message_id = Helpers.normalize_message_id(message_id)
-
     with {:ok, message} <- State.fetch_open_message(socket, message_id),
          true <- RowHelpers.can_open_message_controls?(socket.assigns, message) do
       previous_controls_id = socket.assigns.active_message_controls_id
@@ -90,7 +88,6 @@ defmodule TavernWeb.ServerLive.Events.Messages do
   end
 
   def handle_event("toggle_message_action_menu", %{"id" => message_id}, socket) do
-    message_id = Helpers.normalize_message_id(message_id)
     previous_controls_id = socket.assigns.active_message_controls_id
     previous_menu_id = socket.assigns.message_action_menu_id
     previous_delete_id = socket.assigns.delete_confirmation_message_id
@@ -129,7 +126,6 @@ defmodule TavernWeb.ServerLive.Events.Messages do
   end
 
   def handle_event("confirm_delete_message", %{"id" => message_id}, socket) do
-    message_id = Helpers.normalize_message_id(message_id)
     previous_controls_id = socket.assigns.active_message_controls_id
     previous_menu_id = socket.assigns.message_action_menu_id
     previous_delete_id = socket.assigns.delete_confirmation_message_id
@@ -249,7 +245,6 @@ defmodule TavernWeb.ServerLive.Events.Messages do
   end
 
   def handle_event("reply_message", %{"id" => message_id}, socket) do
-    message_id = Helpers.normalize_message_id(message_id)
     previous_controls_id = socket.assigns.active_message_controls_id
     previous_menu_id = socket.assigns.message_action_menu_id
     previous_delete_id = socket.assigns.delete_confirmation_message_id
@@ -285,8 +280,6 @@ defmodule TavernWeb.ServerLive.Events.Messages do
   end
 
   def handle_event("edit_message", %{"id" => message_id}, socket) do
-    message_id = Helpers.normalize_message_id(message_id)
-
     with {:ok, message} <- State.fetch_open_message(socket, message_id),
          true <- message.author_id == socket.assigns.current_user.id do
       form = message |> Chat.change_message(%{body: message.body}) |> to_form(as: :message)
@@ -344,7 +337,6 @@ defmodule TavernWeb.ServerLive.Events.Messages do
   end
 
   def handle_event("delete_message", %{"id" => message_id}, socket) do
-    message_id = Helpers.normalize_message_id(message_id)
     previous_controls_id = socket.assigns.active_message_controls_id
     previous_menu_id = socket.assigns.message_action_menu_id
     previous_delete_id = socket.assigns.delete_confirmation_message_id

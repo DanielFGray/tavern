@@ -10,7 +10,7 @@ defmodule Tavern.Application do
     children = [
       TavernWeb.Telemetry,
       Tavern.Repo,
-      Tavern.Redis,
+      Tavern.Valkey,
       Tavern.Accounts.LoginRateLimiter,
       {DNSCluster, query: Application.get_env(:tavern, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Tavern.PubSub},

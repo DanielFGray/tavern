@@ -17,7 +17,7 @@ defmodule TavernWeb.ServerLiveRolesTest do
     hidden = channel_fixture(%{name: "Insiders", slug: unique_slug(), position: 20})
 
     channel_permission_overwrite_fixture(hidden, %{
-      role_id: Chat.default_role().id,
+      role_id: default_role().id,
       deny_permissions: PermissionBits.combine([:view_channel])
     })
 

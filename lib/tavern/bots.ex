@@ -12,6 +12,7 @@ defmodule Tavern.Bots do
   alias Tavern.Chat.AuditLog
   alias Tavern.Chat.BotToken
   alias Tavern.Chat.Channel
+  alias Tavern.Chat.Ids
   alias Tavern.Chat.MemberRole
   alias Tavern.Chat.Membership
   alias Tavern.Chat.Role
@@ -111,9 +112,14 @@ defmodule Tavern.Bots do
   # authority, and decides and writes `member_roles` in that one transaction, as
   # `Tavern.Chat.Roles` does. Every bot write runs here, so control of a bot is decided from the
   # same current positions.
-  defp with_role_authority(scope, fun) do
+  #
+  # A write that changes another member's membership row passes that member's id in `member_ids`;
+  # the actor's row and those rows are then taken `FOR UPDATE` in user id order, the order every
+  # multi-row membership write uses (`Visibility.lock_memberships!/1`).
+  defp with_role_authority(scope, member_ids \\ [], fun) do
     Repo.transact(fn ->
       Visibility.lock_role_list!()
+      if member_ids != [], do: Visibility.lock_memberships!([scope.user_id | member_ids])
 
       with :ok <- Visibility.authorize_write(scope, :manage_bots, :server),
            {:ok, authority} <- Authority.manage_bots(scope) do
@@ -124,8 +130,16 @@ defmodule Tavern.Bots do
 
   # Runs `fun` with the authority and bot `bot_id`, locked, when the scope may control that bot.
   # A missing bot is `{:error, :not_found}`; one the scope may not control is `{:error, :forbidden}`.
-  defp with_controlled_bot(scope, bot_id, fun) do
-    with_role_authority(scope, fn authority ->
+  defp with_controlled_bot(scope, bot_id, fun, opts \\ []) do
+    member_ids =
+      with true <- Keyword.get(opts, :lock_membership, false),
+           {:ok, bot_id} <- Ids.cast(bot_id) do
+        [bot_id]
+      else
+        _ -> []
+      end
+
+    with_role_authority(scope, member_ids, fn authority ->
       with {:ok, bot_user} <- lock_bot_user(bot_id),
            :ok <- Authority.control_bot(authority, bot_user) do
         fun.(authority, bot_user)
@@ -173,9 +187,12 @@ defmodule Tavern.Bots do
   user. Needs control of the bot, decided as `update_bot/3` does.
   """
   def revoke_bot(%Scope{} = scope, bot_id) do
-    with_controlled_bot(scope, bot_id, fn _authority, bot_user ->
-      {:ok, deactivate_bot!(scope, bot_user)}
-    end)
+    with_controlled_bot(
+      scope,
+      bot_id,
+      fn _authority, bot_user -> {:ok, deactivate_bot!(scope, bot_user)} end,
+      lock_membership: true
+    )
   end
 
   defp deactivate_bot!(scope, bot_user) do
@@ -277,7 +294,7 @@ defmodule Tavern.Bots do
   # A token's bot never changes, so the row is read unlocked and its bot is locked next, in the
   # same order as every other bot write; the update then takes the token's row lock.
   defp fetch_bot_token(token_id) do
-    with {:ok, token_id} <- cast_id(token_id),
+    with {:ok, token_id} <- Ids.cast(token_id),
          %BotToken{} = bot_token <- Repo.get(BotToken, token_id) do
       {:ok, bot_token}
     else
@@ -437,7 +454,7 @@ defmodule Tavern.Bots do
 
   @doc "A visible active member with their role ids, or nil."
   def get_member(%Scope{} = scope, user_id) do
-    case Chat.get_member(scope, user_id) do
+    case Chat.member_with_roles(scope, user_id) do
       nil -> nil
       %{user: user, roles: roles} -> Serializer.serialize_member(user, roles)
     end
@@ -457,7 +474,7 @@ defmodule Tavern.Bots do
   # A bot that is not deleted and not the system user, or `{:error, :not_found}`. A value that is
   # not a UUID is not found, not an error.
   defp fetch_bot_user(bot_id) do
-    with {:ok, bot_id} <- cast_id(bot_id),
+    with {:ok, bot_id} <- Ids.cast(bot_id),
          %User{} = bot_user <- bot_users_query() |> preload(^@bot_preloads) |> Repo.get(bot_id) do
       {:ok, bot_user}
     else
@@ -468,7 +485,7 @@ defmodule Tavern.Bots do
   # As `fetch_bot_user/1`, with the bot's user row locked `FOR UPDATE`, after the actor's locks, so
   # two writes to one bot (a token mint and a revoke) run one after the other.
   defp lock_bot_user(bot_id) do
-    with {:ok, bot_id} <- cast_id(bot_id),
+    with {:ok, bot_id} <- Ids.cast(bot_id),
          %User{} = bot_user <-
            bot_users_query()
            |> where([user], user.id == ^bot_id)
@@ -478,13 +495,6 @@ defmodule Tavern.Bots do
       {:ok, bot_user}
     else
       _ -> {:error, :not_found}
-    end
-  end
-
-  defp cast_id(id) do
-    case Ecto.UUID.cast(id) do
-      {:ok, uuid} -> {:ok, uuid}
-      :error -> {:error, :not_found}
     end
   end
 

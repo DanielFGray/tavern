@@ -8,7 +8,7 @@ defmodule Tavern.Chat.Threads do
   alias Tavern.Chat.Channels
   alias Tavern.Chat.Hashtags
   alias Tavern.Chat.Message
-  alias Tavern.Chat.Messages
+  alias Tavern.Chat.MessageRows
   alias Tavern.Chat.ThreadFollower
   alias Tavern.Chat.ThreadFollows
   alias Tavern.Chat.Topics
@@ -296,7 +296,7 @@ defmodule Tavern.Chat.Threads do
                parent_id when is_binary(parent_id) <- message_channel_id(starter_message_id),
                %Channel{} = parent <- Channels.lock_channel(parent_id),
                :ok <- validate_thread_host(parent),
-               %Message{} = starter <- Messages.lock_live_message(starter_message_id) do
+               %Message{} = starter <- MessageRows.lock_live_message(starter_message_id) do
             case thread_for_starter(starter.id) do
               nil -> insert_thread(scope, parent, starter, attrs)
               existing -> existing_thread(scope, existing.id)

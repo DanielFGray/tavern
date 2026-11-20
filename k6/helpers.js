@@ -17,7 +17,7 @@ function flatCookies(jar) {
 }
 
 // ---------------------------------------------------------------------------
-// Test support API (dev/test only, requires ENABLE_TEST_SUPPORT_COMMANDS=1)
+// Test support API (MIX_ENV=test server only, requires ENABLE_TEST_SUPPORT_COMMANDS=1)
 // ---------------------------------------------------------------------------
 
 export function testCommand(command, payload = {}) {

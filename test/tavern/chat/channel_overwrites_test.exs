@@ -37,7 +37,7 @@ defmodule Tavern.Chat.ChannelOverwritesTest do
       manager_role: manager_role,
       low_role: low_role,
       high_role: high_role,
-      everyone: Chat.default_role()
+      everyone: default_role()
     }
   end
 

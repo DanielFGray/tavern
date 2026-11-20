@@ -368,7 +368,7 @@ defmodule Tavern.ChatTest do
 
         assert Repo.get_by(MessageRoleMention,
                  message_id: message.id,
-                 mentioned_role_id: Chat.default_role().id
+                 mentioned_role_id: default_role().id
                )
       end
 
@@ -381,12 +381,12 @@ defmodule Tavern.ChatTest do
       owner = owner_fixture()
       receiver = user_fixture()
 
-      Chat.default_role() |> Ecto.Changeset.change(name: "Members") |> Repo.update!()
+      default_role() |> Ecto.Changeset.change(name: "Members") |> Repo.update!()
       impostor = role_fixture(%{name: "@everyone", mentionable: true})
 
       assert {:ok, message} = Chat.create_message(scope_for(owner), channel.id, %{body: "@here"})
       assert [%{mentioned_role_id: role_id}] = message.role_mentions
-      assert role_id == Chat.default_role().id
+      assert role_id == default_role().id
       refute role_id == impostor.id
       assert Chat.message_mentions_user?(message, Repo.preload(receiver, :member_roles))
     end
@@ -791,7 +791,7 @@ defmodule Tavern.ChatTest do
       message = message_fixture(channel, author, %{body: "before"})
 
       channel_permission_overwrite_fixture(channel, %{
-        role_id: Chat.default_role().id,
+        role_id: default_role().id,
         deny_permissions: PermissionBits.combine([:view_channel])
       })
 
@@ -812,7 +812,7 @@ defmodule Tavern.ChatTest do
                Chat.update_message(scope_for(author), message.id, %{body: "first edit"})
 
       channel_permission_overwrite_fixture(channel, %{
-        role_id: Chat.default_role().id,
+        role_id: default_role().id,
         deny_permissions: PermissionBits.combine([:view_channel])
       })
 
@@ -832,7 +832,7 @@ defmodule Tavern.ChatTest do
       reply = message_fixture(thread, author, %{body: "before"})
 
       channel_permission_overwrite_fixture(channel, %{
-        role_id: Chat.default_role().id,
+        role_id: default_role().id,
         deny_permissions: PermissionBits.combine([:view_channel])
       })
 
@@ -870,7 +870,7 @@ defmodule Tavern.ChatTest do
       message = message_fixture(channel, author)
 
       channel_permission_overwrite_fixture(channel, %{
-        role_id: Chat.default_role().id,
+        role_id: default_role().id,
         deny_permissions: PermissionBits.combine([:add_reactions])
       })
 
@@ -1086,7 +1086,7 @@ defmodule Tavern.ChatTest do
         })
 
       channel_permission_overwrite_fixture(hidden_channel, %{
-        role_id: Chat.default_role().id,
+        role_id: default_role().id,
         deny_permissions: PermissionBits.combine([:view_channel, :send_messages])
       })
 

@@ -13,7 +13,9 @@ defmodule Tavern.Chat.Polls do
   import Ecto.Query, warn: false
 
   alias Tavern.Accounts.Scope
+  alias Tavern.Chat.Ids
   alias Tavern.Chat.Message
+  alias Tavern.Chat.MessageRows
   alias Tavern.Chat.Messages
   alias Tavern.Chat.Poll
   alias Tavern.Chat.PollBallot
@@ -121,7 +123,7 @@ defmodule Tavern.Chat.Polls do
       end)
 
     Repo.insert_all(PollOption, options)
-    {:ok, {Messages.reload_message(message.id), followers}}
+    {:ok, {MessageRows.reload_message(message.id), followers}}
   end
 
   @doc """
@@ -144,7 +146,7 @@ defmodule Tavern.Chat.Polls do
            {:ok, ballot} <- parse_choice(poll, choice),
            :ok <- write_ballot(poll, scope.user_id, ballot),
            closed? = close_at_limit(poll, now) do
-        {:ok, {Messages.reload_message(message.id), ballot, closed?}}
+        {:ok, {MessageRows.reload_message(message.id), ballot, closed?}}
       else
         nil -> {:error, :not_found}
         error -> error
@@ -178,7 +180,7 @@ defmodule Tavern.Chat.Polls do
            %Poll{} = poll <- lock_poll(message.id),
            :ok <- ensure_open(poll, now) do
         mark_closed!(poll, now)
-        {:ok, Messages.reload_message(message.id)}
+        {:ok, MessageRows.reload_message(message.id)}
       else
         nil -> {:error, :not_found}
         error -> error
@@ -216,7 +218,7 @@ defmodule Tavern.Chat.Polls do
       end)
 
     for message_id <- closed do
-      message = Messages.reload_message(message_id)
+      message = MessageRows.reload_message(message_id)
       Topics.broadcast_channel(message.channel_id, {:poll_closed, message, :time})
     end
 
@@ -271,22 +273,12 @@ defmodule Tavern.Chat.Polls do
     }
   end
 
-  @doc """
-  Refuses an edit of a poll's message: its body is the question, and votes were cast on it.
-  Runs inside the edit's transaction, on the locked message.
-  """
-  def refuse_question_edit(%Message{id: message_id}) do
-    if Repo.exists?(from(poll in Poll, where: poll.message_id == ^message_id)),
-      do: {:error, :forbidden},
-      else: :ok
-  end
-
   # The decision, then the message row lock, then (by the caller) the poll row lock: the order
   # every message write takes, so a delete and a vote queue behind each other.
   defp authorize_poll_write(scope, action, message_id) do
-    with {:ok, message_id} <- cast_id(message_id),
+    with {:ok, message_id} <- Ids.cast(message_id),
          :ok <- Visibility.authorize_write(scope, action, %Message{id: message_id}) do
-      case Messages.lock_live_message(message_id) do
+      case MessageRows.lock_live_message(message_id) do
         %Message{} = message -> {:ok, message}
         nil -> {:error, :not_found}
       end
@@ -402,12 +394,5 @@ defmodule Tavern.Chat.Polls do
         do: [options: "each option is at most 80 characters"],
         else: []
     end)
-  end
-
-  defp cast_id(id) do
-    case Ecto.UUID.cast(id) do
-      {:ok, id} -> {:ok, id}
-      :error -> {:error, :not_found}
-    end
   end
 end

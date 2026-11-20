@@ -22,15 +22,12 @@ defmodule Tavern.Chat do
   alias Tavern.Chat.Moderation
   alias Tavern.Chat.Notifications
   alias Tavern.Chat.Polls
-  alias Tavern.Chat.Role
   alias Tavern.Chat.Roles
   alias Tavern.Chat.ServerConfig
   alias Tavern.Chat.ThreadFollows
   alias Tavern.Chat.Threads
   alias Tavern.Chat.Typing
-  alias Tavern.Chat.User
   alias Tavern.Chat.Visibility
-  alias Tavern.Repo
 
   @default_reaction_emojis ["👍", "🔥", "❤️"]
 
@@ -49,7 +46,7 @@ defmodule Tavern.Chat do
   defdelegate list_roles(scope), to: Roles
   defdelegate role_controls(scope), to: Roles
   defdelegate member_roles(scope, user_id), to: Roles
-  defdelegate get_member(scope, user_id), to: Roles
+  defdelegate member_with_roles(scope, user_id), to: Roles
   defdelegate change_role(role, attrs \\ %{}), to: Roles
   defdelegate create_role(scope, attrs), to: Roles
   defdelegate update_role(scope, role_id, attrs), to: Roles
@@ -187,14 +184,6 @@ defmodule Tavern.Chat do
   defdelegate message_mentions_user_directly?(message, user), to: Notifications
   defdelegate mention_notifications_enabled?(scope, channel), to: Notifications
   defdelegate mark_channel_read(scope, channel_id, message \\ nil), to: Notifications
-
-  def create_user(attrs) do
-    %User{}
-    |> User.account_changeset(attrs)
-    |> Repo.insert()
-  end
-
-  def default_role, do: Repo.get_by(Role, is_default: true)
 
   @doc """
   What the scope may do in channel or thread `channel_id`, decided from one permission load: a

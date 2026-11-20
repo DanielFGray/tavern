@@ -12,6 +12,7 @@ defmodule Tavern.Chat.Channels do
   alias Tavern.Chat.Channel
   alias Tavern.Accounts.Scope
   alias Tavern.Chat.ChannelMembership
+  alias Tavern.Chat.Ids
   alias Tavern.Chat.Message
   alias Tavern.Chat.Topics
   alias Tavern.Chat.Visibility
@@ -323,7 +324,7 @@ defmodule Tavern.Chat.Channels do
   defp authorize_parent(_scope, parent_id) when parent_id in [nil, ""], do: {:ok, nil}
 
   defp authorize_parent(scope, parent_id) do
-    with {:ok, parent_id} <- cast_id(parent_id),
+    with {:ok, parent_id} <- Ids.cast(parent_id),
          :ok <- Visibility.authorize_write(scope, :manage_channels, %Channel{id: parent_id}),
          %Channel{} = parent <- lock_channel(parent_id) do
       {:ok, parent}
@@ -482,13 +483,6 @@ defmodule Tavern.Chat.Channels do
   # --- Helpers -----------------------------------------------------------------------------------
 
   defp attr(attrs, key), do: Map.get(attrs, key, Map.get(attrs, to_string(key)))
-
-  defp cast_id(id) do
-    case Ecto.UUID.cast(id) do
-      {:ok, id} -> {:ok, id}
-      :error -> {:error, :not_found}
-    end
-  end
 
   defp cast_optional(nil), do: {:ok, nil}
   defp cast_optional(""), do: {:ok, nil}

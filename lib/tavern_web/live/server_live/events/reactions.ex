@@ -5,7 +5,6 @@ defmodule TavernWeb.ServerLive.Events.Reactions do
   import Phoenix.LiveView, only: [put_flash: 3]
 
   alias Tavern.Chat
-  alias TavernWeb.ServerLive.Events.Helpers
   alias TavernWeb.ServerLive.State
 
   def handle_event("toggle_reaction", %{"id" => message_id, "emoji" => emoji_unicode}, socket) do
@@ -64,7 +63,6 @@ defmodule TavernWeb.ServerLive.Events.Reactions do
   end
 
   def handle_event("toggle_reaction_picker", %{"id" => message_id}, socket) do
-    message_id = Helpers.normalize_message_id(message_id)
     previous_message_id = socket.assigns.reaction_picker_message_id
     previous_controls_id = socket.assigns.active_message_controls_id
     previous_menu_id = socket.assigns.message_action_menu_id

@@ -6,7 +6,6 @@ defmodule TavernWeb.ServerLiveReactionsTest do
   import TavernWeb.ServerLiveFixtures
 
   alias Tavern.Bootstrap
-  alias Tavern.Chat
   alias Tavern.Chat.PermissionBits
 
   test "supports toggling reactions with live aggregation", %{conn: conn} do
@@ -32,7 +31,7 @@ defmodule TavernWeb.ServerLiveReactionsTest do
     channel = channel_by_slug!("general")
 
     channel_permission_overwrite_fixture(channel, %{
-      role_id: Chat.default_role().id,
+      role_id: default_role().id,
       deny_permissions: PermissionBits.combine([:add_reactions])
     })
 

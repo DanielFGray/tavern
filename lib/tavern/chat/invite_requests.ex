@@ -144,7 +144,9 @@ defmodule Tavern.Chat.InviteRequests do
         scope.user_id,
         "invite_request_approved",
         nil,
-        {"invite_request", request.id}, metadata: %{"email" => request.email})
+        {"invite_request", request.id},
+        metadata: %{"email" => request.email}
+      )
 
       %{request | invite: invite}
     end)
@@ -166,7 +168,9 @@ defmodule Tavern.Chat.InviteRequests do
         scope.user_id,
         "invite_request_denied",
         nil,
-        {"invite_request", request.id}, metadata: %{"email" => request.email})
+        {"invite_request", request.id},
+        metadata: %{"email" => request.email}
+      )
 
       request
     end)
@@ -193,7 +197,9 @@ defmodule Tavern.Chat.InviteRequests do
           scope.user_id,
           "invite_requests_denied_by_ip",
           nil,
-          {"invite_request", nil}, metadata: %{"ip_address" => ip_address, "count" => count})
+          {"invite_request", nil},
+          metadata: %{"ip_address" => ip_address, "count" => count}
+        )
 
         {:ok, count}
       end

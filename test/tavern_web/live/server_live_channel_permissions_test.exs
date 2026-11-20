@@ -35,7 +35,7 @@ defmodule TavernWeb.ServerLiveChannelPermissionsTest do
       channel: channel,
       manager: manager,
       low_role: low_role,
-      everyone: Chat.default_role()
+      everyone: default_role()
     }
   end
 

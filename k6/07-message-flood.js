@@ -8,7 +8,7 @@
  *
  * Prerequisites:
  *   - Run 00-seed.js with SEED_USERS=300 first
- *   - Phoenix server running with ENABLE_TEST_SUPPORT_COMMANDS=1
+ *   - Phoenix server running with MIX_ENV=test and ENABLE_TEST_SUPPORT_COMMANDS=1
  *   - mix run priv/repo/seeds.exs (ensures @everyone role + channels exist)
  *
  * Usage:

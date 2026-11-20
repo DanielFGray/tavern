@@ -18,7 +18,7 @@ defmodule Tavern.Chat.RoleDenyTest do
     Bootstrap.ensure_seed_data!()
     owner = owner_fixture()
 
-    default = Chat.default_role()
+    default = default_role()
 
     default =
       default

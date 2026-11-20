@@ -10,7 +10,7 @@ defmodule Tavern.Ephemeral do
   @presence_prefix "presence:user:"
   @typing_prefix "typing:channel:"
 
-  alias Tavern.Redis
+  alias Tavern.Valkey
 
   @presence_online_ttl 300
   @presence_recent_ttl 3600
@@ -23,7 +23,13 @@ defmodule Tavern.Ephemeral do
   def heartbeat_presence(user_id, now \\ DateTime.utc_now()) when is_binary(user_id) do
     timestamp = DateTime.to_unix(now, :second)
 
-    case Redis.command(["SET", presence_key(user_id), Integer.to_string(timestamp), "EX", "3600"]) do
+    case Valkey.command([
+           "SET",
+           presence_key(user_id),
+           Integer.to_string(timestamp),
+           "EX",
+           "3600"
+         ]) do
       {:ok, "OK"} -> :ok
       {:error, _reason} -> :error
     end
@@ -34,7 +40,7 @@ defmodule Tavern.Ephemeral do
 
     case keys do
       [] -> %{}
-      _ -> parse_presence_timestamps(user_ids, Redis.command(["MGET" | keys]))
+      _ -> parse_presence_timestamps(user_ids, Valkey.command(["MGET" | keys]))
     end
   end
 
@@ -43,7 +49,7 @@ defmodule Tavern.Ephemeral do
     timestamp = DateTime.to_unix(now, :second)
     key = typing_key(channel_id)
 
-    case Redis.pipeline([
+    case Valkey.pipeline([
            ["ZADD", key, Integer.to_string(timestamp), user_id],
            ["EXPIRE", key, Integer.to_string(@typing_ttl)]
          ]) do
@@ -53,7 +59,7 @@ defmodule Tavern.Ephemeral do
   end
 
   def remove_typing(channel_id, user_id) when is_binary(channel_id) and is_binary(user_id) do
-    case Redis.command(["ZREM", typing_key(channel_id), user_id]) do
+    case Valkey.command(["ZREM", typing_key(channel_id), user_id]) do
       {:ok, _removed} -> :ok
       {:error, _reason} -> :error
     end
@@ -62,7 +68,7 @@ defmodule Tavern.Ephemeral do
   def list_typing_user_ids(channel_id, now \\ DateTime.utc_now()) when is_binary(channel_id) do
     min_score = DateTime.add(now, -@typing_ttl, :second) |> DateTime.to_unix(:second)
 
-    case Redis.command([
+    case Valkey.command([
            "ZRANGEBYSCORE",
            typing_key(channel_id),
            Integer.to_string(min_score),
@@ -83,7 +89,7 @@ defmodule Tavern.Ephemeral do
     expires_at = now + window_seconds
     key = namespaced(key)
 
-    case Redis.pipeline([
+    case Valkey.pipeline([
            ["INCR", key],
            ["EXPIRE", key, Integer.to_string(window_seconds), "NX"],
            ["TTL", key]
@@ -108,7 +114,7 @@ defmodule Tavern.Ephemeral do
       when is_binary(key) and is_integer(window_seconds) do
     key = namespaced(key)
 
-    case Redis.pipeline([
+    case Valkey.pipeline([
            ["DECR", key],
            ["EXPIRE", key, Integer.to_string(window_seconds), "NX"]
          ]) do
@@ -118,7 +124,7 @@ defmodule Tavern.Ephemeral do
   end
 
   def clear_rate_limit(key) when is_binary(key) do
-    case Redis.command(["DEL", namespaced(key)]) do
+    case Valkey.command(["DEL", namespaced(key)]) do
       {:ok, _deleted} -> :ok
       {:error, _reason} -> :error
     end
@@ -131,7 +137,7 @@ defmodule Tavern.Ephemeral do
   # SCAN, not KEYS: the deployed Valkey user has no @dangerous commands.
   defp delete_matching(pattern, cursor) do
     with {:ok, [next_cursor, keys]} <-
-           Redis.command(["SCAN", cursor, "MATCH", pattern, "COUNT", "500"]),
+           Valkey.command(["SCAN", cursor, "MATCH", pattern, "COUNT", "500"]),
          {:ok, _deleted} <- delete_keys(keys) do
       if next_cursor == "0", do: :ok, else: delete_matching(pattern, next_cursor)
     else
@@ -140,7 +146,7 @@ defmodule Tavern.Ephemeral do
   end
 
   defp delete_keys([]), do: {:ok, 0}
-  defp delete_keys(keys), do: Redis.command(["DEL" | keys])
+  defp delete_keys(keys), do: Valkey.command(["DEL" | keys])
 
   defp parse_presence_timestamps(user_ids, {:ok, values}) do
     user_ids

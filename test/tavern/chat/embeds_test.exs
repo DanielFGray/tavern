@@ -195,7 +195,7 @@ defmodule Tavern.Chat.EmbedsTest do
 
   defp deny_embed_links(channel) do
     channel_permission_overwrite_fixture(channel, %{
-      role_id: Chat.default_role().id,
+      role_id: default_role().id,
       deny_permissions: PermissionBits.combine([:embed_links])
     })
   end

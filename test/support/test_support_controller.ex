@@ -29,19 +29,12 @@ defmodule TavernWeb.TestSupportController do
       })
   end
 
+  # This module and its route exist only in MIX_ENV=test (test/support is compiled there alone);
+  # the variable keeps a test server from exposing the login-as-anyone API unless asked.
   defp ensure_enabled! do
-    unless test_support_enabled?() do
+    unless System.get_env("ENABLE_TEST_SUPPORT_COMMANDS") == "1" do
       raise "test support commands are disabled"
     end
-
-    if Application.get_env(:tavern, :env) == :prod do
-      raise "test support commands must never run in production"
-    end
-  end
-
-  defp test_support_enabled? do
-    Application.get_env(:tavern, :env) in [:dev, :test] and
-      System.get_env("ENABLE_TEST_SUPPORT_COMMANDS") == "1"
   end
 
   defp decode_payload(nil), do: %{}

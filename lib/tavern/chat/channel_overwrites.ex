@@ -35,6 +35,7 @@ defmodule Tavern.Chat.ChannelOverwrites do
   alias Tavern.Chat.Channel
   alias Tavern.Chat.ChannelPermissionOverwrite
   alias Tavern.Chat.Channels
+  alias Tavern.Chat.Ids
   alias Tavern.Chat.MemberRole
   alias Tavern.Chat.Membership
   alias Tavern.Chat.PermissionBits
@@ -52,7 +53,7 @@ defmodule Tavern.Chat.ChannelOverwrites do
   permissions reads them.
   """
   def list_overwrites(%Scope{} = scope, channel_id) do
-    with {:ok, channel_id} <- cast_id(channel_id),
+    with {:ok, channel_id} <- Ids.cast(channel_id),
          :ok <- authorize_read(scope, channel_id) do
       overwrites =
         from(overwrite in ChannelPermissionOverwrite,
@@ -73,7 +74,7 @@ defmodule Tavern.Chat.ChannelOverwrites do
   again on their own.
   """
   def overwrite_controls(%Scope{} = scope, channel_id) do
-    with {:ok, channel_id} <- cast_id(channel_id),
+    with {:ok, channel_id} <- Ids.cast(channel_id),
          :ok <- authorize_read(scope, channel_id) do
       facts = Visibility.authority(scope, [channel_id])
 
@@ -104,7 +105,7 @@ defmodule Tavern.Chat.ChannelOverwrites do
   # `desired` is the `{allow, deny}` to store, or `:delete`. The decision takes its locks before
   # the target is checked, so the check reads a target no other overwrite or role write can change.
   defp write(scope, channel_id, target, desired) do
-    with {:ok, channel_id} <- cast_id(channel_id),
+    with {:ok, channel_id} <- Ids.cast(channel_id),
          {:ok, target} <- cast_target(target) do
       Repo.transact(fn ->
         Visibility.lock_role_list!()
@@ -182,7 +183,9 @@ defmodule Tavern.Chat.ChannelOverwrites do
           scope.user_id,
           action_type,
           target_id(target, :user),
-          {"channel", channel.id}, metadata: metadata)
+          {"channel", channel.id},
+          metadata: metadata
+        )
 
         {:ok, {:changed, overwrite}}
       end
@@ -313,17 +316,10 @@ defmodule Tavern.Chat.ChannelOverwrites do
   defp target_id(_target, _kind), do: nil
 
   defp cast_target({kind, id}) when kind in [:role, :user] do
-    with {:ok, id} <- cast_id(id), do: {:ok, {kind, id}}
+    with {:ok, id} <- Ids.cast(id), do: {:ok, {kind, id}}
   end
 
   defp cast_target(_target), do: {:error, :not_found}
-
-  defp cast_id(id) do
-    case Ecto.UUID.cast(id) do
-      {:ok, id} -> {:ok, id}
-      :error -> {:error, :not_found}
-    end
-  end
 
   defp sort_key(%ChannelPermissionOverwrite{role: %Role{} = role}),
     do: {0, if(role.is_default, do: 0, else: 1), -role.position, role.name}

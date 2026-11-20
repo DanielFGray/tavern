@@ -105,11 +105,11 @@ defmodule Tavern.Chat.Visibility do
   defp lock_membership_rows(%Scope{user_id: actor_id}, action, subject_id)
        when (is_tuple(action) and elem(action, 0) == :moderate) or action == :assign_roles do
     Repo.query!("SELECT pg_advisory_xact_lock_shared($1)", [@role_list_lock_key])
-    lock_rows_for_update([actor_id, subject_id])
+    lock_memberships!([actor_id, subject_id])
   end
 
   defp lock_membership_rows(%Scope{user_id: actor_id}, :manage_ownership, subject_id),
-    do: lock_rows_for_update([actor_id, subject_id])
+    do: lock_memberships!([actor_id, subject_id])
 
   # A user overwrite write reads the subject's rank, so it holds the subject's row as moderation
   # does. It runs under the role-list lock (exclusive), which keeps every rank still.
@@ -118,12 +118,17 @@ defmodule Tavern.Chat.Visibility do
          {:manage_permissions, {:user, subject_id}},
          %Channel{}
        ),
-       do: lock_rows_for_update([actor_id, subject_id])
+       do: lock_memberships!([actor_id, subject_id])
 
   defp lock_membership_rows(%Scope{user_id: actor_id}, _action, _target),
     do: lock_membership(actor_id)
 
-  defp lock_rows_for_update(user_ids) do
+  @doc """
+  Takes the membership rows of `user_ids` `FOR UPDATE`, each once, in ascending user id. Every write
+  that holds more than one membership row takes them this way, so two such writes never wait on
+  each other in opposite orders. Must run inside the write transaction.
+  """
+  def lock_memberships!(user_ids) do
     user_ids
     |> Enum.uniq()
     |> Enum.sort()
@@ -325,7 +330,7 @@ defmodule Tavern.Chat.Visibility do
 
       member ->
         %{
-          owner?: owner?(member),
+          owner?: Accounts.owner?(member),
           server_permissions: server_bits(ctx),
           top_role_position: top_position(member, ctx.default_role),
           channel_permissions: Map.new(channel_ids, &{&1, channel_bits(ctx, &1)})
@@ -510,7 +515,7 @@ defmodule Tavern.Chat.Visibility do
   # Ownership changes are decided by the actor alone: an active owner. The subject's state is
   # checked by the caller after the lock is held.
   defp decide(:manage_ownership, ctx, subject_id) when is_binary(subject_id),
-    do: owner?(ctx.member)
+    do: Accounts.owner?(ctx.member)
 
   # Giving or taking a role. The actor holds `manage_roles` and ranks over the subject. Which roles
   # may be given is decided by `Tavern.Chat.RoleAuthority` after this.
@@ -536,13 +541,13 @@ defmodule Tavern.Chat.Visibility do
       ctx.member.id == subject_id ->
         false
 
-      owner?(subject.account) ->
+      Accounts.owner?(subject.account) ->
         false
 
-      not moderation_bit?(ctx, bit) ->
+      not Authorization.has_permission?(server_bits(ctx), bit) ->
         false
 
-      owner?(ctx.member) ->
+      Accounts.owner?(ctx.member) ->
         true
 
       true ->
@@ -658,7 +663,7 @@ defmodule Tavern.Chat.Visibility do
         true
 
       %Role{} = role ->
-        owner?(ctx.member) or role.position < top_position(ctx.member, ctx.default_role)
+        Accounts.owner?(ctx.member) or role.position < top_position(ctx.member, ctx.default_role)
 
       nil ->
         false
@@ -677,13 +682,13 @@ defmodule Tavern.Chat.Visibility do
       is_nil(subject.account) ->
         false
 
-      owner?(ctx.member) ->
+      Accounts.owner?(ctx.member) ->
         true
 
       ctx.member.id == subject_id ->
         true
 
-      owner?(subject.account) ->
+      Accounts.owner?(subject.account) ->
         false
 
       true ->
@@ -778,17 +783,7 @@ defmodule Tavern.Chat.Visibility do
   defp server_bits(ctx),
     do: Authorization.server_permissions(ctx.member, ctx.default_role, ctx.implicit_roles)
 
-  defp moderation_bit?(ctx, bit) do
-    permissions = server_bits(ctx)
-
-    Authorization.has_permission?(permissions, bit) or
-      Authorization.has_permission?(permissions, :administrator)
-  end
-
   defp acting_timed_out?(ctx), do: timed_out?(ctx.member.membership)
-
-  defp owner?(%User{membership: %Membership{is_owner: true}}), do: true
-  defp owner?(_account), do: false
 
   defp top_position(%User{member_roles: member_roles}, default_role) do
     member_roles

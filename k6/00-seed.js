@@ -5,7 +5,7 @@
  * initial messages so subsequent load tests have realistic data to work with.
  *
  * Prerequisites:
- *   - Phoenix server running with ENABLE_TEST_SUPPORT_COMMANDS=1
+ *   - Phoenix server running with MIX_ENV=test and ENABLE_TEST_SUPPORT_COMMANDS=1
  *   - Database seeded (mix run priv/repo/seeds.exs)
  *
  * Usage:

@@ -106,11 +106,6 @@ defmodule TavernWeb.API.BotApiMembersTest do
     end
   end
 
-  defp default_role do
-    Tavern.Chat.default_role() ||
-      role_fixture(%{name: "Everyone", is_default: true, permissions: 0})
-  end
-
   defp listed_mentions(ctx) do
     conn = ctx.token |> api() |> get(~p"/api/v1/channels/#{ctx.channel.id}/messages")
     %{"data" => [message]} = json_response(conn, 200)

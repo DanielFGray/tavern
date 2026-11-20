@@ -21,7 +21,7 @@ defmodule Tavern.Chat.Embeds do
   alias Tavern.Chat.MediaAsset
   alias Tavern.Chat.MediaAssets
   alias Tavern.Chat.Message
-  alias Tavern.Chat.Messages
+  alias Tavern.Chat.MessageRows
   alias Tavern.Chat.MessageEmbed
   alias Tavern.Chat.Topics
   alias Tavern.Chat.Visibility
@@ -163,7 +163,7 @@ defmodule Tavern.Chat.Embeds do
              Visibility.authorize_write(author_scope, :embed_links, %Channel{
                id: message.channel_id
              }),
-           %Message{} = message <- Messages.lock_live_message(message_id),
+           %Message{} = message <- MessageRows.lock_live_message(message_id),
            wanted when wanted != [] <- wanted_urls(message) do
         embedded =
           MapSet.new(
@@ -179,7 +179,7 @@ defmodule Tavern.Chat.Embeds do
 
         if stored == [],
           do: {:error, :none},
-          else: {:ok, {Messages.reload_message(message_id), stored}}
+          else: {:ok, {MessageRows.reload_message(message_id), stored}}
       else
         _refused -> {:error, :none}
       end

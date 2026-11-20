@@ -27,6 +27,7 @@ defmodule Tavern.Chat.Roles do
   alias Tavern.Accounts
   alias Tavern.Accounts.Scope
   alias Tavern.Chat.AuditLog
+  alias Tavern.Chat.Ids
   alias Tavern.Chat.MemberRole
   alias Tavern.Chat.Membership
   alias Tavern.Chat.Role
@@ -108,7 +109,7 @@ defmodule Tavern.Chat.Roles do
   An active member the scope may see, with the roles they hold (the Unverified role and the default
   role included), or nil for a user who is not a visible member.
   """
-  def get_member(%Scope{} = scope, user_id) do
+  def member_with_roles(%Scope{} = scope, user_id) do
     with roles when is_list(roles) <- member_roles(scope, user_id),
          %User{} = user <- User |> Repo.get(user_id) |> Repo.preload(:membership) do
       default = Repo.get_by(Role, is_default: true)
@@ -297,8 +298,8 @@ defmodule Tavern.Chat.Roles do
   # checked after the locks and before the decision's answer: an actor that is not an active
   # member, a subject that has left or been removed, and a missing role are all `:not_found`.
   defp write_member_role(scope, user_id, role_id, action_type, change) do
-    with {:ok, subject_id} <- cast_id(user_id),
-         {:ok, role_id} <- cast_id(role_id) do
+    with {:ok, subject_id} <- Ids.cast(user_id),
+         {:ok, role_id} <- Ids.cast(role_id) do
       write(scope, action_type, subject_id, fn ->
         decision = Visibility.authorize_write(scope, :assign_roles, subject_id)
 
@@ -347,13 +348,6 @@ defmodule Tavern.Chat.Roles do
 
   defp permit(true), do: :ok
   defp permit(false), do: {:error, :forbidden}
-
-  defp cast_id(id) do
-    case Ecto.UUID.cast(id) do
-      {:ok, id} -> {:ok, id}
-      :error -> {:error, :not_found}
-    end
-  end
 
   defp direction_delta(direction) when direction in [:up, "up"], do: {:ok, -1}
   defp direction_delta(direction) when direction in [:down, "down"], do: {:ok, 1}

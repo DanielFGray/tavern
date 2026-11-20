@@ -5,8 +5,8 @@ defmodule Tavern.Chat.Messages do
   transaction and broadcasts after the commit.
 
   `send_message/4`, `write_message/3` and `publish_message/1` are the seams the other message
-  writers (polls, forum posts) build on; `lock_live_message/1` and `reload_message/1` are the row
-  access the embed and thread writes share.
+  writers (polls, forum posts) build on. The row access they share with the embed and thread
+  writes is `Tavern.Chat.MessageRows`, below this module.
   """
 
   import Ecto.Query, warn: false
@@ -19,7 +19,8 @@ defmodule Tavern.Chat.Messages do
   alias Tavern.Chat.Ids
   alias Tavern.Chat.Mentions
   alias Tavern.Chat.Message
-  alias Tavern.Chat.Polls
+  alias Tavern.Chat.MessageRows
+  alias Tavern.Chat.Poll
   alias Tavern.Chat.Reaction
   alias Tavern.Chat.Slowmode
   alias Tavern.Chat.ThreadFollows
@@ -33,19 +34,6 @@ defmodule Tavern.Chat.Messages do
   # the decision that allowed the read, so it costs no query.
   @read_preloads [
     :author,
-    :user_mentions,
-    role_mentions: :mentioned_role,
-    reactions: [emoji: :asset],
-    reply_to: :author,
-    embeds: :image_asset,
-    poll: [:options, ballots: :user]
-  ]
-
-  # What a write returns and broadcasts. Reads carry the mention lists too, so a bot reads whom a
-  # message mentions from either.
-  @message_preloads [
-    :author,
-    :channel,
     :user_mentions,
     role_mentions: :mentioned_role,
     reactions: [emoji: :asset],
@@ -145,7 +133,7 @@ defmodule Tavern.Chat.Messages do
 
   @doc """
   Creates a message in a channel or thread the scope may send to, and broadcasts it. The message
-  comes back with `@message_preloads`, the same shape the broadcast carries. A channel the scope
+  comes back with its write preloads (`MessageRows.reload_message/1`), the same shape the broadcast carries. A channel the scope
   may not view is `{:error, :not_found}`; a visible one it may not send to is `{:error,
   :forbidden}`.
   """
@@ -198,7 +186,7 @@ defmodule Tavern.Chat.Messages do
            |> Repo.insert(),
          :ok <- Mentions.sync(message),
          {:ok, new_followers} <- ThreadFollows.follow_for_message(message) do
-      {:ok, {reload_message(message.id), new_followers}}
+      {:ok, {MessageRows.reload_message(message.id), new_followers}}
     end
   end
 
@@ -235,7 +223,7 @@ defmodule Tavern.Chat.Messages do
          {:ok, attrs} <- normalize_attrs(attrs) do
       Repo.transact(fn ->
         with {:ok, message} <- authorize_message_write(scope, :edit_message, message_id),
-             :ok <- Polls.refuse_question_edit(message),
+             :ok <- refuse_question_edit(message),
              :ok <- Mentions.authorize(scope, message.channel_id, attrs),
              {:ok, updated_message} <-
                message
@@ -245,7 +233,9 @@ defmodule Tavern.Chat.Messages do
              :ok <- Mentions.sync(updated_message),
              {:ok, retagged} <- Threads.retag_started_thread(updated_message) do
           {embedded_urls, image_keys} = Embeds.prune(updated_message)
-          {:ok, {reload_message(updated_message.id), embedded_urls, image_keys, retagged}}
+
+          {:ok,
+           {MessageRows.reload_message(updated_message.id), embedded_urls, image_keys, retagged}}
         end
       end)
       |> case do
@@ -315,25 +305,6 @@ defmodule Tavern.Chat.Messages do
         {:ok, %{emoji_id: emoji.id}}
       end
     end)
-  end
-
-  # --- Row access shared with the embed, poll and thread writes ----------------------------------
-
-  @doc "The message with its write preloads (`@message_preloads`)."
-  def reload_message(message_id) do
-    Message
-    |> preload(^@message_preloads)
-    |> Repo.get!(message_id)
-  end
-
-  @doc "Locks a message row that is not deleted `FOR UPDATE`, or returns nil."
-  def lock_live_message(message_id) do
-    Repo.one(
-      from(message in Message,
-        where: message.id == ^message_id and is_nil(message.deleted_at),
-        lock: "FOR UPDATE"
-      )
-    )
   end
 
   # --- Reading helpers ---------------------------------------------------------------------------
@@ -516,12 +487,20 @@ defmodule Tavern.Chat.Messages do
 
   # --- Write helpers -----------------------------------------------------------------------------
 
+  # A poll's body is its question, and votes were cast on it, so the message stays as written.
+  # Runs inside the edit's transaction, on the locked message.
+  defp refuse_question_edit(%Message{id: message_id}) do
+    if Repo.exists?(from(poll in Poll, where: poll.message_id == ^message_id)),
+      do: {:error, :forbidden},
+      else: :ok
+  end
+
   # Decides a message write, then locks the message row and reads it. The lock keeps a moderator's
   # delete from committing between the decision and the change. The row is read again with its
   # deleted_at, so a message deleted after the decision is refused.
   defp authorize_message_write(scope, action, message_id) do
     with :ok <- Visibility.authorize_write(scope, action, %Message{id: message_id}) do
-      case lock_live_message(message_id) do
+      case MessageRows.lock_live_message(message_id) do
         %Message{} = message -> {:ok, message}
         nil -> {:error, :not_found}
       end
@@ -537,7 +516,7 @@ defmodule Tavern.Chat.Messages do
         with {:ok, message} <- authorize_message_write(scope, action, message_id),
              {:ok, changed} <- change.(message) do
           {_kept, image_keys} = Embeds.prune(changed)
-          {:ok, {reload_message(changed.id), image_keys}}
+          {:ok, {MessageRows.reload_message(changed.id), image_keys}}
         end
       end)
       |> delete_dropped_images()
@@ -583,7 +562,7 @@ defmodule Tavern.Chat.Messages do
         with {:ok, message} <- authorize_message_write(scope, :add_reactions, message_id),
              {:ok, key} <- emoji_key.(),
              {:ok, change} <- toggle_reaction_row(message, scope.user_id, key) do
-          {:ok, {reload_message(message.id), change}}
+          {:ok, {MessageRows.reload_message(message.id), change}}
         end
       end)
       |> broadcast_reaction()

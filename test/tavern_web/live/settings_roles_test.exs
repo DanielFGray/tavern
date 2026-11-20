@@ -96,7 +96,7 @@ defmodule TavernWeb.SettingsRolesTest do
 
   test "the @everyone editor offers no deny", %{conn: conn} do
     owner = owner_fixture()
-    default = Tavern.Chat.default_role()
+    default = default_role()
     {:ok, view, _html} = live(log_in_as(conn, owner), ~p"/settings?tab=roles")
 
     view |> element("#edit-role-#{default.id}") |> render_click()

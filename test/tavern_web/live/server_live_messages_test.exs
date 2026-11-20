@@ -18,7 +18,7 @@ defmodule TavernWeb.ServerLiveMessagesTest do
     secret = message_fixture(hidden, author, %{body: "secret ops plan"})
 
     channel_permission_overwrite_fixture(hidden, %{
-      role_id: Chat.default_role().id,
+      role_id: default_role().id,
       deny_permissions: PermissionBits.combine([:view_channel, :send_messages])
     })
 

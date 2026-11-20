@@ -82,7 +82,7 @@ defmodule TavernWeb.ServerLiveNavigationTest do
     hidden_channel = channel_fixture(%{name: "Ops", slug: unique_slug(), position: 20})
 
     channel_permission_overwrite_fixture(hidden_channel, %{
-      role_id: Chat.default_role().id,
+      role_id: default_role().id,
       deny_permissions: PermissionBits.combine([:view_channel, :send_messages])
     })
 
@@ -115,7 +115,7 @@ defmodule TavernWeb.ServerLiveNavigationTest do
     hidden_channel = channel_fixture(%{name: "Ops", slug: unique_slug(), position: 20})
 
     channel_permission_overwrite_fixture(hidden_channel, %{
-      role_id: Chat.default_role().id,
+      role_id: default_role().id,
       deny_permissions: PermissionBits.combine([:view_channel, :send_messages])
     })
 
@@ -266,7 +266,7 @@ defmodule TavernWeb.ServerLiveNavigationTest do
 
     overwrite =
       channel_permission_overwrite_fixture(channel, %{
-        role_id: Chat.default_role().id,
+        role_id: default_role().id,
         deny_permissions: PermissionBits.combine([:view_channel])
       })
 

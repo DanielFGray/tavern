@@ -6,7 +6,7 @@ defmodule Tavern.BotsTest do
 
   alias Tavern.Bootstrap
   alias Tavern.Bots
-  alias Tavern.Chat
+  alias Tavern.Chat.AuditLogEntry
   alias Tavern.Chat.Membership
   alias Tavern.Chat.PermissionBits
   alias Tavern.Repo
@@ -80,6 +80,39 @@ defmodule Tavern.BotsTest do
                  bot_scope_for(bot_user, actor),
                  %{"channel_id" => "not-a-uuid", "body" => "hello"}
                )
+    end
+  end
+
+  describe "audit entries" do
+    test "every bot write records who did what to which bot" do
+      owner = owner_fixture()
+      scope = scope_for(owner)
+      role = role_fixture()
+
+      {:ok, bot} = Bots.create_bot(scope, bot_attrs(%{"role_ids" => [role.id]}))
+      {:ok, _bot} = Bots.update_bot(scope, bot.id, %{"display_name" => "Renamed"})
+      {:ok, %{bot_token: token}} = Bots.create_bot_token(scope, bot.id, %{"label" => "ci"})
+      {:ok, _token} = Bots.revoke_bot_token(scope, token.id)
+      {:ok, _bot} = Bots.revoke_bot(scope, bot.id)
+
+      entries =
+        Repo.all(
+          from(entry in AuditLogEntry,
+            where: entry.target_type == "bot" and entry.target_id == ^bot.id,
+            order_by: [asc: entry.inserted_at, asc: entry.id]
+          )
+        )
+
+      assert Enum.map(entries, & &1.action_type) ==
+               ~w(bot_created bot_updated bot_token_created bot_token_revoked bot_revoked)
+
+      assert Enum.all?(entries, &(&1.actor_user_id == owner.id and &1.subject_user_id == bot.id))
+
+      by_action = Map.new(entries, &{&1.action_type, &1.metadata})
+      assert by_action["bot_created"] == %{"role_ids" => [role.id]}
+      assert by_action["bot_updated"] == %{}
+      assert by_action["bot_token_created"] == %{"token_id" => token.id}
+      assert by_action["bot_token_revoked"] == %{"token_id" => token.id}
     end
   end
 
@@ -230,7 +263,7 @@ defmodule Tavern.BotsTest do
     private = channel_fixture(%{name: "Private", slug: unique_slug()})
 
     channel_permission_overwrite_fixture(private, %{
-      role_id: Chat.default_role().id,
+      role_id: default_role().id,
       deny_permissions: PermissionBits.combine([:view_channel])
     })
 

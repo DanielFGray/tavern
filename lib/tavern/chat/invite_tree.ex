@@ -19,6 +19,7 @@ defmodule Tavern.Chat.InviteTree do
   import Ecto.Query, warn: false
 
   alias Tavern.Accounts.Scope
+  alias Tavern.Chat.Ids
   alias Tavern.Chat.Invite
   alias Tavern.Chat.InviteUse
   alias Tavern.Chat.Membership
@@ -46,7 +47,7 @@ defmodule Tavern.Chat.InviteTree do
   """
   def path_to(%Scope{} = scope, user_id) do
     with {:ok, ctx} <- context(scope),
-         {:ok, user_id} <- cast_id(user_id),
+         {:ok, user_id} <- Ids.cast(user_id),
          chain = ancestor_chain(user_id),
          {:ok, chain} <- visible_chain(ctx, chain) do
       {:ok, chain}
@@ -90,7 +91,7 @@ defmodule Tavern.Chat.InviteTree do
   defp visible_parent(_ctx, :roots), do: {:ok, :roots}
 
   defp visible_parent(ctx, parent) do
-    with {:ok, id} <- cast_id(parent) do
+    with {:ok, id} <- Ids.cast(parent) do
       cond do
         ctx.moderator? -> if member?(id), do: {:ok, id}, else: {:error, :not_found}
         id == ctx.viewer_id or id == ctx.inviter_id -> {:ok, id}
@@ -354,15 +355,6 @@ defmodule Tavern.Chat.InviteTree do
       {user_id, Enum.map(later, &if(ctx.moderator?, do: &1, else: %{&1 | inviter: nil}))}
     end)
   end
-
-  defp cast_id(id) when is_binary(id) do
-    case Ecto.UUID.cast(id) do
-      {:ok, id} -> {:ok, id}
-      :error -> {:error, :not_found}
-    end
-  end
-
-  defp cast_id(_id), do: {:error, :not_found}
 
   defp escape_like(term), do: String.replace(term, ~r/([\\%_])/, "\\\\\\1")
 end
