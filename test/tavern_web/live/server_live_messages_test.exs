@@ -119,6 +119,30 @@ defmodule TavernWeb.ServerLiveMessagesTest do
     end
   end
 
+  test "a composer send over the metadata limit is flashed and stores nothing", %{conn: conn} do
+    Bootstrap.ensure_seed_data!()
+    conn = log_in_member_user(conn)
+    {:ok, view, _html} = live_hydrated(conn, ~p"/")
+
+    body = "hey over the limit"
+
+    entities =
+      for i <- 1..200,
+          do: %{"type" => "mention", "id" => "id-#{i}", "label" => String.duplicate("x", 100)}
+
+    html =
+      view
+      |> form("#message-form", %{
+        message: %{body: body, metadata: Jason.encode!(%{"entities" => entities})}
+      })
+      |> render_submit()
+
+    assert html =~ "This message has too many mentions to send."
+    assert has_element?(view, "#message-form")
+
+    refute Enum.any?(messages_in(channel_by_slug!("general").id), &(&1.body == body))
+  end
+
   test "stores the mention and slash command entities from composer metadata", %{conn: conn} do
     Bootstrap.ensure_seed_data!()
     conn = log_in_member_user(conn)

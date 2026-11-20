@@ -46,6 +46,7 @@ defmodule Tavern.Chat.Message do
     |> validate_required([:body])
     |> update_change(:body, &String.trim/1)
     |> validate_length(:body, min: 1, max: 4000)
+    |> validate_change(:metadata, &check_metadata_bounds/2)
   end
 
   @doc "A changeset for a new message: what `changeset/2` takes, plus the message it replies to."
@@ -56,4 +57,30 @@ defmodule Tavern.Chat.Message do
   end
 
   def deleted?(%{deleted_at: deleted_at}), do: not is_nil(deleted_at)
+
+  # Metadata is stored as the client sent it (`Tavern.Chat.Messages` keeps only `entities`), so
+  # these bounds are all that stops a client from filling a row. The numbers are argued in
+  # docs/design/bot-api.md, "Metadata limits".
+  @max_metadata_bytes 16_384
+  @max_metadata_depth 3
+
+  defp check_metadata_bounds(field, metadata) do
+    cond do
+      byte_size(Jason.encode!(metadata)) > @max_metadata_bytes ->
+        [{field, {"is larger than %{max} bytes encoded", max: @max_metadata_bytes}}]
+
+      nesting_depth(metadata) > @max_metadata_depth ->
+        [{field, {"nests deeper than %{max} levels", max: @max_metadata_depth}}]
+
+      true ->
+        []
+    end
+  end
+
+  # A map or list is one level deeper than its deepest child; a scalar adds no level.
+  defp nesting_depth(%{} = map), do: 1 + deepest(Map.values(map))
+  defp nesting_depth(list) when is_list(list), do: 1 + deepest(list)
+  defp nesting_depth(_scalar), do: 0
+
+  defp deepest(values), do: values |> Enum.map(&nesting_depth/1) |> Enum.max(fn -> 0 end)
 end

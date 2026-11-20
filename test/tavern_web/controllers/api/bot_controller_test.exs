@@ -151,6 +151,53 @@ defmodule TavernWeb.API.BotControllerTest do
              json_response(conn, 422)
   end
 
+  test "bot API refuses message metadata over the size and depth limits with 422", _context do
+    actor =
+      owner_fixture(%{email: "bot-api-limit-actor@example.com", username: "bot_api_limit_actor"})
+
+    role =
+      role_fixture(%{
+        name: "Bot Limit Speaker",
+        permissions: PermissionBits.combine([:view_channel, :send_messages])
+      })
+
+    channel = channel_fixture(%{name: "Limit Channel", slug: unique_slug()})
+    bot_user = bot_fixture(actor, %{"role_ids" => [role.id]})
+
+    {:ok, %{token: bot_token}} =
+      Bots.create_bot_token(scope_for(actor), bot_user.id, %{"label" => "limits"})
+
+    post_message = fn metadata ->
+      Phoenix.ConnTest.build_conn()
+      |> put_req_header("authorization", "Bearer #{bot_token}")
+      |> post(~p"/api/v1/channels/#{channel.id}/messages", %{
+        message: %{body: "hello from limit bot", metadata: metadata}
+      })
+    end
+
+    oversized =
+      for i <- 1..200,
+          do: %{"type" => "mention", "id" => "id-#{i}", "label" => String.duplicate("x", 100)}
+
+    assert %{
+             "error" => %{
+               "code" => "invalid_message",
+               "details" => %{"metadata" => ["is larger than 16384 bytes encoded"]}
+             }
+           } = json_response(post_message.(%{"entities" => oversized}), 422)
+
+    assert %{
+             "error" => %{
+               "code" => "invalid_message",
+               "details" => %{"metadata" => ["nests deeper than 3 levels"]}
+             }
+           } =
+             json_response(
+               post_message.(%{"entities" => [%{"type" => "mention", "label" => %{"a" => "b"}}]}),
+               422
+             )
+  end
+
   test "bot API returns rich message payloads", _context do
     actor =
       owner_fixture(%{email: "bot-api-rich-actor@example.com", username: "bot_api_rich_actor"})

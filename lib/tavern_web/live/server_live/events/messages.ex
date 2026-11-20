@@ -425,8 +425,19 @@ defmodule TavernWeb.ServerLive.Events.Messages do
             {:error, :not_found} ->
               refuse_send(socket, kind, "That #{noun} is no longer available.")
 
+            # The composer shows no field errors, so a metadata error is flashed instead. The
+            # browser always sends JSON it built, so the only metadata error it can cause is the
+            # size bound. The draft stays in the composer either way.
             {:error, changeset} ->
-              State.update_pane(socket, kind, &%{&1 | form: to_form(changeset, as: :message)})
+              if Keyword.has_key?(changeset.errors, :metadata) do
+                put_flash(
+                  socket,
+                  :error,
+                  "This message has too many mentions to send. Remove some and send it again."
+                )
+              else
+                State.update_pane(socket, kind, &%{&1 | form: to_form(changeset, as: :message)})
+              end
           end
         else
           refuse_send(socket, kind, no_send_permission(noun))
