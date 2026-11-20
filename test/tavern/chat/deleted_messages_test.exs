@@ -64,4 +64,35 @@ defmodule Tavern.Chat.DeletedMessagesTest do
     assert quoted.id == target.id
     assert quoted.deleted_at
   end
+
+  describe "a deleted message takes no further action" do
+    setup ctx do
+      message = message_fixture(ctx.channel, ctx.author, %{body: "doomed"})
+      {:ok, _} = Chat.delete_message(ctx.scope, message.id)
+      %{doomed: message}
+    end
+
+    test "it cannot be quoted by a new reply", ctx do
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               Chat.create_message(ctx.scope, ctx.channel.id, %{
+                 "body" => "late reply",
+                 "reply_to_id" => ctx.doomed.id
+               })
+
+      assert %{reply_to_id: [_]} = errors_on(changeset)
+    end
+
+    test "it cannot start a thread", ctx do
+      assert {:error, :not_found} = Chat.create_public_thread(ctx.scope, ctx.doomed.id)
+    end
+
+    test "it cannot be edited or reacted to", ctx do
+      assert {:error, :not_found} = Chat.update_message(ctx.scope, ctx.doomed.id, %{body: "back"})
+      assert {:error, :not_found} = Chat.toggle_reaction(ctx.scope, ctx.doomed.id, "👍")
+    end
+
+    test "the channel's message count leaves it out", ctx do
+      assert Chat.message_count(ctx.scope, ctx.channel.id) == 0
+    end
+  end
 end

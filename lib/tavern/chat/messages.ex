@@ -418,8 +418,9 @@ defmodule Tavern.Chat.Messages do
   defp reopen_archived(%Channel{} = channel),
     do: channel |> Ecto.Changeset.change(archived_at: nil) |> Repo.update()
 
-  # A reply must name a message in the same channel. A message elsewhere and a missing one get the
-  # same error, so the answer does not reveal a message in a channel the author may not view.
+  # A reply must name a live message in the same channel. A message elsewhere, a deleted one and a
+  # missing one get the same error, so the answer does not reveal a message in a channel the author
+  # may not view.
   defp validate_reply_target(channel_id, attrs) do
     case normalize_optional_binary_id(Map.get(attrs, "reply_to_id")) do
       nil ->
@@ -430,7 +431,9 @@ defmodule Tavern.Chat.Messages do
              true <-
                Repo.exists?(
                  from(message in Message,
-                   where: message.id == ^reply_to_id and message.channel_id == ^channel_id
+                   where:
+                     message.id == ^reply_to_id and message.channel_id == ^channel_id and
+                       is_nil(message.deleted_at)
                  )
                ) do
           :ok
