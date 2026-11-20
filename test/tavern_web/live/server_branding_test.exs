@@ -85,7 +85,7 @@ defmodule TavernWeb.ServerBrandingTest do
     path =
       Path.join(System.tmp_dir!(), "tavern-brand-icon-#{System.unique_integer([:positive])}.png")
 
-    File.write!(path, "fake png bytes")
+    File.write!(path, Tavern.UploadFixtures.unique_png())
 
     assert {:ok, settings} =
              Chat.update_server_settings(scope_for(owner), %{

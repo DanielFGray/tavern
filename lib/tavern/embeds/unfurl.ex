@@ -9,6 +9,7 @@ defmodule Tavern.Embeds.Unfurl do
   content_type: type}` for a PNG, JPEG, GIF or WebP checked by its magic bytes).
   """
 
+  alias Tavern.Chat.MediaAssets
   alias Tavern.Embeds.Links
   alias Tavern.Embeds.SafeHTTP
 
@@ -33,17 +34,6 @@ defmodule Tavern.Embeds.Unfurl do
       :error -> page(url)
     end
   end
-
-  @doc """
-  The image type of `bytes` from its magic bytes: `{:ok, content_type}` for PNG, JPEG, GIF and
-  WebP, `:error` for anything else, whatever the server's Content-Type said.
-  """
-  def image_type(<<0x89, "PNG\r\n", 0x1A, "\n", _::binary>>), do: {:ok, "image/png"}
-  def image_type(<<0xFF, 0xD8, 0xFF, _::binary>>), do: {:ok, "image/jpeg"}
-  def image_type(<<"GIF87a", _::binary>>), do: {:ok, "image/gif"}
-  def image_type(<<"GIF89a", _::binary>>), do: {:ok, "image/gif"}
-  def image_type(<<"RIFF", _size::binary-size(4), "WEBP", _::binary>>), do: {:ok, "image/webp"}
-  def image_type(_bytes), do: :error
 
   defp youtube(url, video_id) do
     oembed_url =
@@ -166,7 +156,7 @@ defmodule Tavern.Embeds.Unfurl do
              over_limit: :refuse,
              accept: "image/png,image/jpeg,image/gif,image/webp"
            ),
-         {:ok, content_type} <- image_type(body) do
+         {:ok, content_type} <- MediaAssets.image_type(body) do
       %{body: body, content_type: content_type}
     else
       _ -> nil

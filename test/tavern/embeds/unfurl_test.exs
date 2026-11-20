@@ -151,13 +151,4 @@ defmodule Tavern.Embeds.UnfurlTest do
       assert Unfurl.preview("https://www.youtube.com/watch?v=dQw4w9WgXcQ") == :error
     end
   end
-
-  test "image_type/1 reads magic bytes" do
-    assert Unfurl.image_type(@png) == {:ok, "image/png"}
-    assert Unfurl.image_type(@jpeg) == {:ok, "image/jpeg"}
-    assert Unfurl.image_type("GIF89a....") == {:ok, "image/gif"}
-    assert Unfurl.image_type("RIFF\0\0\0\0WEBPVP8 ") == {:ok, "image/webp"}
-    assert Unfurl.image_type("<svg></svg>") == :error
-    assert Unfurl.image_type("") == :error
-  end
 end

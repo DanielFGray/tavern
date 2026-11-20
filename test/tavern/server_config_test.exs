@@ -2,6 +2,7 @@ defmodule Tavern.Chat.ServerConfigTest do
   use Tavern.DataCase, async: false
 
   import Tavern.ChatFixtures
+  import Tavern.UploadFixtures
 
   alias Tavern.Bootstrap
   alias Tavern.Chat.Emoji
@@ -45,15 +46,13 @@ defmodule Tavern.Chat.ServerConfigTest do
                "icon_asset_id" => asset.id
              })
 
-    upload = icon_upload("first.png")
+    upload = png_upload("first.png")
 
     assert {:ok, settings} =
              ServerConfig.update_server_settings(scope_for(owner), %{
                "name" => "HQ",
                "icon_upload" => upload
              })
-
-    File.rm(upload.path)
 
     assert settings.icon_asset.kind == :server_icon
     assert settings.icon_asset_id != asset.id
@@ -63,7 +62,7 @@ defmodule Tavern.Chat.ServerConfigTest do
 
   test "remove_server_icon clears the icon and deletes the old server-icon asset" do
     owner = owner_fixture()
-    upload = icon_upload("keep-then-remove.png")
+    upload = png_upload("keep-then-remove.png")
 
     assert {:ok, settings} =
              ServerConfig.update_server_settings(scope_for(owner), %{
@@ -71,7 +70,6 @@ defmodule Tavern.Chat.ServerConfigTest do
                "icon_upload" => upload
              })
 
-    File.rm(upload.path)
     icon_id = settings.icon_asset_id
 
     assert {:ok, cleared} = ServerConfig.remove_server_icon(scope_for(owner))
@@ -82,7 +80,7 @@ defmodule Tavern.Chat.ServerConfigTest do
 
   test "an upload replaces the icon and deletes the previous server-icon asset" do
     owner = owner_fixture()
-    first = icon_upload("first.png")
+    first = png_upload("first.png")
 
     assert {:ok, settings} =
              ServerConfig.update_server_settings(scope_for(owner), %{
@@ -90,10 +88,9 @@ defmodule Tavern.Chat.ServerConfigTest do
                "icon_upload" => first
              })
 
-    File.rm(first.path)
     first_id = settings.icon_asset_id
 
-    second = icon_upload("second.png")
+    second = png_upload("second.png")
 
     assert {:ok, replaced} =
              ServerConfig.update_server_settings(scope_for(owner), %{
@@ -101,12 +98,35 @@ defmodule Tavern.Chat.ServerConfigTest do
                "icon_upload" => second
              })
 
-    File.rm(second.path)
-
     assert replaced.icon_asset_id != first_id
     assert replaced.icon_asset.kind == :server_icon
     assert is_nil(Repo.get(MediaAsset, first_id))
     assert Repo.get(MediaAsset, replaced.icon_asset_id)
+    refute stored?(first.body)
+    assert stored?(second.body)
+  end
+
+  test "a refused settings write keeps the old icon and stores no new object" do
+    owner = owner_fixture()
+    first = png_upload("first.png")
+
+    assert {:ok, settings} =
+             ServerConfig.update_server_settings(scope_for(owner), %{
+               "name" => "HQ",
+               "icon_upload" => first
+             })
+
+    second = png_upload("second.png")
+
+    assert {:error, %Ecto.Changeset{}} =
+             ServerConfig.update_server_settings(scope_for(owner), %{
+               "name" => String.duplicate("x", 101),
+               "icon_upload" => second
+             })
+
+    assert ServerConfig.get_server_settings().icon_asset_id == settings.icon_asset_id
+    assert stored?(first.body)
+    refute stored?(second.body)
   end
 
   test "remove_server_icon leaves a non-server-icon asset in place when clearing the pointer" do
@@ -158,11 +178,5 @@ defmodule Tavern.Chat.ServerConfigTest do
     _ = :sys.get_state(ServerConfigListener)
 
     assert ServerConfig.get_server_settings().name == "Changed elsewhere"
-  end
-
-  defp icon_upload(filename) do
-    path = Path.join(System.tmp_dir!(), "tavern-icon-#{System.unique_integer([:positive])}.png")
-    File.write!(path, "fake png bytes")
-    %{path: path, client_name: filename, client_type: "image/png"}
   end
 end

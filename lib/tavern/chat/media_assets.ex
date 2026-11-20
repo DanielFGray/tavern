@@ -9,10 +9,6 @@ defmodule Tavern.Chat.MediaAssets do
   alias Tavern.ObjectStore
   alias Tavern.Repo
 
-  @emoji_upload_dir "emojis"
-  @server_icon_upload_dir "server_icons"
-  @allowed_upload_content_types ~w(image/png image/jpeg image/gif image/webp)
-
   def asset_url(%MediaAsset{storage_key: storage_key}) when is_binary(storage_key),
     do: "/uploads/#{storage_key}"
 
@@ -35,51 +31,39 @@ defmodule Tavern.Chat.MediaAssets do
   end
 
   @doc """
-  Stores the uploaded file in the object store, then records it with the scope's member as its
-  uploader. It decides nothing: the caller has already authorised the write that uses the asset,
-  in the same transaction. Returns `{:error, reason, :upload}` when the file is refused or cannot
-  be stored.
-  """
-  def create_media_asset_from_upload(
-        %Scope{} = scope,
-        %{path: path, client_name: client_name, client_type: client_type},
-        opts \\ []
-      ) do
-    allowed_types = Keyword.get(opts, :allowed_types, @allowed_upload_content_types)
-    upload_dir = Keyword.get(opts, :upload_dir, @emoji_upload_dir)
-    kind = Keyword.get(opts, :kind, :emoji)
+  Stores an uploaded image as an asset of `kind` (`:emoji` or `:server_icon`), with the scope's
+  member as its uploader, and runs `use_asset` with the asset row. Returns what `use_asset`
+  returns, or `{:error, reason}`.
 
-    with :ok <- validate_upload_type(client_type, allowed_types),
-         {:ok, body} <- File.read(path),
-         storage_key =
-           "#{upload_dir}/#{Ecto.UUID.generate()}#{upload_extension(client_name, client_type)}",
-         :ok <- ObjectStore.put(storage_key, body, client_type),
+  The content type comes from the file's magic bytes (`image_type/1`), so a file that is not a
+  PNG, JPEG, GIF or WebP is `{:error, :invalid_upload_type}` whatever its name or the type the
+  client claimed. The object goes to the store last, after `use_asset` returns `{:ok, _}`: a
+  write that fails before then leaves no object behind, and a failed store returns its error.
+
+  It decides nothing: the caller has already authorised the write that uses the asset. Call it
+  inside the caller's transaction, which must return the error so the asset row rolls back.
+  """
+  def store_upload(%Scope{} = scope, %{path: path, client_name: client_name}, kind, use_asset)
+      when is_function(use_asset, 1) do
+    with {:ok, body} <- File.read(path),
+         {:ok, content_type} <- upload_type(body),
          {:ok, asset} <-
            %MediaAsset{}
            |> MediaAsset.changeset(%{
              uploader_id: scope.user_id,
              kind: kind,
              storage_provider: "s3",
-             storage_key: storage_key,
+             storage_key: "#{upload_dir(kind)}/#{Ecto.UUID.generate()}#{extension(content_type)}",
              original_filename: client_name,
-             content_type: client_type,
+             content_type: content_type,
              byte_size: byte_size(body),
              sha256: :crypto.hash(:sha256, body) |> Base.encode16(case: :lower)
            })
-           |> Repo.insert() do
-      {:ok, asset}
-    else
-      {:error, reason} -> {:error, reason, :upload}
+           |> Repo.insert(),
+         {:ok, result} <- use_asset.(asset),
+         :ok <- ObjectStore.put(asset.storage_key, body, content_type) do
+      {:ok, result}
     end
-  end
-
-  @doc "Stores an uploaded server icon, as `create_media_asset_from_upload/3` does."
-  def create_server_icon_from_upload(%Scope{} = scope, upload) do
-    create_media_asset_from_upload(scope, upload,
-      allowed_types: @allowed_upload_content_types,
-      upload_dir: @server_icon_upload_dir,
-      kind: :server_icon
-    )
   end
 
   def delete_media_asset(%MediaAsset{storage_key: storage_key} = asset) do
@@ -88,6 +72,17 @@ defmodule Tavern.Chat.MediaAssets do
     end
   end
 
+  @doc """
+  The image type of `bytes` from its magic bytes: `{:ok, content_type}` for PNG, JPEG, GIF and
+  WebP, `:error` for anything else, whatever name or Content-Type came with the bytes.
+  """
+  def image_type(<<0x89, "PNG\r\n", 0x1A, "\n", _::binary>>), do: {:ok, "image/png"}
+  def image_type(<<0xFF, 0xD8, 0xFF, _::binary>>), do: {:ok, "image/jpeg"}
+  def image_type(<<"GIF87a", _::binary>>), do: {:ok, "image/gif"}
+  def image_type(<<"GIF89a", _::binary>>), do: {:ok, "image/gif"}
+  def image_type(<<"RIFF", _size::binary-size(4), "WEBP", _::binary>>), do: {:ok, "image/webp"}
+  def image_type(_bytes), do: :error
+
   @doc "The file extension for one of the accepted image content types, with its dot."
   def extension("image/png"), do: ".png"
   def extension("image/jpeg"), do: ".jpg"
@@ -95,15 +90,13 @@ defmodule Tavern.Chat.MediaAssets do
   def extension("image/webp"), do: ".webp"
   def extension(_), do: ".bin"
 
-  defp validate_upload_type(content_type, allowed_types) do
-    if content_type in allowed_types, do: :ok, else: {:error, :invalid_upload_type}
+  defp upload_type(body) do
+    case image_type(body) do
+      {:ok, content_type} -> {:ok, content_type}
+      :error -> {:error, :invalid_upload_type}
+    end
   end
 
-  defp upload_extension(filename, content_type) do
-    ext = filename |> Path.extname() |> String.downcase()
-
-    if ext in ~w(.png .jpg .jpeg .gif .webp),
-      do: ext,
-      else: extension(content_type)
-  end
+  defp upload_dir(:emoji), do: "emojis"
+  defp upload_dir(:server_icon), do: "server_icons"
 end

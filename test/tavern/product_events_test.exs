@@ -333,7 +333,7 @@ defmodule Tavern.ProductEventsTest do
     @tag :tmp_dir
     test "an emoji upload", ctx do
       path = Path.join(ctx.tmp_dir, "party.png")
-      File.write!(path, "png bytes")
+      File.write!(path, Tavern.UploadFixtures.unique_png())
       upload = %{path: path, client_name: "party.png", client_type: "image/png"}
 
       {:ok, _emoji} = Chat.create_custom_emoji(scope_for(ctx.owner), upload, %{"name" => "party"})

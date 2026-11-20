@@ -4,6 +4,8 @@ defmodule Tavern.Chat.ServerConfig do
   import Ecto.Changeset, only: [put_change: 3]
   import Ecto.Query, warn: false
 
+  require Logger
+
   @cache_key {__MODULE__, :server_settings}
 
   alias Tavern.Accounts.Scope
@@ -12,6 +14,7 @@ defmodule Tavern.Chat.ServerConfig do
   alias Tavern.Chat.ServerSettings
   alias Tavern.Chat.Topics
   alias Tavern.Chat.Visibility
+  alias Tavern.ObjectStore
   alias Tavern.Repo
 
   def get_server_settings do
@@ -39,8 +42,14 @@ defmodule Tavern.Chat.ServerConfig do
     name_attrs = name_attrs(attrs)
 
     write_settings(scope, fn server_settings ->
-      with {:ok, icon_change} <- resolve_icon_change(scope, attrs) do
-        save_settings(server_settings, name_attrs, icon_change)
+      case Map.get(attrs, "icon_upload") do
+        nil ->
+          save_settings(server_settings, name_attrs, :keep)
+
+        upload ->
+          MediaAssets.store_upload(scope, upload, :server_icon, fn asset ->
+            save_settings(server_settings, name_attrs, {:replace, asset.id})
+          end)
       end
     end)
   end
@@ -77,45 +86,34 @@ defmodule Tavern.Chat.ServerConfig do
   # writer's next read is current. The broadcast then drops the copy on every node, this one
   # included: a reader that loaded the old row before the commit may have stored it after the
   # erase, and only the later erase from the broadcast clears it.
+  #
+  # `fun` returns `{:ok, {settings, retired_key}}`. The retired icon's object is deleted only
+  # after the commit: a rollback keeps the old row, which must still find its object.
   defp write_settings(scope, fun) do
     Repo.transact(fn ->
       with :ok <- Visibility.authorize_write(scope, :manage_server, :server) do
         fun.(lock_server_settings())
       end
     end)
-    |> tap(fn
-      {:ok, _settings} ->
+    |> case do
+      {:ok, {settings, retired_key}} ->
+        delete_retired_icon(retired_key)
         reset_server_settings_cache()
         Topics.broadcast_server_settings_changed()
+        {:ok, settings}
 
-      {:error, _reason} ->
-        :ok
-    end)
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   defp save_settings(server_settings, name_attrs, icon_change) do
     with {:ok, settings} <-
            server_settings
            |> settings_changeset(name_attrs, icon_change)
-           |> Repo.insert_or_update() do
-      if icon_change != :keep do
-        maybe_delete_server_icon_asset(server_settings.icon_asset)
-      end
-
-      {:ok, Repo.preload(settings, [:icon_asset], force: true)}
-    end
-  end
-
-  defp resolve_icon_change(scope, attrs) do
-    case Map.get(attrs, "icon_upload") do
-      nil ->
-        {:ok, :keep}
-
-      upload ->
-        case MediaAssets.create_server_icon_from_upload(scope, upload) do
-          {:ok, asset} -> {:ok, {:replace, asset.id}}
-          {:error, reason, :upload} -> {:error, reason}
-        end
+           |> Repo.insert_or_update(),
+         {:ok, retired_key} <- retire_icon_asset(server_settings.icon_asset, icon_change) do
+      {:ok, {Repo.preload(settings, [:icon_asset], force: true), retired_key}}
     end
   end
 
@@ -133,12 +131,26 @@ defmodule Tavern.Chat.ServerConfig do
   end
 
   # Only a purpose-built server icon may be deleted when the icon changes; an emoji or other
-  # kind pointed here by an old write must stay so manage_emojis cannot be bypassed.
-  defp maybe_delete_server_icon_asset(%MediaAsset{kind: :server_icon} = asset) do
-    MediaAssets.delete_media_asset(asset)
+  # kind pointed here by an old write must stay so manage_emojis cannot be bypassed. Drops the
+  # row and returns the storage key, for `delete_retired_icon/1` after the commit.
+  defp retire_icon_asset(%MediaAsset{kind: :server_icon} = asset, {:replace, _icon_asset_id}) do
+    with {:ok, _asset} <- Repo.delete(asset), do: {:ok, asset.storage_key}
   end
 
-  defp maybe_delete_server_icon_asset(_asset), do: :ok
+  defp retire_icon_asset(_asset, _icon_change), do: {:ok, nil}
+
+  # A failed delete leaves an object no row names, which `/uploads` does not serve.
+  defp delete_retired_icon(nil), do: :ok
+
+  defp delete_retired_icon(storage_key) do
+    case ObjectStore.delete(storage_key) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("server icon #{storage_key} not deleted: #{inspect(reason)}")
+    end
+  end
 
   defp name_attrs(attrs) do
     attrs

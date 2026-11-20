@@ -37,6 +37,9 @@ defmodule Tavern.TestObjectStore do
     send_resp(conn, 204, "")
   end
 
+  @doc "Every stored object, as a map of request path to `{body, content_type}`."
+  def objects, do: Agent.get(bucket(), & &1)
+
   defp bucket do
     case Agent.start(fn -> %{} end, name: __MODULE__) do
       {:ok, pid} -> pid

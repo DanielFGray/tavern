@@ -46,18 +46,20 @@ defmodule Tavern.Chat.Emojis do
   Stores the uploaded image and creates a custom emoji from it. Needs `manage_emojis_and_stickers`
   now, in the database: the transaction decides it before the upload is read. Returns
   `{:error, :forbidden}` without it, `{:error, :invalid_upload_type}` (or another storage
-  reason) for a refused file, and `{:error, changeset}` for bad attrs.
+  reason) for a refused file, and `{:error, changeset}` for bad attrs. A refused emoji leaves no
+  object in the store.
   """
   def create_custom_emoji(%Scope{} = scope, upload, attrs) when is_map(attrs) do
     attrs = normalize_emoji_attrs(attrs)
 
     Repo.transact(fn ->
       with :ok <- Visibility.authorize_write(scope, :manage_emojis_and_stickers, :server),
-           {:ok, asset} <- store_upload(scope, upload),
            {:ok, emoji} <-
-             %Emoji{creator_id: scope.user_id}
-             |> Emoji.changeset(Map.put(attrs, "asset_id", asset.id))
-             |> Repo.insert() do
+             MediaAssets.store_upload(scope, upload, :emoji, fn asset ->
+               %Emoji{creator_id: scope.user_id}
+               |> Emoji.changeset(Map.put(attrs, "asset_id", asset.id))
+               |> Repo.insert()
+             end) do
         {:ok, Repo.preload(emoji, [:asset, :creator, :emoji_roles])}
       end
     end)
@@ -65,13 +67,6 @@ defmodule Tavern.Chat.Emojis do
       {:ok, _emoji} -> ProductEvents.record({:upload_created, scope.user_id, :emoji})
       {:error, _reason} -> :ok
     end)
-  end
-
-  defp store_upload(scope, upload) do
-    case MediaAssets.create_media_asset_from_upload(scope, upload) do
-      {:ok, asset} -> {:ok, asset}
-      {:error, reason, :upload} -> {:error, reason}
-    end
   end
 
   @doc """

@@ -9,7 +9,7 @@ The platform (roamancer, `~/build/roamancer`) runs the backups. Tavern adds none
 | Store | Holds | Backed up by the platform | Restore need |
 | --- | --- | --- | --- |
 | Postgres, database `tavern` (`cartridge.json:4`) | Accounts, memberships, channels, messages, roles, settings, bots, and the `media_assets` rows that name each upload | Yes: nightly `pg_dumpall` | Required |
-| Object store bucket (`cartridge.json:6`) | Upload bytes: custom emoji, server and member avatars, banners, and cached link-preview images. `Tavern.Chat.MediaAssets.create_media_asset_from_upload/3` writes them and `fetch_upload/1` reads them (`lib/tavern/chat/media_assets.ex:25-60`); `Tavern.Chat.Embeds` stores preview images (`lib/tavern/chat/embeds.ex:139`) | Yes: nightly restic copy of Garage's volume | Required |
+| Object store bucket (`cartridge.json:6`) | Upload bytes: custom emoji, server and member avatars, banners, and cached link-preview images. `Tavern.Chat.MediaAssets.store_upload/4` writes them and `fetch_upload/1` reads them (`lib/tavern/chat/media_assets.ex:21-67`); `Tavern.Chat.Embeds` stores preview images (`lib/tavern/chat/embeds.ex:139`) | Yes: nightly restic copy of Garage's volume | Required |
 | Valkey (`cartridge.json:5`) | Presence, typing and rate-limit counters | No | None |
 | OpenBao | `secret_key_base`, the Postgres logins, the bucket key's secret | No | See "Secrets" |
 

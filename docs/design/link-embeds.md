@@ -66,7 +66,7 @@ The test environment sets `:resolver` to `Tavern.TestDNS` (a fixed table of `.te
 
 A link is a video when its host is exactly `youtube.com`, `www.youtube.com` or `m.youtube.com` with `/watch?v=<id>` or `/shorts/<id>`, or `youtu.be/<id>`. The id must match `[A-Za-z0-9_-]{11}`; the server checks it before storing, the template before rendering the player, and the hook before building the iframe URL. The title and channel come from `https://www.youtube.com/oembed`; the thumbnail is `https://i.ytimg.com/vi/<id>/hqdefault.jpg`, stored like any card image. A video oEmbed does not know (private, removed) gets no card.
 
-The player is a colocated hook (`.YouTubePlayer` in `TavernWeb.ServerComponents.Embeds`) on an element with `phx-update="ignore"`, so a re-render of the message does not stop playback. The browser policy allows frames only from this origin and `https://www.youtube-nocookie.com` (`frame-src` in the router's `:browser` pipeline).
+The player is a colocated hook (`.YouTubePlayer` in `TavernWeb.ServerComponents.Embeds`) on an element with `phx-update="ignore"`, so a re-render of the message does not stop playback. The browser policy allows frames only from this origin and `https://www.youtube-nocookie.com` (`frame-src` in `TavernWeb.Plugs.ContentSecurityPolicy`, which the router's `:browser` pipeline runs).
 
 ## Limits
 

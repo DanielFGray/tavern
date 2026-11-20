@@ -110,12 +110,14 @@ defmodule TavernWeb.ServerLiveSettingsTest do
 
     view |> element("#open-emoji-manager") |> render_click()
 
+    png = Tavern.UploadFixtures.unique_png()
+
     upload =
       file_input(view, "#emoji-form", :emoji_image, [
         %{
           last_modified: 1_711_000_000_000,
           name: "blob.png",
-          content: "fake png bytes",
+          content: png,
           type: "image/png"
         }
       ])
@@ -129,7 +131,7 @@ defmodule TavernWeb.ServerLiveSettingsTest do
     emoji = Tavern.Repo.get_by!(Chat.Emoji, name: "blobhype") |> Tavern.Repo.preload(:asset)
     assert has_element?(view, "#manage-emoji-#{emoji.id}")
 
-    assert build_conn() |> get(Chat.asset_url(emoji.asset)) |> response(200) == "fake png bytes"
+    assert build_conn() |> get(Chat.asset_url(emoji.asset)) |> response(200) == png
 
     view |> element("#delete-emoji-#{emoji.id}") |> render_click()
     refute Tavern.Repo.get(Chat.Emoji, emoji.id)
