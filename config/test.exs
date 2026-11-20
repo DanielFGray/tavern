@@ -1,8 +1,16 @@
 import Config
 
 # config/runtime.exs sets the database URL from TEST_DATABASE_URL.
+#
+# The e2e server (playwright.config.js, MIX_TEST_PARTITION=e2e) is a real server driven by a
+# browser, so it uses the ordinary connection pool. The ownership sandbox would give each
+# long-lived HTTP connection process a database connection for its whole life, and the pool
+# kills an owner after the 120 s ownership timeout.
+e2e_server? = System.get_env("MIX_TEST_PARTITION") == "e2e"
+
+if not e2e_server?, do: config(:tavern, Tavern.Repo, pool: Ecto.Adapters.SQL.Sandbox)
+
 config :tavern, Tavern.Repo,
-  pool: Ecto.Adapters.SQL.Sandbox,
   # Test modules run one at a time, so a small pool is enough; the dev login allows 32.
   pool_size: 8,
   # In shared sandbox mode every process uses one connection, and Ecto runs preloads in parallel
