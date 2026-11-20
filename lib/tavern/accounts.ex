@@ -32,6 +32,7 @@ defmodule Tavern.Accounts do
 
   @session_valid_days 30
   @email_token_valid_days 7
+  @password_reset_valid_minutes 60
   @deletion_sweep_limit 500
   # An arbitrary constant that names "server ownership" among Postgres advisory locks.
   @ownership_lock_key 7_314_002_001
@@ -217,6 +218,11 @@ defmodule Tavern.Accounts do
 
   def change_registration_user(%User{} = user, attrs \\ %{}) do
     User.registration_changeset(user, attrs, hash_password: false)
+  end
+
+  @doc "A changeset for the reset form's validation. It does not hash the password."
+  def change_password_user(%User{} = user, attrs \\ %{}) do
+    User.password_changeset(user, attrs, hash_password: false)
   end
 
   def change_profile_user(%User{} = user, attrs \\ %{}) do
@@ -437,23 +443,33 @@ defmodule Tavern.Accounts do
   end
 
   # Email links live in `user_sessions` beside sessions, told apart by `context`: "confirm" for a
-  # verification link, and "change:<current email>" for an email change. The change context names
-  # the address it was requested from, so a link stops working once the email changes another way.
+  # verification link, "reset" for a password reset, and "change:<current email>" for an email
+  # change. The change context names the address it was requested from, so a link stops working
+  # once the email changes another way; confirm and reset links name it in `sent_to` for the same
+  # reason.
   defp email_token_context(:confirm, _user), do: "confirm"
+  defp email_token_context(:password_reset, _user), do: "reset"
   defp email_token_context(:email_change, %User{email: email}), do: "change:" <> email
+
+  defp email_token_valid_seconds(:password_reset), do: @password_reset_valid_minutes * 60
+  defp email_token_valid_seconds(_kind), do: @email_token_valid_days * 86_400
 
   defp insert_email_token!(%User{} = user, kind, sent_to) do
     insert_token!(&UserSession.changeset/2, %{
       user_id: user.id,
       context: email_token_context(kind, user),
       sent_to: sent_to,
-      expires_at: DateTime.add(DateTime.utc_now(), @email_token_valid_days * 86_400, :second)
+      expires_at: DateTime.add(DateTime.utc_now(), email_token_valid_seconds(kind), :second)
     })
   end
 
   # The live token row and its account, both locked, or nil. A second use waits on the first's
   # lock and then finds the row deleted.
   defp lock_email_token(token, kind) do
+    token |> live_email_token_query(kind) |> lock("FOR UPDATE") |> Repo.one()
+  end
+
+  defp live_email_token_query(token, kind) do
     now = DateTime.utc_now()
 
     query =
@@ -462,24 +478,22 @@ defmodule Tavern.Accounts do
         on: user.id == session.user_id,
         where: session.token_hash == ^hash_token(token) and session.expires_at > ^now,
         where: is_nil(user.deleted_at) and user.bot == false,
-        lock: "FOR UPDATE",
         select: {session, user}
       )
 
-    query =
-      case kind do
-        :confirm ->
-          where(
-            query,
-            [session, user],
-            session.context == "confirm" and session.sent_to == user.email
-          )
+    case kind do
+      kind when kind in [:confirm, :password_reset] ->
+        context = email_token_context(kind, nil)
 
-        :email_change ->
-          where(query, [session, user], session.context == fragment("'change:' || ?", user.email))
-      end
+        where(
+          query,
+          [session, user],
+          session.context == ^context and session.sent_to == user.email
+        )
 
-    Repo.one(query)
+      :email_change ->
+        where(query, [session, user], session.context == fragment("'change:' || ?", user.email))
+    end
   end
 
   defp delete_email_tokens!(user_id, :confirm) do
@@ -489,11 +503,137 @@ defmodule Tavern.Accounts do
     |> Repo.delete_all()
   end
 
+  defp delete_email_tokens!(user_id, :password_reset) do
+    from(session in UserSession,
+      where: session.user_id == ^user_id and session.context == "reset"
+    )
+    |> Repo.delete_all()
+  end
+
   defp delete_email_tokens!(user_id, :email_change) do
     from(session in UserSession,
       where: session.user_id == ^user_id and like(session.context, "change:%")
     )
     |> Repo.delete_all()
+  end
+
+  # Every email link of the account, whatever its kind.
+  defp delete_email_tokens!(user_id, :all) do
+    from(session in UserSession,
+      where:
+        session.user_id == ^user_id and
+          (session.context in ["confirm", "reset"] or like(session.context, "change:%"))
+    )
+    |> Repo.delete_all()
+  end
+
+  # --- Password reset ------------------------------------------------------------------------
+
+  @doc """
+  Whether a visitor can ask for a password reset link: it needs mail
+  (`Tavern.Mailer.configured?/0`).
+  """
+  def password_reset_available?, do: Tavern.Mailer.configured?()
+
+  @doc """
+  Mails the account that owns `email` a link that sets a new password, when there is such an
+  account and mail works. The caller learns nothing about the account: it gets `:ok` whether or
+  not a mail was sent, so a visitor cannot tell which emails have accounts. The mail goes out in
+  a background task, so the reply does not take longer for an account that exists.
+
+  The request counts against the login limiter for `ip_address` and `email`. Past the limit it
+  returns `{:error, {:rate_limited, seconds}}`, whether or not the email has an account. Each
+  account also takes at most the link-mail limit (`LoginRateLimiter.check_email_link/1`), so a
+  visitor cannot fill someone's mailbox; a request past it sends nothing and still returns `:ok`.
+
+  The link works once, within #{@password_reset_valid_minutes} minutes, and a newer request
+  replaces it. A bot, a deleted account and an account with no password get no mail.
+  """
+  def request_password_reset(email, ip_address) when is_binary(email) do
+    case LoginRateLimiter.check_attempt(ip_address, email) do
+      {:error, seconds} ->
+        {:error, {:rate_limited, seconds}}
+
+      :ok ->
+        with true <- password_reset_available?(),
+             %User{} = user <- get_resettable_user(email),
+             :ok <- LoginRateLimiter.check_email_link(user.id) do
+          delete_email_tokens!(user.id, :password_reset)
+          token = insert_email_token!(user, :password_reset, user.email)
+
+          {:ok, _pid} =
+            Task.Supervisor.start_child(Tavern.Mailer.TaskSupervisor, fn ->
+              VerificationMail.deliver_password_reset(user.email, token)
+            end)
+        end
+
+        :ok
+    end
+  end
+
+  defp get_resettable_user(email) do
+    from(user in User,
+      where: user.email == ^String.trim(email),
+      where: user.bot == false and is_nil(user.deleted_at) and not is_nil(user.hashed_password)
+    )
+    |> Repo.one()
+  end
+
+  @doc """
+  The account that a reset `token` is for, or nil when the link is used, expired or not valid.
+  It changes nothing, so a page can check a link before it shows the form.
+  """
+  def get_user_by_password_reset_token(token) when is_binary(token) do
+    case token |> live_email_token_query(:password_reset) |> Repo.one() do
+      {_row, user} -> user
+      nil -> nil
+    end
+  end
+
+  @doc """
+  Sets a new password with the reset link `token`. The password must pass the registration rules,
+  or the result is `{:error, changeset}` and the link still works. On success the link and every
+  other email link of the account are spent, so a confirmation or email change link mailed before
+  the reset stops working, and every session of the account ends. The member signs in again with
+  the new password.
+
+  The link went to the account's current email, so opening it proves the member reads that
+  mailbox: an account with no `confirmed_at` is verified in the same transaction, with the effects
+  of any first verification (`after_email_confirmed/1`). An account that is already verified keeps
+  its `confirmed_at`, and nothing about its verification is announced.
+
+  Returns `{:ok, user}`, `{:error, changeset}`, or `{:error, :invalid}` for a used, expired or
+  unknown link.
+  """
+  def reset_user_password(token, attrs) when is_binary(token) do
+    Repo.transact(fn ->
+      case lock_email_token(token, :password_reset) do
+        nil ->
+          {:error, :invalid}
+
+        {_row, user} ->
+          changeset =
+            user
+            |> User.password_changeset(attrs)
+            |> Changeset.put_change(:confirmed_at, user.confirmed_at || DateTime.utc_now())
+
+          with {:ok, updated} <- Repo.update(changeset) do
+            delete_email_tokens!(user.id, :all)
+            {:ok, {user.confirmed_at, updated}}
+          end
+      end
+    end)
+    |> case do
+      {:ok, {previously_confirmed_at, user}} ->
+        :ok = revoke_user_sessions(user.id)
+
+        if is_nil(previously_confirmed_at),
+          do: after_email_confirmed({:ok, {nil, user}}),
+          else: {:ok, user}
+
+      error ->
+        error
+    end
   end
 
   def dummy_login_changeset do

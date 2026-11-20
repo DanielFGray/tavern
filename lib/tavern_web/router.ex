@@ -74,6 +74,14 @@ defmodule TavernWeb.Router do
     # out (docs/design/accounts.md).
     get("/users/confirm/:token", UserConfirmationController, :confirm)
     get("/users/confirm-email/:token", UserConfirmationController, :confirm_email)
+
+    # Password reset: the request page and the link's page. The link works signed in or not, so
+    # neither redirects a signed-in visitor.
+    live_session :password_reset,
+      on_mount: [{TavernWeb.UserAuth, :mount_current_scope}] do
+      live("/users/reset-password", PasswordResetRequestLive, :new)
+      live("/users/reset-password/:token", PasswordResetLive, :edit)
+    end
   end
 
   scope "/", TavernWeb do

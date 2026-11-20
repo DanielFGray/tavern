@@ -22,6 +22,9 @@ defmodule Tavern.Application do
       Tavern.Chat.ServerConfigListener,
       # Test processes that subscribe to captured mail (`Tavern.Mailer.Capture`); empty otherwise.
       Tavern.Mailer.Capture,
+      # Sends the password reset mail off the request, so a reply takes as long for an email with
+      # an account as for one without (`Tavern.Accounts.request_password_reset/2`).
+      {Task.Supervisor, name: Tavern.Mailer.TaskSupervisor},
       # Link preview fetches (`Tavern.Chat.Embeds`). The cap bounds the outbound requests one
       # burst of messages can start; a write over it gets no embed.
       {Task.Supervisor, name: Tavern.Embeds.TaskSupervisor, max_children: 50},

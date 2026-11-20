@@ -1,7 +1,7 @@
 defmodule Tavern.Accounts.VerificationMail do
   @moduledoc """
-  The two mails that carry an email link: the confirmation of a new account's address, and the
-  confirmation of a new address in an email change. Each holds a single-use token
+  The mails that carry an email link: the confirmation of a new account's address, the
+  confirmation of a new address in an email change, and a password reset. Each holds a single-use token
   (`Tavern.Accounts`). The caller decides whether mail is on.
   """
 
@@ -30,6 +30,18 @@ defmodule Tavern.Accounts.VerificationMail do
       "Open the link to make this address your #{server_name} sign-in email.",
       "Your email does not change until you do.",
       "The link works once, within 7 days. If you did not ask for this change, ignore this mail."
+    ])
+  end
+
+  @doc "Mails `to` the link that sets a new password. Returns `:ok` or `{:error, reason}`."
+  def deliver_password_reset(to, token) do
+    server_name = ServerConfig.get_server_settings().name
+    link = url(~p"/users/reset-password/#{token}")
+
+    deliver(to, "Reset your password for #{server_name}", link, [
+      "Open the link to choose a new password for your #{server_name} account.",
+      "Signing in again is required afterwards: the reset ends every session of the account.",
+      "The link works once, within 1 hour. If you did not ask for this, ignore this mail. Your password stays as it is."
     ])
   end
 

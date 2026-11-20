@@ -110,11 +110,15 @@ defmodule Tavern.Chat.User do
     )
   end
 
-  def password_changeset(user, attrs) do
+  @doc """
+  A password change. It hashes the password unless `hash_password: false`, as in
+  `registration_changeset/3`.
+  """
+  def password_changeset(user, attrs, opts \\ []) do
     user
     |> cast(attrs, [:password])
     |> validate_required([:password])
-    |> validate_password([])
+    |> validate_password(opts)
   end
 
   def login_changeset(user, attrs) do

@@ -1,6 +1,6 @@
 # Accounts
 
-How an account verifies its email, how it is deleted, and how a kicked member's deletion is scheduled, and why.
+How an account verifies its email, how a forgotten password is reset, how it is deleted, and how a kicked member's deletion is scheduled, and why.
 
 ## Summary
 
@@ -10,6 +10,7 @@ How an account verifies its email, how it is deleted, and how a kicked member's 
 - A rejoin with an invite, a ban, or a moderator with `kick_members` cancels a schedule. A banned account is never deleted automatically.
 - Messages stay. Their author shows as "Deleted user" everywhere the account's display name shows.
 - A member who has not confirmed their email holds the Unverified role, which by default makes them read only. Registration mails a confirmation link. An email change applies only when the link sent to the new address opens. With no mail provider, verification is inactive and nobody is restricted.
+- A member who forgot their password asks for a reset link on the login page. The link works once, for 1 hour, and ends every session of the account. Without a mail provider the page says reset is unavailable.
 
 ## Deleting an account
 
@@ -130,10 +131,10 @@ The bot API's member `role_ids` lists the Unverified role while the member holds
 Tokens follow the phx.gen.auth pattern and live in `user_sessions`:
 
 - The mail carries a random token. The table stores only its hash (`hash_token`).
-- `context` is `"confirm"`, or `"change:<old email>"` for an email change. `sent_to` is the address the mail went to.
-- A token expires 7 days after it is made (`expires_at`). Using it deletes it and every other token of the same kind for that user, so a link works once.
+- `context` is `"confirm"`, `"reset"` for a password reset, or `"change:<old email>"` for an email change. `sent_to` is the address the mail went to.
+- A token expires 7 days after it is made (`expires_at`), or 1 hour for a reset. Using it deletes it and every other token of the same kind for that user, so a link works once.
 
-A confirmation token works only while the account's email is still the `sent_to` address. A change token works only while the account's email is still the old address in its context. A link mailed before another change therefore fails. A token never works for a deleted account or a bot.
+A confirmation or reset token works only while the account's email is still the `sent_to` address. A change token works only while the account's email is still the old address in its context. A link mailed before another change therefore fails. A token never works for a deleted account or a bot.
 
 Each use runs in one transaction that locks the token row and the user row `FOR UPDATE`, so two clicks on one link cannot both succeed.
 
@@ -156,6 +157,25 @@ Both routes sit in the `:browser` pipeline without an authentication requirement
 
 `Accounts.update_user_email/3` checks the current password and validates the new address, including uniqueness. When verification is active it does not write the address. It mails a change link to the new address and returns `{:ok, :confirmation_sent}`. That mail counts toward the same per-member link limit as a resend. The member stays verified meanwhile, and the old address keeps working. The address changes only when the link opens, which also proves the member controls it. If another account took the address in the meantime, the link answers "taken" and changes nothing. With verification inactive, the change applies at once, as before.
 
+### Password reset
+
+A member who forgot their password asks for a link, opens it, and sets a new one. It needs a mail provider (`Accounts.password_reset_available?/0`, the same test as verification). Without one, the login page hides "Forgot password?", and `/users/reset-password` says that reset is unavailable and to ask a server admin.
+
+| Route | Page |
+| --- | --- |
+| `/users/reset-password` | `PasswordResetRequestLive`: one email field. |
+| `/users/reset-password/:token` | `PasswordResetLive`: one new-password field. |
+
+Both live in a session with no authentication rule, so a signed-in visitor can use them. The link's token is the authority, as for the confirm links.
+
+**Asking.** `Accounts.request_password_reset/2` takes the email and the client IP. The page shows the same "If that email belongs to an account, a reset link is on its way" for every email, so it does not reveal which emails have accounts. The request first counts against the login limiter (`LoginRateLimiter.check_attempt/2`, the limiter that guards the login form). Past the limit the page flashes how long to wait, for any email. A later request for an account also counts against the per-member link limit above (3 per 15 minutes, shared with resends and email changes). Past that limit nothing is sent, and the reply is unchanged, so a visitor cannot fill a member's mailbox. A bot, a deleted account or an account with no password gets no mail. The mail goes out in a task under `Tavern.Mailer.TaskSupervisor`, so the reply takes about as long for an email with an account as for one without. The lookup and token insert still run in the request, so a precise timing test could tell them apart by a few milliseconds.
+
+**The token.** Context `"reset"`, `sent_to` the account's email, valid 1 hour. A new request deletes the account's older reset token, so only the newest link works. It works only while the account's email is still `sent_to`, like a confirm token.
+
+**Setting the password.** `Accounts.reset_user_password/2` runs `User.password_changeset/3`, which has the registration rules (12 to 72 bytes). A password that fails them returns the changeset, and the link still works. On success, in one transaction that locks the token row, it saves the hash and deletes every email token of the account: its reset token, and any `confirm` and `change:` token mailed earlier, so a link requested under the old password stops working. After the commit it calls `Accounts.revoke_user_sessions/1`, which deletes every session and closes the member's open sockets. The page then sends the member to `/login` with a flash. It does not sign them in. A used, expired or unknown link shows "This reset link does not work" with a link to ask again. The page checks the token on mount (`get_user_by_password_reset_token/1`), and again on save.
+
+The link opens a form (a GET that changes nothing), so a mail scanner that follows it spends nothing: only the save spends the token. A link from an email verifies that email, so a successful reset also sets `confirmed_at` when it is nil, in the same transaction: the token's `sent_to` is the account's current email. After the commit it runs the shared first-verification path (`after_email_confirmed/1`): the `{:email_confirmed, user_id}` broadcast that unlocks the member's open views and drops the badge, and the `member_verified` product event. A reset for an account that is already verified changes nothing about its verification and announces nothing.
+
 ### UI
 
 - **Banner.** ServerLive shows "Check <email> to verify your account." with a Resend button, above the channel view, while the member is unverified.
@@ -172,5 +192,5 @@ The dev and test configs use the capture mail provider (`Tavern.Mailer.Capture`)
 ### Known gaps
 
 - The link is a GET. A mail scanner that follows links can use a token before the member does. The member then finds the account verified, or asks for a new link.
-- Pruning accounts that never verify, and password reset by mail, are separate work.
-- The app has no password change yet. When password reset or change ships, it must delete the account's pending `confirm` and `change:` rows, as phx.gen.auth does, so a link requested with the old password stops working. `revoke_user_sessions/1` deletes only `session` rows.
+- Pruning accounts that never verify is separate work.
+- The app has no signed-in password change yet. When it ships it must also delete the account's email tokens (`Accounts.reset_user_password/2` shows how), so a link requested under the old password stops working.

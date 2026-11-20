@@ -217,6 +217,23 @@ defmodule Tavern.TestSupport do
     %{mail: %{to: mail.to, subject: mail.subject, path: URI.parse(link).path}}
   end
 
+  # Asks for a password reset link for the account, as a visitor would, and returns the captured
+  # mail with the link's path. It replaces any link the page sent a moment ago, because only the
+  # newest link works. The request comes from a fresh address, so the login limiter does not
+  # count it against the spec's own attempts.
+  defp execute("capture_password_reset_mail", payload) do
+    email = payload["email"] || raise "email is required"
+    user = Accounts.get_user_by_email(email) || raise "no account has #{email}"
+    ensure_safe_test_identity!(email, user.username)
+
+    :ok = Tavern.Mailer.Capture.subscribe()
+    :ok = Accounts.request_password_reset(email, "198.51.100.#{:rand.uniform(254)}")
+    mail = Tavern.Mailer.Capture.await(email, 2_000) || raise "no mail was captured for #{email}"
+
+    [link] = Regex.run(~r{https?://\S+/users/reset-password/\S+}, mail.text)
+    %{mail: %{to: mail.to, subject: mail.subject, path: URI.parse(link).path}}
+  end
+
   defp execute("bulk_create_users", payload) do
     count = payload["count"] || 10
     offset = payload["offset"] || 0

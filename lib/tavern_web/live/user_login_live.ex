@@ -16,6 +16,7 @@ defmodule TavernWeb.UserLoginLive do
      |> assign(:form, form)
      |> assign(:server_settings, server_settings)
      |> assign(:current_server, server_settings)
+     |> assign(:password_reset_available?, Accounts.password_reset_available?())
      |> assign(:trigger_submit, false)}
   end
 
@@ -80,6 +81,16 @@ defmodule TavernWeb.UserLoginLive do
                   label="Remember me"
                   class="checkbox checkbox-sm rounded-md border-base-300 bg-base-200"
                 />
+
+                <p :if={@password_reset_available?} class="text-sm">
+                  <.link
+                    id="forgot-password"
+                    href={~p"/users/reset-password"}
+                    class="font-semibold text-primary transition hover:text-primary/80"
+                  >
+                    Forgot password?
+                  </.link>
+                </p>
 
                 <button
                   id="login-submit"
