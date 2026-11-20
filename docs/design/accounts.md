@@ -92,6 +92,14 @@ Each cancellation clears the date and writes an `account_deletion_canceled` entr
 
 An entry about a deleted account shows its tombstone handle. No entry stores the old username or email.
 
+## Client address
+
+The login, registration, password-reset and invite-request limits count requests per client IP, so the address must be one the client cannot choose. `TavernWeb.Plugs.ClientIp` (and `socket_client_ip/1` for LiveView mounts) sets `remote_ip` from the one header that `TRUSTED_PROXY_HEADER` names. The header holds a single address. When it is unset, missing or not an address, the peer address stays.
+
+The cartridge sets the header to `x-real-ip`. On a public route Traefik is the only proxy; it writes `X-Real-Ip` from the socket address and drops any value the client sent (roamancer `tools/alchemy/platform/ingress/README.md:10`). `X-Forwarded-For` is not used: a client can write it, and no platform document says Traefik overwrites it.
+
+While the route is a tailnet route, `X-Real-Ip` is cynic's address (same README line), so all tailnet members share one limiter bucket. That is accepted until the route goes public.
+
 ## Email verification
 
 ### Who is unverified

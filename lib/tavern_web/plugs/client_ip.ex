@@ -1,5 +1,14 @@
 defmodule TavernWeb.Plugs.ClientIp do
-  @moduledoc false
+  @moduledoc """
+  Sets `conn.remote_ip` to the client address that the platform proxy wrote into the header
+  named by `TRUSTED_PROXY_HEADER`.
+
+  The header must hold one address that the proxy sets itself and never takes from the client:
+  on a public route Traefik writes `X-Real-Ip` from the socket and drops a client-sent value
+  (roamancer `tools/alchemy/platform/ingress/README.md:10`), so the cartridge sets
+  `TRUSTED_PROXY_HEADER=x-real-ip`. A list header such as `X-Forwarded-For` is unsafe here: a
+  client can write its leading entries. See docs/design/accounts.md, "Client address".
+  """
 
   @behaviour Plug
 
@@ -12,8 +21,8 @@ defmodule TavernWeb.Plugs.ClientIp do
   end
 
   @doc """
-  The client address for a request: the leftmost entry of the header that TRUSTED_PROXY_HEADER
-  names, or the peer address when that header is unset, missing or not an address. `headers` are
+  The client address for a request: the address in the header that TRUSTED_PROXY_HEADER names,
+  or the peer address when the header is unset, missing or not an address. `headers` are
   `{name, value}` pairs with lowercase names, as Plug and Phoenix connect_info give them.
   """
   def client_ip(peer_ip, headers) do
@@ -34,21 +43,12 @@ defmodule TavernWeb.Plugs.ClientIp do
   end
 
   defp forwarded_ip(peer_ip, headers, trusted_header) do
-    case List.keyfind(headers, trusted_header, 0) do
-      {_name, value} ->
-        value
-        |> String.split(",", parts: 2)
-        |> hd()
-        |> String.trim()
-        |> String.to_charlist()
-        |> :inet.parse_address()
-        |> case do
-          {:ok, ip_address} -> ip_address
-          {:error, _reason} -> peer_ip
-        end
-
-      nil ->
-        peer_ip
+    with {_name, value} <- List.keyfind(headers, trusted_header, 0),
+         {:ok, ip_address} <-
+           value |> String.trim() |> String.to_charlist() |> :inet.parse_address() do
+      ip_address
+    else
+      _ -> peer_ip
     end
   end
 end
