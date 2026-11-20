@@ -14,7 +14,7 @@
       "cpu": 500,
       "memoryMB": 512,
       "networkMode": "bridge",
-      "routes": [{ "access": "tailnet" }],
+      "routes": [{ "host": "tavern.danielfgray.com" }],
       "environment": [
         { "name": "PHX_SERVER", "value": "true" },
         { "name": "PORT", "value": "4000" },

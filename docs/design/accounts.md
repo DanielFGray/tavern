@@ -100,7 +100,7 @@ The login, registration, password-reset and invite-request limits count requests
 
 The cartridge sets the header to `x-real-ip`. On a public route Traefik is the only proxy; it writes `X-Real-Ip` from the socket address and drops any value the client sent (roamancer `tools/alchemy/platform/ingress/README.md:10`). `X-Forwarded-For` is not used: a client can write it, and no platform document says Traefik overwrites it.
 
-While the route is a tailnet route, `X-Real-Ip` is cynic's address (same README line), so all tailnet members share one limiter bucket. That is accepted until the route goes public.
+Production's route is the public host `tavern.danielfgray.com` (Traefik's `web` entry point, with no Cloudflare proxy in front), where `X-Real-Ip` is the client's socket address. The staged copy stays on a tailnet route, where `X-Real-Ip` is cynic's address (same README line), so every staged visitor shares one limiter bucket.
 
 ## Email verification
 
