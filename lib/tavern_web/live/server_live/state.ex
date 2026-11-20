@@ -3,7 +3,7 @@ defmodule TavernWeb.ServerLive.State do
 
   use TavernWeb, :html
 
-  import Phoenix.Component, only: [assign: 3, to_form: 2]
+  import Phoenix.Component, only: [assign: 3]
 
   import Phoenix.LiveView,
     only: [
@@ -21,6 +21,7 @@ defmodule TavernWeb.ServerLive.State do
   alias Tavern.Chat.Topics
   alias TavernWeb.ServerLive.ChannelEditor
   alias TavernWeb.ServerLive.ForumNav
+  alias TavernWeb.ServerLive.Pane
   alias TavernWeb.ServerLive.ThreadNav
 
   def queue_initial_hydration(socket) do
@@ -87,83 +88,104 @@ defmodule TavernWeb.ServerLive.State do
     |> assign(:members_ready?, true)
   end
 
-  def assign_message_form(socket) do
-    form =
-      %Message{}
-      |> Chat.change_message(%{body: ""})
-      |> to_form(as: :message)
+  def pane(socket, kind), do: Map.fetch!(socket.assigns, Pane.assign_key(kind))
 
-    assign(socket, :message_form, form)
+  def conversation(socket, kind), do: Map.fetch!(socket.assigns, Pane.conversation_key(kind))
+
+  @doc "The kind of the pane showing conversation `channel_id`, or nil when no pane shows it."
+  def pane_showing(socket, channel_id) do
+    Enum.find(Pane.kinds(), &match?(%{id: ^channel_id}, conversation(socket, &1)))
   end
 
-  def assign_thread_message_form(socket) do
-    form =
-      %Message{}
-      |> Chat.change_message(%{body: ""})
-      |> to_form(as: :message)
-
-    assign(socket, :thread_message_form, form)
+  @doc """
+  Changes the pane of `kind` with `fun`. In a text channel the thread pane renders inside its
+  starter's row of the channel stream, and a stream row renders only when it is inserted, so a
+  thread pane change inserts that row again, with the thread summaries its reply pill reads.
+  """
+  def update_pane(socket, kind, fun) do
+    socket
+    |> assign(Pane.assign_key(kind), fun.(pane(socket, kind)))
+    |> rerender_pane_host(kind)
   end
 
-  def load_channel(socket, channel, opts \\ []) do
+  def reset_form(socket, kind), do: update_pane(socket, kind, &%{&1 | form: Pane.blank_form()})
+
+  def refresh_typing_users(socket, kind) do
+    users =
+      case conversation(socket, kind) do
+        %{id: id} -> Chat.list_typing_users(socket.assigns.current_scope, id)
+        nil -> []
+      end
+
+    update_pane(socket, kind, &%{&1 | typing_users: users})
+  end
+
+  defp rerender_pane_host(socket, :channel), do: socket
+
+  defp rerender_pane_host(socket, :thread) do
+    socket
+    |> refresh_thread_summaries_for_active_channel()
+    |> rerender_active_thread_panel()
+  end
+
+  # Streams the conversation's messages into the pane of `kind`, marks them read and reads the
+  # pane's rights, typing users and count. The caller has already subscribed to the conversation,
+  # so a message posted while the list loads still arrives, and renders the pane's host itself.
+  defp load_pane(socket, kind, conversation) do
+    scope = socket.assigns.current_scope
+
     messages =
-      case Chat.list_messages(socket.assigns.current_scope, channel.id) do
+      case Chat.list_messages(scope, conversation.id) do
         {:ok, messages} -> messages
         {:error, :not_found} -> []
       end
 
-    last_message = List.last(messages)
-    Chat.mark_channel_read(socket.assigns.current_scope, channel.id, last_message)
-    thread_summaries = Chat.thread_summaries_for_channel(socket.assigns.current_scope, channel.id)
+    Chat.mark_channel_read(scope, conversation.id, List.last(messages))
 
-    visible_channels = Keyword.get(opts, :visible_channels)
-    refreshed_channels = Keyword.get(opts, :channels)
-
-    visible_channels =
-      visible_channels || Chat.list_channels(socket.assigns.current_scope)
-
-    refreshed_channels =
-      refreshed_channels || Enum.filter(visible_channels, &visible_text_channel?/1)
-
-    refreshed_active_channel = Enum.find(refreshed_channels, &(&1.id == channel.id)) || channel
-
-    unread_counts =
-      Keyword.get(opts, :unread_counts) ||
-        Chat.unread_counts(socket.assigns.current_scope, ids(refreshed_channels))
-
-    unread_mentions =
-      Keyword.get(opts, :unread_mentions) ||
-        Chat.unread_mentions(socket.assigns.current_scope, ids(refreshed_channels))
-
-    active_thread = reloaded_active_thread(socket, refreshed_active_channel)
+    pane = %{
+      Pane.new(kind)
+      | abilities: Chat.channel_abilities(scope, conversation.id),
+        typing_users: Chat.list_typing_users(scope, conversation.id),
+        message_count: Pane.count_messages(scope, kind, conversation.id),
+        empty?: messages == []
+    }
 
     socket
-    |> assign(:channels, refreshed_channels)
-    |> assign(:channel_sections, Chat.build_channel_tree(visible_channels))
-    |> assign(:navigation_ready?, true)
-    |> assign(:mobile_sidebar_open?, false)
-    |> assign(:mobile_members_open?, false)
-    |> close_message_ui()
-    |> assign(:active_channel, refreshed_active_channel)
-    |> assign(:thread_summaries, thread_summaries)
-    |> assign(
-      :typing_users,
-      Chat.list_typing_users(socket.assigns.current_scope, refreshed_active_channel.id)
-    )
-    |> assign(
-      :channel_abilities,
-      Chat.channel_abilities(socket.assigns.current_scope, refreshed_active_channel.id)
-    )
-    |> assign(
-      :message_count,
-      Chat.message_count(socket.assigns.current_scope, refreshed_active_channel.id)
-    )
-    |> assign(:messages_empty?, messages == [])
-    |> assign(:unread_counts, unread_counts)
-    |> assign(:unread_mentions, unread_mentions)
-    |> stream(:messages, messages, reset: true)
-    |> ForumNav.load(refreshed_active_channel)
-    |> sync_channel_subscriptions()
+    |> assign(Pane.assign_key(kind), pane)
+    |> stream(Pane.stream_name(kind), messages, reset: true)
+  end
+
+  defp reset_pane(socket, kind) do
+    socket
+    |> assign(Pane.assign_key(kind), Pane.new(kind))
+    |> stream(Pane.stream_name(kind), [], reset: true)
+  end
+
+  def load_channel(socket, channel) do
+    scope = socket.assigns.current_scope
+    visible_channels = Chat.list_channels(scope)
+    channels = Enum.filter(visible_channels, &visible_text_channel?/1)
+    channel = Enum.find(channels, &(&1.id == channel.id)) || channel
+    active_thread = reloaded_active_thread(socket, channel)
+
+    socket =
+      socket
+      |> assign(:channels, channels)
+      |> assign(:channel_sections, Chat.build_channel_tree(visible_channels))
+      |> assign(:navigation_ready?, true)
+      |> assign(:mobile_sidebar_open?, false)
+      |> assign(:mobile_members_open?, false)
+      |> close_message_ui()
+      |> assign(:active_channel, channel)
+      |> sync_channel_subscriptions()
+      |> load_pane(:channel, channel)
+
+    # The unread counts are read after the load marks the channel read.
+    socket
+    |> assign(:thread_summaries, Chat.thread_summaries_for_channel(scope, channel.id))
+    |> assign(:unread_counts, Chat.unread_counts(scope, ids(channels)))
+    |> assign(:unread_mentions, Chat.unread_mentions(scope, ids(channels)))
+    |> ForumNav.load(channel)
     |> maybe_restore_thread(active_thread)
   end
 
@@ -190,7 +212,7 @@ defmodule TavernWeb.ServerLive.State do
     |> assign(:navigation_ready?, true)
     |> assign(:active_channel, active_channel)
     |> close_message_ui()
-    |> assign(:channel_abilities, active_channel_abilities(socket, active_channel))
+    |> update_pane(:channel, &%{&1 | abilities: active_channel_abilities(socket, active_channel)})
     |> sync_channel_subscriptions()
     |> ThreadNav.reload()
     |> ForumNav.reload()
@@ -206,75 +228,59 @@ defmodule TavernWeb.ServerLive.State do
 
   def thread_panel_dom_id(thread), do: "thread-panel-#{thread.starter_message_id}"
 
-  def maybe_insert_message(socket, message) do
-    active_channel = socket.assigns.active_channel
-
-    cond do
-      is_nil(active_channel) ->
-        socket
-
-      active_channel.id != message.channel_id ->
-        socket
-
-      true ->
-        socket
-        |> assign(:messages_empty?, false)
-        |> assign(:message_count, socket.assigns.message_count + 1)
-        |> stream_insert(:messages, message)
-        |> push_entered(["messages-#{message.id}"])
+  @doc """
+  Records whether the view's tab is visible. A tab that becomes visible again shows its open
+  conversations, so each is marked read up to its latest message.
+  """
+  def set_tab_visible(socket, visible?) do
+    if visible? and not socket.assigns.tab_visible? do
+      for kind <- Pane.kinds(), %{id: id} <- [conversation(socket, kind)] do
+        Chat.mark_channel_read(socket.assigns.current_scope, id)
+      end
     end
+
+    assign(socket, :tab_visible?, visible?)
   end
 
-  def maybe_insert_thread_message(socket, message) do
-    active_thread = socket.assigns.active_thread
-
-    cond do
-      is_nil(active_thread) ->
+  @doc """
+  Adds a new message to the pane showing its conversation, and animates it in. While the tab is
+  visible the member is reading that conversation, so it is marked read up to the message, and
+  its sidebar badge does not return on reload. In a hidden tab it stays unread, so the member's
+  other devices keep the badge, until `set_tab_visible/2` marks it read.
+  """
+  def insert_message(socket, %Message{channel_id: channel_id} = message) do
+    case pane_showing(socket, channel_id) do
+      nil ->
         socket
 
-      active_thread.id != message.channel_id ->
-        socket
+      kind ->
+        if socket.assigns.tab_visible?,
+          do: Chat.mark_channel_read(socket.assigns.current_scope, channel_id, message)
 
-      true ->
-        starter_message_id = active_thread.starter_message_id
-        # The member is reading the open thread, so its sidebar badge must not return on reload.
-        Chat.mark_channel_read(socket.assigns.current_scope, active_thread.id, message)
+        stream_name = Pane.stream_name(kind)
 
         socket
-        |> assign(:thread_messages_empty?, false)
-        |> assign(:thread_message_count, socket.assigns.thread_message_count + 1)
-        |> stream_insert(:thread_messages, message)
-        |> push_entered(["thread_messages-#{message.id}"])
-        |> refresh_thread_summaries_for_active_channel()
-        |> rerender_messages([starter_message_id])
+        |> stream_insert(stream_name, message)
+        |> push_entered(["#{stream_name}-#{message.id}"])
+        |> update_pane(kind, &%{&1 | empty?: false, message_count: &1.message_count + 1})
     end
   end
 
   @doc """
-  Shows a changed message in the stream that lists it: the open thread's or the open channel's.
-  A change to a thread message can change the reply count (a delete), so the count and the
-  channel's thread summaries are read again, and the starter's row, which holds the thread,
-  renders again.
+  Shows a changed message in the pane that lists it. A change can change the count (a delete), so
+  the count is read again.
   """
   def stream_update_message(socket, %Message{channel_id: channel_id} = message) do
-    case socket.assigns do
-      %{active_thread: %{id: ^channel_id} = thread} ->
+    case pane_showing(socket, channel_id) do
+      nil ->
         socket
-        |> stream_message(:thread_messages, message)
-        |> assign(
-          :thread_message_count,
-          Chat.thread_reply_count(socket.assigns.current_scope, thread.id)
-        )
-        |> refresh_thread_summaries_for_active_channel()
-        |> rerender_active_thread_panel()
 
-      %{active_channel: %{id: ^channel_id}} ->
-        socket
-        |> stream_message(:messages, message)
-        |> assign(:message_count, Chat.message_count(socket.assigns.current_scope, channel_id))
+      kind ->
+        count = Pane.count_messages(socket.assigns.current_scope, kind, channel_id)
 
-      _other ->
         socket
+        |> stream_message(Pane.stream_name(kind), message)
+        |> update_pane(kind, &%{&1 | message_count: count})
     end
   end
 
@@ -338,13 +344,8 @@ defmodule TavernWeb.ServerLive.State do
   event acts only on a message found here.
   """
   def fetch_open_message(socket, message_id) do
-    open_ids =
-      [socket.assigns.active_channel, socket.assigns[:active_thread]]
-      |> Enum.reject(&is_nil/1)
-      |> Enum.map(& &1.id)
-
     with %Message{} = message <- Chat.get_message(socket.assigns.current_scope, message_id),
-         true <- message.channel_id in open_ids do
+         kind when not is_nil(kind) <- pane_showing(socket, message.channel_id) do
       {:ok, message}
     else
       _ -> :error
@@ -457,44 +458,15 @@ defmodule TavernWeb.ServerLive.State do
       |> assign(:active_thread, thread)
       |> sync_channel_subscriptions()
 
-    thread_messages =
-      case Chat.list_messages(socket.assigns.current_scope, thread.id) do
-        {:ok, messages} -> messages
-        _ -> []
-      end
-
-    last_message = List.last(thread_messages)
     Chat.ensure_channel_memberships(socket.assigns.current_scope, [thread])
-    Chat.mark_channel_read(socket.assigns.current_scope, thread.id, last_message)
 
     socket
-    |> assign(
-      :thread_typing_users,
-      Chat.list_typing_users(socket.assigns.current_scope, thread.id)
-    )
     |> keep_reply_in(thread.id)
     |> assign(:poll_form, nil)
-    |> assign_thread_controls(thread)
-    |> assign(
-      :thread_message_count,
-      Chat.thread_reply_count(socket.assigns.current_scope, thread.id)
-    )
-    |> assign(:thread_messages_empty?, thread_messages == [])
-    |> assign_thread_message_form()
-    |> stream(:thread_messages, thread_messages, reset: true)
+    |> load_pane(:thread, thread)
     |> ThreadNav.mark_thread_seen(thread.id)
     |> ThreadNav.refresh_thread_following()
     |> rerender_messages([previous_starter_message_id, thread.starter_message_id])
-  end
-
-  @doc """
-  Sets the open thread to `thread` and decides again what the viewer may do in it: reply, react,
-  manage messages, archive or unarchive, lock or unlock. A lock or archive by anyone changes them.
-  """
-  def assign_thread_controls(socket, thread) do
-    socket
-    |> assign(:active_thread, thread)
-    |> assign(:thread_abilities, Chat.channel_abilities(socket.assigns.current_scope, thread.id))
   end
 
   defp active_channel_abilities(_socket, nil), do: Chat.no_channel_abilities()
@@ -502,14 +474,18 @@ defmodule TavernWeb.ServerLive.State do
   defp active_channel_abilities(socket, channel),
     do: Chat.channel_abilities(socket.assigns.current_scope, channel.id)
 
-  @doc "Reloads the open thread when `channel_id` is it, so its header and controls follow."
+  @doc """
+  Reloads the open thread when `channel_id` is it, so its header follows, and decides again what
+  the viewer may do in it: a lock or archive by anyone changes that.
+  """
   def refresh_active_thread(socket, channel_id) do
     with %{id: ^channel_id} <- socket.assigns.active_thread,
          %{} = thread <- Chat.get_thread(socket.assigns.current_scope, channel_id) do
+      abilities = Chat.channel_abilities(socket.assigns.current_scope, thread.id)
+
       socket
-      |> assign_thread_controls(thread)
-      |> refresh_thread_summaries_for_active_channel()
-      |> rerender_active_thread_panel()
+      |> assign(:active_thread, thread)
+      |> update_pane(:thread, &%{&1 | abilities: abilities})
     else
       _ -> socket
     end
@@ -528,15 +504,10 @@ defmodule TavernWeb.ServerLive.State do
 
     socket
     |> assign(:active_thread, nil)
-    |> assign(:thread_typing_users, [])
     |> keep_reply_in(socket.assigns.active_channel && socket.assigns.active_channel.id)
     |> assign(:poll_form, nil)
-    |> assign(:thread_abilities, Chat.no_channel_abilities())
     |> assign(:thread_following?, false)
-    |> assign(:thread_message_count, 0)
-    |> assign(:thread_messages_empty?, true)
-    |> assign_thread_message_form()
-    |> stream(:thread_messages, [], reset: true)
+    |> reset_pane(:thread)
     |> rerender_messages([previous_starter_message_id])
     |> sync_channel_subscriptions()
     |> ForumNav.reload()
@@ -592,34 +563,6 @@ defmodule TavernWeb.ServerLive.State do
     |> assign(:editing_form, nil)
     |> close_thread()
     |> load_channel(channel)
-  end
-
-  def refresh_typing_users(socket) do
-    case socket.assigns.active_channel do
-      %{} = channel ->
-        assign(
-          socket,
-          :typing_users,
-          Chat.list_typing_users(socket.assigns.current_scope, channel.id)
-        )
-
-      nil ->
-        assign(socket, :typing_users, [])
-    end
-  end
-
-  def refresh_thread_typing_users(socket) do
-    case socket.assigns.active_thread do
-      %{} = thread ->
-        assign(
-          socket,
-          :thread_typing_users,
-          Chat.list_typing_users(socket.assigns.current_scope, thread.id)
-        )
-
-      nil ->
-        assign(socket, :thread_typing_users, [])
-    end
   end
 
   defp sync_active_channel(socket, channels) do

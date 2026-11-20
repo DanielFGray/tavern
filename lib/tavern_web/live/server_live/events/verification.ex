@@ -7,6 +7,12 @@ defmodule TavernWeb.ServerLive.Events.Verification do
   alias Tavern.Accounts
   alias TavernWeb.ServerLive.State
 
+  @events ~w(
+    resend_verification
+  )
+
+  def events, do: @events
+
   def handle_event("resend_verification", _params, socket) do
     user = socket.assigns.current_user
 

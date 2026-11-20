@@ -20,7 +20,7 @@ defmodule TavernWeb.ServerComponents.Messages do
     <% end %>
     <%!-- An open thread holds the one composer on screen; a forum takes no top-level messages. --%>
     <%= unless Chat.Channel.forum?(@server.active_channel) or @server.active_thread do %>
-      <.typing_indicator users={@server.typing_users} id="channel-typing-indicator" />
+      <.typing_indicator users={@server.channel_pane.typing_users} id="channel-typing-indicator" />
       <TavernWeb.ServerComponents.Composer.channel_composer server={@server} />
     <% end %>
     """
@@ -77,7 +77,7 @@ defmodule TavernWeb.ServerComponents.Messages do
           id="channel-message-count"
           class="hidden rounded-md bg-base-100 px-2 py-1 font-medium sm:inline-flex"
         >
-          {@server.message_count} messages
+          {@server.channel_pane.message_count} messages
         </span>
         <span class="hidden items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-1 text-emerald-300 sm:inline-flex">
           <span class="size-2 rounded-full bg-emerald-400" /> online
@@ -97,7 +97,7 @@ defmodule TavernWeb.ServerComponents.Messages do
       phx-hook="MessageListHook"
     >
       <div
-        :if={@server.messages_empty?}
+        :if={@server.channel_pane.empty?}
         class="mx-4 my-6 rounded-lg border border-dashed border-base-300 bg-base-100 p-6 text-left"
       >
         <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-base-content/50">
@@ -519,7 +519,8 @@ defmodule TavernWeb.ServerComponents.Messages do
 
       <button
         :if={
-          not @rights.thread? and is_nil(@thread) and @server.channel_abilities.create_public_threads
+          not @rights.thread? and is_nil(@thread) and
+            @server.channel_pane.abilities.create_public_threads
         }
         type="button"
         phx-click="create_thread"
@@ -576,7 +577,7 @@ defmodule TavernWeb.ServerComponents.Messages do
           </button>
         <% else %>
           <button
-            :if={not @rights.thread? and @server.channel_abilities.create_public_threads}
+            :if={not @rights.thread? and @server.channel_pane.abilities.create_public_threads}
             type="button"
             phx-click="create_thread"
             phx-value-id={@message.id}

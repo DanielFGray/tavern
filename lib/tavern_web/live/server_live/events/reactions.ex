@@ -7,6 +7,15 @@ defmodule TavernWeb.ServerLive.Events.Reactions do
   alias Tavern.Chat
   alias TavernWeb.ServerLive.State
 
+  @events ~w(
+    toggle_reaction
+    toggle_custom_reaction
+    toggle_reaction_picker
+    close_reaction_picker
+  )
+
+  def events, do: @events
+
   def handle_event("toggle_reaction", %{"id" => message_id, "emoji" => emoji_unicode}, socket) do
     with {:ok, message} <- State.fetch_open_message(socket, message_id),
          {:ok, updated_message} <-

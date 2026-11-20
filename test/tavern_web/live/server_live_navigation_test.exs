@@ -148,6 +148,49 @@ defmodule TavernWeb.ServerLiveNavigationTest do
     refute has_element?(view, "#channel-unread-engineering")
   end
 
+  describe "a message that arrives in the open channel" do
+    setup %{conn: conn} do
+      Bootstrap.ensure_seed_data!()
+      conn = log_in_member_user(conn)
+      {:ok, view, _html} = live_hydrated(conn, ~p"/?channel=general")
+      sender = user_fixture(%{email: "live-reader@example.com", username: "live_reader"})
+      %{view: view, sender: sender, general: channel_by_slug!("general")}
+    end
+
+    test "stays read after leaving the channel", ctx do
+      post_live(ctx)
+      leave_general(ctx.view)
+      refute has_element?(ctx.view, "#channel-unread-general")
+    end
+
+    test "stays unread while the tab is hidden", ctx do
+      render_hook(ctx.view, "tab_visibility", %{"visible" => false})
+      post_live(ctx)
+      leave_general(ctx.view)
+      assert has_element?(ctx.view, "#channel-unread-general")
+    end
+
+    test "is marked read when the tab becomes visible again", ctx do
+      render_hook(ctx.view, "tab_visibility", %{"visible" => false})
+      post_live(ctx)
+      render_hook(ctx.view, "tab_visibility", %{"visible" => true})
+      leave_general(ctx.view)
+      refute has_element?(ctx.view, "#channel-unread-general")
+    end
+
+    defp post_live(ctx) do
+      {:ok, _message} =
+        Chat.create_message(scope_for(ctx.sender), ctx.general.id, %{body: "seen live"})
+
+      _ = :sys.get_state(ctx.view.pid)
+    end
+
+    defp leave_general(view) do
+      view |> element("#channel-link-engineering") |> render_click()
+      assert_patch(view, ~p"/?channel=engineering")
+    end
+  end
+
   test "shows unread mention indicator for inactive channel mentions and clears it on visit", %{
     conn: conn
   } do

@@ -8,6 +8,7 @@ defmodule TavernWeb.ServerLive do
   alias Tavern.Chat.UserNotificationSetting
   alias TavernWeb.ServerLive.ChannelEditor
   alias TavernWeb.ServerLive.Events
+  alias TavernWeb.ServerLive.Pane
   alias TavernWeb.ServerLive.State
   alias TavernWeb.Live.SharedHelpers
 
@@ -39,6 +40,8 @@ defmodule TavernWeb.ServerLive do
       |> assign(:composer_commands_json, "[]")
       |> assign(:unread_counts, %{})
       |> assign(:unread_mentions, %{})
+      # Until the client reports, the view counts as seen (first render, LiveView tests).
+      |> assign(:tab_visible?, true)
       |> assign(:navigation_ready?, false)
       |> assign(:members_ready?, false)
       |> assign(:mobile_sidebar_open?, false)
@@ -49,28 +52,20 @@ defmodule TavernWeb.ServerLive do
       |> assign(:message_action_menu_id, nil)
       |> assign(:delete_confirmation_message_id, nil)
       |> assign(:active_channel, nil)
-      |> assign(:channel_abilities, Chat.no_channel_abilities())
-      |> assign(:thread_abilities, Chat.no_channel_abilities())
+      |> assign(:channel_pane, Pane.new(:channel))
+      |> assign(:thread_pane, Pane.new(:thread))
       |> assign(:forum, nil)
       |> assign(:reply_to_message, nil)
       |> assign(:poll_form, nil)
       |> assign(:editing_message_id, nil)
       |> assign(:editing_form, nil)
-      |> assign(:message_count, 0)
-      |> assign(:messages_empty?, true)
       |> assign(:thread_summaries, %{})
-      |> assign(:typing_users, [])
-      |> assign(:thread_typing_users, [])
       |> assign(:typing_tokens, %{})
       |> assign(:typing_token_seq, 0)
       |> assign(:active_thread, nil)
       |> assign(:thread_following?, false)
       |> assign(:followed_threads, [])
       |> assign(:thread_browser, nil)
-      |> assign(:thread_message_count, 0)
-      |> assign(:thread_messages_empty?, true)
-      |> State.assign_message_form()
-      |> State.assign_thread_message_form()
       |> ChannelEditor.init()
       |> stream(:messages, [], reset: true)
       |> stream(:thread_messages, [], reset: true)

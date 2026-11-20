@@ -5,6 +5,18 @@ defmodule TavernWeb.ServerLive.Events.Notifications do
   import Phoenix.LiveView, only: [put_flash: 3, push_event: 3]
 
   alias Tavern.Chat
+  alias TavernWeb.ServerLive.State
+
+  @events ~w(
+    enable_desktop_mentions
+    disable_desktop_mentions
+    tab_visibility
+  )
+
+  def events, do: @events
+
+  def handle_event("tab_visibility", params, socket),
+    do: {:noreply, State.set_tab_visible(socket, params["visible"] == true)}
 
   def handle_event("enable_desktop_mentions", _params, socket) do
     case Chat.update_user_notification_setting(socket.assigns.current_scope, %{

@@ -142,3 +142,35 @@ test('opening and closing a thread at the bottom keeps the starter in place', as
   const { message: fresh } = await command(request, 'create_message', { channel_slug: slug, username: 'e2e_user', body: `fresh ${stamp}` })
   await expect(page.locator(`#messages-${fresh.id}`)).toBeInViewport()
 })
+
+// The open thread renders inside its starter's row of the channel stream, so this guards that a
+// thread typing change renders that row again.
+test("another member's typing shows in the open thread", async ({ page, request, browser }) => {
+  const stamp = Date.now()
+  await login(page)
+  const starter = await post(request, `typing starter ${stamp}`)
+  await page.locator(`#message-list [data-markdown-source="typing starter ${stamp}"]`).click()
+  await page.locator(`#create-thread-${starter.id}`).click()
+  await expect(page.locator(`#thread-panel-${starter.id}`)).toBeVisible()
+  await page.locator(`#close-thread-${starter.id}`).click()
+  const chip = page.locator(`#thread-summary-${starter.id}`)
+  await expect(chip).toHaveAttribute('href', /thread=/)
+  const threadPath = await chip.getAttribute('href')
+  await chip.click()
+  await expect(page.locator(`#thread-panel-${starter.id}`)).toBeVisible()
+
+  const typistContext = await browser.newContext()
+  const typist = await typistContext.newPage()
+  const url = new URL('/api/testing/command', baseURL)
+  url.searchParams.set('command', 'login')
+  url.searchParams.set('payload', JSON.stringify({ email: 'e2e-typist@example.com', username: 'e2e_typist', display_name: 'Thread Typist', password: 'supersecurepass', next: '/?channel=general' }))
+  await typist.goto(url.toString())
+  await expect(typist.locator('#server-shell[data-hydrated="true"]')).toBeVisible()
+  await typist.goto(new URL(threadPath, baseURL).toString())
+  const composer = typist.locator('#thread-message-form [contenteditable="true"]').first()
+  await composer.click()
+  await composer.pressSequentially('almost done')
+
+  await expect(page.locator(`#thread-typing-indicator-${starter.id}`)).toContainText('Thread Typist is typing')
+  await typistContext.close()
+})

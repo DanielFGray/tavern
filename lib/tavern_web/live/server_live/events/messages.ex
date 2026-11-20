@@ -1,20 +1,47 @@
 defmodule TavernWeb.ServerLive.Events.Messages do
   @moduledoc false
 
-  import Phoenix.Component, only: [assign: 3, to_form: 1, to_form: 2]
+  import Phoenix.Component, only: [assign: 3, to_form: 2]
   import Phoenix.LiveView, only: [put_flash: 3, push_event: 3]
 
   alias Tavern.Accounts
   alias Tavern.Chat
   alias TavernWeb.ServerComponents.Helpers, as: RowHelpers
   alias TavernWeb.ServerLive.Events.Helpers
+  alias TavernWeb.ServerLive.Pane
   alias TavernWeb.ServerLive.State
+  alias TavernWeb.ServerLive.ThreadNav
+
+  # Each composer sends its own event names (`data-composer-target` picks them in
+  # `RichComposerHook`), so the name says which pane the event acts on.
+  @send_events %{"send_message" => :channel, "send_thread_message" => :thread}
+  @typing_ping_events %{"typing_ping" => :channel, "typing_ping_thread" => :thread}
+  @typing_stop_events %{"typing_stop" => :channel, "typing_stop_thread" => :thread}
+
+  @events ~w(
+    toggle_message_controls
+    toggle_message_action_menu
+    close_message_action_menu
+    confirm_delete_message
+    cancel_delete_message
+    reply_message
+    cancel_reply
+    edit_message
+    cancel_edit
+    save_edit
+    delete_message
+    suppress_embeds
+  )
+
+  def events do
+    @events ++
+      Map.keys(@send_events) ++ Map.keys(@typing_ping_events) ++ Map.keys(@typing_stop_events)
+  end
 
   def handle_info({:message_created, message}, socket) do
     socket =
       socket
-      |> State.maybe_insert_message(message)
-      |> State.maybe_insert_thread_message(message)
+      |> State.insert_message(message)
       |> State.maybe_push_mention_notification(message)
       |> update_unread_state(message)
 
@@ -23,19 +50,17 @@ defmodule TavernWeb.ServerLive.Events.Messages do
 
   def handle_info({type, channel_id, user_id}, socket)
       when type in [:typing_started, :typing_stopped] do
-    socket =
-      socket
-      |> maybe_refresh_typing_users(channel_id, type, user_id)
-      |> maybe_refresh_thread_typing_users(channel_id, type, user_id)
-
-    {:noreply, socket}
+    case State.pane_showing(socket, channel_id) do
+      nil -> {:noreply, socket}
+      kind -> {:noreply, update_typing(socket, kind, type, user_id)}
+    end
   end
 
   # A typist who stops pinging without a stop (a bot, a crashed browser) leaves the list when the
   # timer of their last ping fires. A timer of an earlier ping finds a newer token and does nothing.
-  def handle_info({:typing_expired, assign_key, user_id, token}, socket) do
-    if socket.assigns.typing_tokens[{assign_key, user_id}] == token do
-      {:noreply, drop_typist(socket, assign_key, user_id)}
+  def handle_info({:typing_expired, kind, user_id, token}, socket) do
+    if socket.assigns.typing_tokens[{kind, user_id}] == token do
+      {:noreply, drop_typist(socket, kind, user_id)}
     else
       {:noreply, socket}
     end
@@ -152,92 +177,26 @@ defmodule TavernWeb.ServerLive.Events.Messages do
      |> State.rerender_messages([previous_delete_id, socket.assigns.message_action_menu_id])}
   end
 
-  def handle_event("send_message", %{"message" => message_params}, socket) do
-    cond do
-      is_nil(socket.assigns.active_channel) ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Choose a channel before sending a message.")
-         |> State.assign_message_form()}
+  def handle_event(event, %{"message" => message_params}, socket)
+      when is_map_key(@send_events, event),
+      do: {:noreply, send_message(socket, @send_events[event], message_params)}
 
-      not socket.assigns.channel_abilities.send_messages ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "You do not have permission to send messages in that channel.")
-         |> State.assign_message_form()}
-
-      true ->
-        case Chat.create_message(
-               socket.assigns.current_scope,
-               socket.assigns.active_channel.id,
-               State.maybe_put_reply(socket, message_params)
-             ) do
-          {:ok, message} ->
-            socket = push_event(socket, "composer:clear", %{target: "channel"})
-
-            {:noreply,
-             socket
-             |> State.assign_message_form()
-             |> State.clear_reply_to_message()
-             |> State.refresh_typing_users()
-             |> State.maybe_insert_message(message)}
-
-          {:error, {:slowmode, seconds_left}} ->
-            {:noreply, put_flash(socket, :error, Helpers.slowmode_message(seconds_left))}
-
-          {:error, reason} when reason in [:forbidden, :not_found] ->
-            {:noreply,
-             socket
-             |> put_flash(
-               :error,
-               "You do not have permission to send that message in this channel."
-             )
-             |> State.assign_message_form()}
-
-          {:error, changeset} ->
-            {:noreply, assign(socket, :message_form, to_form(changeset))}
-        end
+  def handle_event(event, _params, socket) when is_map_key(@typing_ping_events, event) do
+    case State.conversation(socket, @typing_ping_events[event]) do
+      %{id: id} -> _ = Chat.announce_typing(socket.assigns.current_scope, id)
+      nil -> :ok
     end
+
+    {:noreply, socket}
   end
 
-  def handle_event("typing_ping", _params, socket) do
-    case socket.assigns.active_channel do
-      %{} = channel ->
-        _ = Chat.announce_typing(socket.assigns.current_scope, channel.id)
-        {:noreply, socket}
+  def handle_event(event, _params, socket) when is_map_key(@typing_stop_events, event) do
+    kind = @typing_stop_events[event]
 
-      nil ->
-        {:noreply, socket}
-    end
-  end
-
-  def handle_event("typing_stop", _params, socket) do
-    case socket.assigns.active_channel do
-      %{} = channel ->
-        _ = Chat.clear_typing(socket.assigns.current_scope, channel.id)
-        {:noreply, State.refresh_typing_users(socket)}
-
-      nil ->
-        {:noreply, socket}
-    end
-  end
-
-  def handle_event("typing_ping_thread", _params, socket) do
-    case socket.assigns.active_thread do
-      %{} = thread ->
-        _ = Chat.announce_typing(socket.assigns.current_scope, thread.id)
-        {:noreply, socket}
-
-      nil ->
-        {:noreply, socket}
-    end
-  end
-
-  def handle_event("typing_stop_thread", _params, socket) do
-    case socket.assigns.active_thread do
-      %{} = thread ->
-        _ = Chat.clear_typing(socket.assigns.current_scope, thread.id)
-        {:noreply, State.refresh_thread_typing_users(socket)}
+    case State.conversation(socket, kind) do
+      %{id: id} ->
+        _ = Chat.clear_typing(socket.assigns.current_scope, id)
+        {:noreply, State.refresh_typing_users(socket, kind)}
 
       nil ->
         {:noreply, socket}
@@ -431,23 +390,54 @@ defmodule TavernWeb.ServerLive.Events.Messages do
       Chat.message_mentions_user?(message, current_user)
   end
 
-  defp maybe_refresh_typing_users(socket, channel_id, type, user_id) do
-    if socket.assigns.active_channel && socket.assigns.active_channel.id == channel_id do
-      update_typing_assign(socket, :typing_users, type, user_id)
-    else
-      socket
+  # The sender hears none of its own broadcasts, so this view applies what they tell the others:
+  # the new message, and the follow a reply in a thread adds.
+  defp send_message(socket, kind, message_params) do
+    noun = Pane.noun(kind)
+
+    case State.conversation(socket, kind) do
+      nil ->
+        refuse_send(socket, kind, "Open a #{noun} before sending a message.")
+
+      conversation ->
+        if Pane.can_send?(State.pane(socket, kind)) do
+          socket.assigns.current_scope
+          |> Chat.create_message(conversation.id, State.maybe_put_reply(socket, message_params))
+          |> case do
+            {:ok, message} ->
+              socket
+              |> push_event("composer:clear", %{target: Atom.to_string(kind)})
+              |> State.clear_reply_to_message()
+              |> State.reset_form(kind)
+              |> State.refresh_typing_users(kind)
+              |> State.insert_message(message)
+              |> ThreadNav.refresh_followed_threads()
+
+            {:error, {:slowmode, seconds_left}} ->
+              put_flash(socket, :error, Helpers.slowmode_message(seconds_left))
+
+            {:error, :forbidden} ->
+              refuse_send(socket, kind, no_send_permission(noun))
+
+            {:error, :not_found} ->
+              refuse_send(socket, kind, "That #{noun} is no longer available.")
+
+            {:error, changeset} ->
+              State.update_pane(socket, kind, &%{&1 | form: to_form(changeset, as: :message)})
+          end
+        else
+          refuse_send(socket, kind, no_send_permission(noun))
+        end
     end
   end
 
-  defp maybe_refresh_thread_typing_users(socket, channel_id, type, user_id) do
-    if socket.assigns.active_thread && socket.assigns.active_thread.id == channel_id do
-      update_typing_assign(socket, :thread_typing_users, type, user_id)
-    else
-      socket
-    end
-  end
+  defp no_send_permission(noun),
+    do: "You do not have permission to send messages in this #{noun}."
 
-  defp update_typing_assign(socket, assign_key, :typing_started, user_id) do
+  defp refuse_send(socket, kind, text),
+    do: socket |> put_flash(:error, text) |> State.reset_form(kind)
+
+  defp update_typing(socket, kind, :typing_started, user_id) do
     # The typer is decided by `Chat.start_typing`, and this socket subscribes only to channels it
     # may view. A typer who is not an active member has no member row to show.
     if user_id == socket.assigns.current_user.id do
@@ -459,31 +449,36 @@ defmodule TavernWeb.ServerLive.Events.Messages do
 
         user ->
           socket
-          |> assign(assign_key, merge_typing_user(socket.assigns[assign_key] || [], user))
-          |> expire_typist_later(assign_key, user_id)
+          |> State.update_pane(
+            kind,
+            &%{&1 | typing_users: merge_typing_user(&1.typing_users, user)}
+          )
+          |> expire_typist_later(kind, user_id)
       end
     end
   end
 
-  defp update_typing_assign(socket, assign_key, :typing_stopped, user_id),
-    do: drop_typist(socket, assign_key, user_id)
+  defp update_typing(socket, kind, :typing_stopped, user_id),
+    do: drop_typist(socket, kind, user_id)
 
-  defp drop_typist(socket, assign_key, user_id) do
+  defp drop_typist(socket, kind, user_id) do
     socket
-    |> assign(assign_key, Enum.reject(socket.assigns[assign_key] || [], &(&1.id == user_id)))
-    |> assign(:typing_tokens, Map.delete(socket.assigns.typing_tokens, {assign_key, user_id}))
+    |> State.update_pane(kind, fn pane ->
+      %{pane | typing_users: Enum.reject(pane.typing_users, &(&1.id == user_id))}
+    end)
+    |> assign(:typing_tokens, Map.delete(socket.assigns.typing_tokens, {kind, user_id}))
   end
 
   # Typing lasts `Ephemeral.typing_ttl/0` seconds after the last ping. Each ping takes a new token
   # and starts a timer carrying it, so only the last ping's timer removes the typist.
-  defp expire_typist_later(socket, assign_key, user_id) do
+  defp expire_typist_later(socket, kind, user_id) do
     token = socket.assigns.typing_token_seq + 1
     ttl_ms = Tavern.Ephemeral.typing_ttl() * 1000
-    Process.send_after(self(), {:typing_expired, assign_key, user_id, token}, ttl_ms)
+    Process.send_after(self(), {:typing_expired, kind, user_id, token}, ttl_ms)
 
     socket
     |> assign(:typing_token_seq, token)
-    |> assign(:typing_tokens, Map.put(socket.assigns.typing_tokens, {assign_key, user_id}, token))
+    |> assign(:typing_tokens, Map.put(socket.assigns.typing_tokens, {kind, user_id}, token))
   end
 
   defp merge_typing_user(users, user) do

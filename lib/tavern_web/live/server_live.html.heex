@@ -2,8 +2,26 @@
   <div
     id="server-shell"
     data-hydrated={to_string(@navigation_ready? and @members_ready?)}
+    phx-hook=".TabVisibility"
     class="flex h-dvh flex-col overflow-x-clip overflow-y-hidden bg-base-300 text-base-content transition-colors duration-200 xl:flex-row"
   >
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".TabVisibility">
+      export default {
+        // A message that arrives while the tab is hidden stays unread, so the server must know
+        // whether anyone can see the view. The shell mounts once per view, in every channel kind.
+        mounted() {
+          this.report = () => this.pushEvent("tab_visibility", {visible: document.visibilityState === "visible"})
+          document.addEventListener("visibilitychange", this.report)
+          this.report()
+        },
+        reconnected() {
+          this.report()
+        },
+        destroyed() {
+          document.removeEventListener("visibilitychange", this.report)
+        }
+      }
+    </script>
     <TavernWeb.ServerComponents.mobile_overlays server={assigns} />
     <TavernWeb.ServerComponents.mobile_channel_drawer server={assigns} />
     <%!-- Outside the drawer: the drawer's transform would make it the popover's fixed frame. --%>

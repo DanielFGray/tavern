@@ -12,6 +12,21 @@ defmodule TavernWeb.ServerLive.Events.Polls do
   alias TavernWeb.ServerLive.Events.Helpers
   alias TavernWeb.ServerLive.State
 
+  @events ~w(
+    open_poll
+    cancel_poll
+    validate_poll
+    add_poll_option
+    remove_poll_option
+    create_poll
+    vote_poll
+    vote_poll_other
+    withdraw_poll_vote
+    close_poll
+  )
+
+  def events, do: @events
+
   def handle_info({event, message, _detail}, socket) when event in [:poll_voted, :poll_closed],
     do: {:noreply, State.stream_update_message(socket, message)}
 
@@ -48,8 +63,7 @@ defmodule TavernWeb.ServerLive.Events.Polls do
             {:noreply,
              socket
              |> put_poll_form(nil)
-             |> State.maybe_insert_message(message)
-             |> State.maybe_insert_thread_message(message)}
+             |> State.insert_message(message)}
 
           {:error, %Ecto.Changeset{}} ->
             {:noreply, put_poll_form(socket, PollComponents.poll_form(params, :insert))}

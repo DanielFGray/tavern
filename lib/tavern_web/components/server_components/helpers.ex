@@ -4,6 +4,7 @@ defmodule TavernWeb.ServerComponents.Helpers do
   use TavernWeb, :html
 
   alias Tavern.Chat
+  alias TavernWeb.ServerLive.Pane
 
   def message_timestamp(datetime), do: Calendar.strftime(datetime, "%b %-d at %H:%M")
 
@@ -222,23 +223,15 @@ defmodule TavernWeb.ServerComponents.Helpers do
   is the LiveView's assigns. `thread?` is true for a message in the open thread.
   """
   def message_rights(server, %{channel_id: channel_id}) do
-    case server.active_thread do
-      %{id: ^channel_id} ->
-        %{
-          thread?: true,
-          send?: server.thread_abilities.send_messages_in_threads,
-          react?: server.thread_abilities.add_reactions,
-          manage?: server.thread_abilities.manage_messages
-        }
+    thread? = match?(%{id: ^channel_id}, server.active_thread)
+    pane = if thread?, do: server.thread_pane, else: server.channel_pane
 
-      _other ->
-        %{
-          thread?: false,
-          send?: server.channel_abilities.send_messages,
-          react?: server.channel_abilities.add_reactions,
-          manage?: server.channel_abilities.manage_messages
-        }
-    end
+    %{
+      thread?: thread?,
+      send?: Pane.can_send?(pane),
+      react?: pane.abilities.add_reactions,
+      manage?: pane.abilities.manage_messages
+    }
   end
 
   def edited_message?(message), do: not is_nil(message.edited_at)

@@ -1,17 +1,36 @@
 defmodule TavernWeb.ServerLive.Events.Threads do
   @moduledoc false
 
-  import Phoenix.Component, only: [assign: 3, to_form: 2]
   use TavernWeb, :verified_routes
 
-  import Phoenix.LiveView, only: [put_flash: 3, push_event: 3, push_patch: 2]
+  import Phoenix.LiveView, only: [put_flash: 3, push_patch: 2]
 
   alias Tavern.Chat
-  alias TavernWeb.ServerLive.Events.Helpers
   alias TavernWeb.ServerLive.Events.Navigation
   alias TavernWeb.ServerLive.ForumNav
   alias TavernWeb.ServerLive.State
   alias TavernWeb.ServerLive.ThreadNav
+
+  @events ~w(
+    create_thread
+    open_thread
+    close_thread
+    archive_thread
+    unarchive_thread
+    lock_thread
+    unlock_thread
+    delete_thread
+    follow_thread
+    unfollow_thread
+    open_thread_browser
+    close_thread_browser
+    thread_browser_tab
+    thread_browser_search
+    thread_browser_more
+    open_browsed_thread
+  )
+
+  def events, do: @events
 
   def handle_info({:thread_message_created, message}, socket) do
     {:noreply,
@@ -97,56 +116,6 @@ defmodule TavernWeb.ServerLive.Events.Threads do
 
       {:error, _refusal} ->
         {:noreply, put_flash(socket, :error, "You cannot delete that thread.")}
-    end
-  end
-
-  def handle_event("send_thread_message", %{"message" => message_params}, socket) do
-    cond do
-      is_nil(socket.assigns.active_thread) ->
-        {:noreply, put_flash(socket, :error, "Open a thread before replying.")}
-
-      not socket.assigns.thread_abilities.send_messages_in_threads ->
-        {:noreply,
-         put_flash(socket, :error, "You do not have permission to send messages in this thread.")}
-
-      true ->
-        case Chat.create_message(
-               socket.assigns.current_scope,
-               socket.assigns.active_thread.id,
-               State.maybe_put_reply(socket, message_params)
-             ) do
-          {:ok, message} ->
-            socket = push_event(socket, "composer:clear", %{target: "thread"})
-
-            {:noreply,
-             socket
-             |> State.assign_thread_message_form()
-             |> State.clear_reply_to_message()
-             |> State.refresh_thread_typing_users()
-             |> State.maybe_insert_thread_message(message)
-             |> State.refresh_thread_summaries_for_active_channel()
-             |> ThreadNav.refresh_followed_threads()}
-
-          {:error, {:slowmode, seconds_left}} ->
-            {:noreply, put_flash(socket, :error, Helpers.slowmode_message(seconds_left))}
-
-          {:error, :forbidden} ->
-            {:noreply,
-             put_flash(
-               socket,
-               :error,
-               "You do not have permission to send messages in this thread."
-             )}
-
-          {:error, :not_found} ->
-            {:noreply, put_flash(socket, :error, "That thread is no longer available.")}
-
-          {:error, changeset} ->
-            {:noreply,
-             socket
-             |> assign(:thread_message_form, to_form(changeset, as: :message))
-             |> State.rerender_active_thread_panel()}
-        end
     end
   end
 

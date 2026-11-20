@@ -13,7 +13,30 @@ defmodule TavernWeb.ServerLive.Events do
   alias TavernWeb.ServerLive.Events.Threads
   alias TavernWeb.ServerLive.Events.Verification
 
-  @channel_editor_events ChannelEditor.events()
+  require Logger
+
+  @event_modules [
+    ChannelEditor,
+    Forums,
+    Messages,
+    Mobile,
+    Notifications,
+    Polls,
+    Reactions,
+    Threads,
+    Verification
+  ]
+
+  # Each event module lists the client events it handles in `events/0`, and an event name routes
+  # to the one module that lists it.
+  routes = for module <- @event_modules, event <- module.events(), do: {event, module}
+
+  case for({event, count} <- Enum.frequencies_by(routes, &elem(&1, 0)), count > 1, do: event) do
+    [] -> :ok
+    events -> raise ArgumentError, "events listed by two modules: #{inspect(events)}"
+  end
+
+  @event_routes Map.new(routes)
 
   def handle_params(params, uri, socket) do
     socket = Phoenix.Component.assign(socket, :url_params, params)
@@ -65,120 +88,15 @@ defmodule TavernWeb.ServerLive.Events do
       when event in [:reaction_added, :reaction_removed],
       do: {:noreply, socket}
 
-  def handle_event(event, params, socket)
+  def handle_event(event, params, socket) do
+    case Map.fetch(@event_routes, event) do
+      {:ok, module} ->
+        module.handle_event(event, params, socket)
 
-  def handle_event(event, params, socket) when event in @channel_editor_events do
-    ChannelEditor.handle_event(event, params, socket)
-  end
-
-  def handle_event(event, params, socket)
-      when event in [
-             "toggle_mobile_sidebar",
-             "close_mobile_sidebar",
-             "toggle_mobile_members",
-             "close_mobile_members",
-             "toggle_user_menu",
-             "close_user_menu"
-           ] do
-    Mobile.handle_event(event, params, socket)
-  end
-
-  def handle_event("resend_verification" = event, params, socket),
-    do: Verification.handle_event(event, params, socket)
-
-  def handle_event(event, params, socket)
-      when event in ["enable_desktop_mentions", "disable_desktop_mentions"] do
-    Notifications.handle_event(event, params, socket)
-  end
-
-  def handle_event(event, params, socket)
-      when event in [
-             "toggle_message_controls",
-             "toggle_message_action_menu",
-             "close_message_action_menu",
-             "confirm_delete_message",
-             "cancel_delete_message",
-             "send_message",
-             "typing_ping",
-             "typing_stop",
-             "reply_message",
-             "cancel_reply",
-             "edit_message",
-             "cancel_edit",
-             "save_edit",
-             "delete_message",
-             "suppress_embeds"
-           ] do
-    Messages.handle_event(event, params, socket)
-  end
-
-  def handle_event(event, params, socket)
-      when event in [
-             "create_thread",
-             "open_thread",
-             "close_thread",
-             "archive_thread",
-             "unarchive_thread",
-             "lock_thread",
-             "unlock_thread",
-             "delete_thread",
-             "follow_thread",
-             "unfollow_thread",
-             "open_thread_browser",
-             "close_thread_browser",
-             "thread_browser_tab",
-             "thread_browser_search",
-             "thread_browser_more",
-             "open_browsed_thread",
-             "send_thread_message",
-             "typing_ping_thread",
-             "typing_stop_thread"
-           ] do
-    if event in ["typing_ping_thread", "typing_stop_thread"] do
-      Messages.handle_event(event, params, socket)
-    else
-      Threads.handle_event(event, params, socket)
+      # A client can send any name, and a stale page can send one no longer handled.
+      :error ->
+        Logger.warning("ServerLive ignored an unknown event: #{inspect(event)}")
+        {:noreply, socket}
     end
-  end
-
-  def handle_event(event, params, socket)
-      when event in [
-             "forum_search",
-             "forum_tag",
-             "forum_view",
-             "forum_tab",
-             "forum_more",
-             "new_forum_post",
-             "cancel_forum_post",
-             "validate_forum_post",
-             "create_forum_post"
-           ] do
-    Forums.handle_event(event, params, socket)
-  end
-
-  def handle_event(event, params, socket)
-      when event in [
-             "toggle_reaction",
-             "toggle_custom_reaction",
-             "toggle_reaction_picker",
-             "close_reaction_picker"
-           ] do
-    Reactions.handle_event(event, params, socket)
-  end
-
-  def handle_event(event, params, socket)
-      when event in [
-             "open_poll",
-             "cancel_poll",
-             "validate_poll",
-             "add_poll_option",
-             "remove_poll_option",
-             "create_poll",
-             "vote_poll",
-             "vote_poll_other",
-             "withdraw_poll_vote",
-             "close_poll"
-           ] do
-    Polls.handle_event(event, params, socket)
   end
 end

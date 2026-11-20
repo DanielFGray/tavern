@@ -112,7 +112,7 @@ defmodule TavernWeb.ServerLiveThreadsTest do
     assert render(view) =~ "Replying to"
   end
 
-  test "renders the thread typing indicator shell for the active thread", %{conn: conn} do
+  test "the open thread's typing indicator follows another member's typing", %{conn: conn} do
     Bootstrap.ensure_seed_data!()
     conn = log_in_member_user(conn, "author")
 
@@ -120,20 +120,62 @@ defmodule TavernWeb.ServerLiveThreadsTest do
     author = current_user_from_conn(conn)
     starter = message_fixture(general, author, %{body: "thread typing starter"})
     thread = thread_fixture(general, starter, author)
-
-    typer = author
+    typer = user_fixture(%{display_name: "Thread Typist", username: "thread_typist"})
 
     {:ok, view, _html} = live_hydrated(conn, ~p"/?channel=general&thread=#{thread.id}")
+    indicator = "#thread-typing-indicator-#{starter.id}"
 
     :ok = Chat.announce_typing(scope_for(typer), thread.id)
     _ = :sys.get_state(view.pid)
-
-    assert has_element?(view, "#thread-typing-indicator-#{starter.id}")
+    assert has_element?(view, indicator, "Thread Typist")
 
     :ok = Chat.clear_typing(scope_for(typer), thread.id)
     _ = :sys.get_state(view.pid)
+    refute has_element?(view, indicator, "Thread Typist")
+  end
 
-    assert has_element?(view, "#thread-typing-indicator-#{starter.id}")
+  test "a reply to a thread hidden since it opened is refused with a flash", %{conn: conn} do
+    Bootstrap.ensure_seed_data!()
+    conn = log_in_member_user(conn)
+    general = channel_by_slug!("general")
+    owner = owner_fixture()
+    starter = message_fixture(general, owner, %{body: "soon hidden starter"})
+    thread = thread_fixture(general, starter, owner)
+
+    {:ok, view, _html} = live_hydrated(conn, ~p"/?channel=general&thread=#{thread.id}")
+
+    # Written without a broadcast, so the open view still holds the rights it loaded.
+    channel_permission_overwrite_fixture(general, %{
+      role_id: default_role().id,
+      deny_permissions: Tavern.Chat.PermissionBits.combine([:view_channel])
+    })
+
+    view
+    |> form("#thread-message-form", %{message: %{body: "too late"}})
+    |> render_submit()
+
+    assert has_element?(view, "#flash-error", "That thread is no longer available.")
+    assert has_element?(view, "#thread-message-form")
+    assert messages_in(thread.id) == []
+  end
+
+  test "a reply that arrives in a hidden tab is read once the tab is visible", %{conn: conn} do
+    Bootstrap.ensure_seed_data!()
+    conn = log_in_member_user(conn)
+    reader = scope_for(current_user_from_conn(conn))
+    general = channel_by_slug!("general")
+    owner = owner_fixture()
+    starter = message_fixture(general, owner, %{body: "read later starter"})
+    thread = thread_fixture(general, starter, owner)
+    {:ok, view, _html} = live_hydrated(conn, ~p"/?channel=general&thread=#{thread.id}")
+
+    render_hook(view, "tab_visibility", %{"visible" => false})
+    {:ok, _reply} = Chat.create_message(scope_for(owner), thread.id, %{body: "while away"})
+    _ = :sys.get_state(view.pid)
+    assert Map.get(Chat.unread_counts(reader, [thread.id]), thread.id, 0) == 1
+
+    render_hook(view, "tab_visibility", %{"visible" => true})
+    assert Map.get(Chat.unread_counts(reader, [thread.id]), thread.id, 0) == 0
   end
 
   test "slowmode refuses a second send with a flash and the seconds left", %{conn: conn} do

@@ -7,6 +7,20 @@ defmodule TavernWeb.ServerLive.Events.Forums do
 
   alias TavernWeb.ServerLive.ForumNav
 
+  @events ~w(
+    forum_search
+    forum_tag
+    forum_view
+    forum_tab
+    forum_more
+    new_forum_post
+    cancel_forum_post
+    validate_forum_post
+    create_forum_post
+  )
+
+  def events, do: @events
+
   def handle_event("forum_search", %{"forum_search" => %{"query" => query}}, socket),
     do: {:noreply, ForumNav.search(socket, query)}
 

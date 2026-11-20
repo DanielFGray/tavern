@@ -5,6 +5,17 @@ defmodule TavernWeb.ServerLive.Events.Mobile do
 
   alias TavernWeb.ServerLive.State
 
+  @events ~w(
+    toggle_mobile_sidebar
+    close_mobile_sidebar
+    toggle_mobile_members
+    close_mobile_members
+    toggle_user_menu
+    close_user_menu
+  )
+
+  def events, do: @events
+
   def handle_event("toggle_mobile_sidebar", _params, socket) do
     next_open? = !socket.assigns.mobile_sidebar_open?
 

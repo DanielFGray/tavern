@@ -36,6 +36,17 @@ defmodule TavernWeb.ServerLiveMessagesTest do
     refute Chat.get_thread_for_starter_message(scope_for(author), secret.id)
   end
 
+  @tag :capture_log
+  test "an event no module handles leaves the view running", %{conn: conn} do
+    Bootstrap.ensure_seed_data!()
+    conn = log_in_member_user(conn)
+    {:ok, view, _html} = live_hydrated(conn, ~p"/")
+
+    render_hook(view, "no_such_event", %{"id" => "x"})
+
+    assert has_element?(view, "#message-form")
+  end
+
   test "posts a message into the active channel", %{conn: conn} do
     Bootstrap.ensure_seed_data!()
     conn = log_in_member_user(conn)
@@ -73,11 +84,11 @@ defmodule TavernWeb.ServerLiveMessagesTest do
       :ok = Chat.announce_typing(scope_for(ctx.typer), ctx.general.id)
       _ = :sys.get_state(ctx.view.pid)
 
-      send(ctx.view.pid, {:typing_expired, :typing_users, ctx.typer.id, 1})
+      send(ctx.view.pid, {:typing_expired, :channel, ctx.typer.id, 1})
       _ = :sys.get_state(ctx.view.pid)
       assert has_element?(ctx.view, "#channel-typing-indicator", "Quiet Typist")
 
-      send(ctx.view.pid, {:typing_expired, :typing_users, ctx.typer.id, 2})
+      send(ctx.view.pid, {:typing_expired, :channel, ctx.typer.id, 2})
       _ = :sys.get_state(ctx.view.pid)
       refute has_element?(ctx.view, "#channel-typing-indicator", "Quiet Typist")
     end

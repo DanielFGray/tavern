@@ -5,6 +5,8 @@ defmodule TavernWeb.ServerComponents.Composer do
 
   import TavernWeb.ServerComponents.Helpers
 
+  alias TavernWeb.ServerLive.Pane
+
   attr :server, :map, required: true
 
   @doc "The composer bar under a channel's messages, or the notice that replaces it."
@@ -12,7 +14,7 @@ defmodule TavernWeb.ServerComponents.Composer do
     ~H"""
     <div class="border-t border-base-300 bg-base-200 px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
       <%= cond do %>
-        <% @server.channel_abilities.send_messages -> %>
+        <% Pane.can_send?(@server.channel_pane) -> %>
           <.composer server={@server} target={:channel} />
         <% true -> %>
           <TavernWeb.ServerComponents.Verification.send_notice
@@ -28,13 +30,18 @@ defmodule TavernWeb.ServerComponents.Composer do
   attr :target, :atom, values: [:channel, :thread], required: true
 
   @doc """
-  The rich composer form. `target` names the conversation it writes to: the open channel or the
-  open thread. One shows at a time, and both share `:reply_to_message` for the reply banner and
-  `:poll_form` for the poll form above it. The
-  DOM ids differ per target because tests and the composer hook address each one.
+  The rich composer form. `target` names the pane it writes to (`TavernWeb.ServerLive.Pane`): the
+  open channel's or the open thread's. One shows at a time, and both share `:reply_to_message`
+  for the reply banner and `:poll_form` for the poll form above it. The DOM ids differ per target
+  because tests and the composer hook address each one.
   """
   def composer(assigns) do
-    assigns = assign(assigns, composer_config(assigns.server, assigns.target))
+    pane = Map.fetch!(assigns.server, Pane.assign_key(assigns.target))
+
+    assigns =
+      assigns
+      |> assign(composer_config(assigns.target))
+      |> assign(pane: pane, form: pane.form)
 
     ~H"""
     <TavernWeb.ServerComponents.Polls.poll_composer :if={@server.poll_form} server={@server} />
@@ -102,7 +109,7 @@ defmodule TavernWeb.ServerComponents.Composer do
               </div>
 
               <p
-                :if={!@server.channel_abilities.mention_everyone}
+                :if={!@pane.abilities.mention_everyone}
                 class="m-0 text-[11px] text-amber-200"
               >
                 @everyone and locked roles need extra permission
@@ -172,9 +179,8 @@ defmodule TavernWeb.ServerComponents.Composer do
     """
   end
 
-  defp composer_config(server, :channel) do
+  defp composer_config(:channel) do
     %{
-      form: server.message_form,
       submit: "send_message",
       placeholder: "Message channel",
       send_label: "Send message",
@@ -189,9 +195,8 @@ defmodule TavernWeb.ServerComponents.Composer do
     }
   end
 
-  defp composer_config(server, :thread) do
+  defp composer_config(:thread) do
     %{
-      form: server.thread_message_form,
       submit: "send_thread_message",
       placeholder: "Reply in thread",
       send_label: "Send thread message",

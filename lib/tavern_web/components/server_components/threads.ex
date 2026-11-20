@@ -7,6 +7,7 @@ defmodule TavernWeb.ServerComponents.Threads do
 
   alias TavernWeb.ServerComponents.Composer
   alias TavernWeb.ServerComponents.Messages
+  alias TavernWeb.ServerLive.Pane
 
   attr :server, :map, required: true
   attr :message, :map, required: true
@@ -22,9 +23,9 @@ defmodule TavernWeb.ServerComponents.Threads do
       assign(assigns,
         menu_id: "thread-actions-menu-#{assigns.message.id}",
         menu?:
-          assigns.server.thread_abilities.archive_thread or
-            assigns.server.thread_abilities.lock_thread or
-            assigns.server.thread_abilities.delete_thread
+          assigns.server.thread_pane.abilities.archive_thread or
+            assigns.server.thread_pane.abilities.lock_thread or
+            assigns.server.thread_pane.abilities.delete_thread
       )
 
     ~H"""
@@ -42,7 +43,7 @@ defmodule TavernWeb.ServerComponents.Threads do
           id={"thread-reply-count-#{@message.id}"}
           class="shrink-0 text-xs text-base-content/55"
         >
-          {reply_count_label(@server.thread_message_count)}
+          {reply_count_label(@server.thread_pane.message_count)}
         </span>
         <span
           :if={@thread.locked_at}
@@ -99,7 +100,7 @@ defmodule TavernWeb.ServerComponents.Threads do
               class="absolute right-0 top-full z-20 mt-1 hidden min-w-36 rounded-xl border border-base-300 bg-base-100 p-1.5 shadow-xl"
             >
               <button
-                :if={@server.thread_abilities.archive_thread}
+                :if={@server.thread_pane.abilities.archive_thread}
                 type="button"
                 role="menuitem"
                 phx-click={
@@ -113,7 +114,7 @@ defmodule TavernWeb.ServerComponents.Threads do
                 {if @thread.archived_at, do: "Unarchive", else: "Archive"}
               </button>
               <button
-                :if={@server.thread_abilities.lock_thread}
+                :if={@server.thread_pane.abilities.lock_thread}
                 type="button"
                 role="menuitem"
                 phx-click={
@@ -130,7 +131,7 @@ defmodule TavernWeb.ServerComponents.Threads do
                 {if @thread.locked_at, do: "Unlock", else: "Lock"}
               </button>
               <%!-- The confirm step is client-side: the prompt button swaps for the confirm row. --%>
-              <div :if={@server.thread_abilities.delete_thread}>
+              <div :if={@server.thread_pane.abilities.delete_thread}>
                 <button
                   type="button"
                   role="menuitem"
@@ -197,7 +198,7 @@ defmodule TavernWeb.ServerComponents.Threads do
         data-enable-notifications="false"
         phx-hook="MessageListHook"
       >
-        <p :if={@server.thread_messages_empty?} class="px-3 py-2 text-sm text-base-content/55">
+        <p :if={@server.thread_pane.empty?} class="px-3 py-2 text-sm text-base-content/55">
           No replies yet.
         </p>
 
@@ -212,9 +213,9 @@ defmodule TavernWeb.ServerComponents.Threads do
       </div>
 
       <div class="pl-3 pr-1 pb-1">
-        <%= if @server.thread_abilities.send_messages_in_threads do %>
+        <%= if Pane.can_send?(@server.thread_pane) do %>
           <Messages.typing_indicator
-            users={@server.thread_typing_users}
+            users={@server.thread_pane.typing_users}
             id={"thread-typing-indicator-#{@message.id}"}
           />
           <Composer.composer server={@server} target={:thread} />

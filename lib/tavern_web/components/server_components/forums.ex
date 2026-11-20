@@ -93,7 +93,7 @@ defmodule TavernWeb.ServerComponents.Forums do
           options={[list: "List", gallery: "Gallery"]}
         />
         <button
-          :if={@server.channel_abilities.create_public_threads and is_nil(@forum.post_form)}
+          :if={@server.channel_pane.abilities.create_public_threads and is_nil(@forum.post_form)}
           type="button"
           id="new-forum-post"
           phx-click="new_forum_post"
