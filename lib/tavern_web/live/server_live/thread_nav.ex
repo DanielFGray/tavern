@@ -194,13 +194,21 @@ defmodule TavernWeb.ServerLive.ThreadNav do
     if notify? do
       push_event(socket, "notify:mention", %{
         channel_id: thread.id,
-        channel_name: thread.name,
+        channel_name: notification_title(scope, thread),
         author_name: message.author.display_name,
         body: message.body,
         message_id: message.id
       })
     else
       socket
+    end
+  end
+
+  # The message's channel comes without its starter message, which an unnamed thread's title needs.
+  defp notification_title(scope, thread) do
+    case Chat.get_thread(scope, thread.id) do
+      %Chat.Channel{} = thread -> Chat.Channel.title(thread)
+      nil -> nil
     end
   end
 

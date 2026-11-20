@@ -16,7 +16,7 @@ defmodule Tavern.Chat.AuditLogLine do
                    account_deletion_scheduled account_deletion_canceled account_deleted
                    role_created role_updated role_moved role_deleted
                    member_role_added member_role_removed
-                   channel_overwrite_updated channel_overwrite_deleted thread_deleted
+                   channel_overwrite_updated channel_overwrite_deleted thread_renamed thread_deleted
                    bot_created bot_updated bot_revoked bot_token_created bot_token_revoked
                    invite_request_approved invite_request_denied invite_requests_denied_by_ip)
 
@@ -90,6 +90,9 @@ defmodule Tavern.Chat.AuditLogLine do
     do:
       "#{actor} removed permissions for #{overwrite_target(meta, entry)} in #{channel_name(entry)}"
 
+  defp line("thread_renamed", actor, _subject, meta, _entry),
+    do: "#{actor} renamed the thread ##{meta["old_name"]} to ##{meta["new_name"]}"
+
   defp line("thread_deleted", actor, _subject, _meta, entry),
     do: "#{actor} deleted the thread #{channel_name(entry)}"
 
@@ -127,7 +130,7 @@ defmodule Tavern.Chat.AuditLogLine do
   defp role_name(%{"role_name" => name}) when is_binary(name), do: name
   defp role_name(_meta), do: "(unknown role)"
 
-  defp channel_name(%AuditLogEntry{channel: %{name: name}}), do: "##{name}"
+  defp channel_name(%AuditLogEntry{channel: %{name: name}}) when is_binary(name), do: "##{name}"
   defp channel_name(%AuditLogEntry{metadata: %{"channel_name" => name}}), do: "##{name}"
   defp channel_name(_entry), do: "a deleted channel"
 

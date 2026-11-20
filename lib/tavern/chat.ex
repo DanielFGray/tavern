@@ -137,6 +137,7 @@ defmodule Tavern.Chat do
   defdelegate create_public_thread(scope, starter_message_id, attrs \\ %{}), to: Threads
   defdelegate archive_thread(scope, thread_id), to: Threads
   defdelegate unarchive_thread(scope, thread_id), to: Threads
+  defdelegate rename_thread(scope, thread_id, name), to: Threads
   defdelegate lock_thread(scope, thread_id), to: Threads
   defdelegate unlock_thread(scope, thread_id), to: Threads
   defdelegate delete_thread(scope, thread_id), to: Channels

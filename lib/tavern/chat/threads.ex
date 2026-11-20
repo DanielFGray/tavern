@@ -4,6 +4,7 @@ defmodule Tavern.Chat.Threads do
   import Ecto.Query, warn: false
 
   alias Tavern.Accounts.Scope
+  alias Tavern.Chat.AuditLog
   alias Tavern.Chat.Channel
   alias Tavern.Chat.Channels
   alias Tavern.Chat.Hashtags
@@ -109,9 +110,12 @@ defmodule Tavern.Chat.Threads do
       on:
         follower.thread_id == thread.id and follower.user_id == ^user_id and
           is_nil(follower.unfollowed_at),
+      left_join: starter in Message,
+      as: :starter,
+      on: starter.id == thread.starter_message_id,
       where: thread.id in ^thread_ids,
       order_by: ^sort_order(sort),
-      preload: [:parent_channel],
+      preload: [:parent_channel, :starter_message],
       select: %{
         thread: thread,
         last_activity_at:
@@ -140,9 +144,13 @@ defmodule Tavern.Chat.Threads do
   defp where_tags(query, tags),
     do: where(query, [thread], fragment("? @> ?::text[]", thread.hashtags, ^tags))
 
+  # A thread no one has named is titled by its starter message (`Channel.title/1`), so its whole
+  # starter body is searched in place of a name.
   defp where_title_words(query, words) do
+    title = dynamic([thread, starter: starter], coalesce(thread.name, starter.body))
+
     Enum.reduce(words, query, fn word, query ->
-      where(query, [thread], ilike(thread.name, ^"%#{escape_like(word)}%"))
+      where(query, ^dynamic(ilike(^title, ^"%#{escape_like(word)}%")))
     end)
   end
 
@@ -340,6 +348,60 @@ defmodule Tavern.Chat.Threads do
   def unlock_thread(%Scope{} = scope, thread_id),
     do: set_thread_state(scope, thread_id, :unlock_thread, locked_at: nil)
 
+  @doc """
+  Renames a thread, by the same rule as `archive_thread/2`, and takes its tags again from the new
+  name. The change goes in the audit log. A name that does not pass `Channel.thread_changeset/2`
+  returns `{:error, changeset}`; the same name returns `{:ok, thread}` and writes nothing.
+  """
+  def rename_thread(%Scope{} = scope, thread_id, name) when is_binary(name) do
+    with {:ok, thread_id} <- Ecto.UUID.cast(thread_id) do
+      result =
+        Repo.transact(fn ->
+          with :ok <- Visibility.authorize_write(scope, :rename_thread, %Channel{id: thread_id}),
+               %Channel{} = thread <- Channels.lock_channel(thread_id) do
+            thread = Repo.preload(thread, [:parent_channel, starter_message: :author])
+            update_thread_name(scope, thread, name)
+          else
+            nil -> {:error, :not_found}
+            error -> error
+          end
+        end)
+
+      with {:ok, {thread, changed?}} <- result do
+        if changed?, do: Topics.broadcast_server({:channel_updated, thread})
+        {:ok, thread}
+      end
+    else
+      :error -> {:error, :not_found}
+    end
+  end
+
+  defp update_thread_name(scope, thread, name) do
+    changeset =
+      thread
+      |> Channel.thread_changeset(%{name: name})
+      |> Ecto.Changeset.validate_required([:name])
+      |> put_hashtags(thread.starter_message.body)
+
+    case Ecto.Changeset.fetch_change(changeset, :name) do
+      :error ->
+        if changeset.valid?, do: {:ok, {thread, false}}, else: {:error, changeset}
+
+      {:ok, new_name} ->
+        with {:ok, renamed} <- Repo.update(changeset) do
+          AuditLog.record!(scope.user_id, "thread_renamed", nil, {"channel", thread.id},
+            metadata: %{
+              "old_name" => Channel.title(thread),
+              "new_name" => new_name,
+              "parent_channel_id" => thread.parent_channel_id
+            }
+          )
+
+          {:ok, {renamed, true}}
+        end
+    end
+  end
+
   defp set_thread_state(scope, thread_id, action, changes) do
     with {:ok, thread_id} <- Ecto.UUID.cast(thread_id) do
       result =
@@ -382,7 +444,8 @@ defmodule Tavern.Chat.Threads do
   end
 
   @doc false
-  # A new public thread under `parent_channel`, without its name or starter message. The server
+  # A new public thread under `parent_channel`, without its starter message or a name (a thread
+  # stores a name only once someone names it). The server
   # fixes everything else here, so a client cannot choose a thread's kind, parent or creator.
   # `Tavern.Chat.Forums` builds a post on it too.
   def new_thread(%Channel{} = parent_channel, creator_id) do
@@ -418,20 +481,10 @@ defmodule Tavern.Chat.Threads do
 
   defp thread_name_attrs(_attrs), do: %{}
 
-  defp thread_name_from_message(%Message{body: body}) do
-    body
-    |> String.trim()
-    |> case do
-      "" -> "Thread"
-      value -> String.slice(value, 0, 40)
-    end
-  end
-
   defp insert_thread(scope, parent, starter, attrs) do
     thread = %{
       new_thread(parent, scope.user_id)
-      | name: thread_name_from_message(starter),
-        starter_message_id: starter.id
+      | starter_message_id: starter.id
     }
 
     with {:ok, thread} <-

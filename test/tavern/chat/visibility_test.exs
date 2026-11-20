@@ -252,6 +252,9 @@ defmodule Tavern.Chat.VisibilityTest do
       member_scope = %Scope{user_id: member.id}
       owner_scope = %Scope{user_id: owner.id}
 
+      assert %{rename_thread: true} = Visibility.abilities(member_scope, thread.id)
+      assert %{rename_thread: false} = Visibility.abilities(owner_scope, parent.id)
+
       assert %{archive_thread: true, lock_thread: false, delete_thread: false} =
                Visibility.abilities(member_scope, thread.id)
 
@@ -265,7 +268,10 @@ defmodule Tavern.Chat.VisibilityTest do
 
       # A locked thread takes archive controls from a manager only, and its lock control is now
       # unlock, which the owner still holds.
-      assert %{archive_thread: false} = Visibility.abilities(member_scope, thread.id)
+      assert %{archive_thread: false, rename_thread: false} =
+               Visibility.abilities(member_scope, thread.id)
+
+      assert %{rename_thread: true} = Visibility.abilities(owner_scope, thread.id)
       assert %{lock_thread: true} = Visibility.abilities(owner_scope, thread.id)
       assert can?(owner, :unlock_thread, Repo.get!(Channel, thread.id))
     end

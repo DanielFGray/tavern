@@ -67,7 +67,7 @@ defmodule TavernWeb.ServerComponents.Helpers do
     active_thread && active_thread.starter_message_id == message.id
   end
 
-  def thread_title(thread), do: thread.name || "Thread"
+  def thread_title(thread), do: Tavern.Chat.Channel.title(thread)
 
   def reply_count_label(1), do: "1 reply"
   def reply_count_label(count), do: "#{count} replies"

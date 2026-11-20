@@ -295,7 +295,16 @@ defmodule TavernWeb.ServerComponents.Messages do
               class="mt-3 inline-flex max-w-full items-center gap-2 rounded-full border border-base-300 bg-base-100 px-3 py-1 text-[11px] font-semibold text-base-content/75 transition hover:border-base-content/20 hover:text-base-content"
             >
               <.icon name="hero-chat-bubble-left-right" class="size-3.5 shrink-0" />
-              <span class="shrink-0">
+              <%!-- The title shows only once someone has named the thread; an unnamed thread is
+                   known by its starter, which sits right above. --%>
+              <span
+                :if={@thread.name}
+                id={"thread-summary-title-#{@message.id}"}
+                class="max-w-[12rem] shrink-0 truncate text-base-content"
+              >
+                {@thread.name}
+              </span>
+              <span class={["shrink-0", @thread.name && "font-normal text-base-content/55"]}>
                 {reply_count_label(thread_reply_count(@message, @server.thread_summaries))}
               </span>
               <% latest = thread_latest_reply(@message, @server.thread_summaries) %>
@@ -307,7 +316,7 @@ defmodule TavernWeb.ServerComponents.Messages do
                 <span class="font-semibold text-base-content/75">{latest.author.display_name}</span>
                 {body_preview(latest.body)}
               </span>
-              <span :if={!latest} class="truncate text-base-content/45">
+              <span :if={!latest and !@thread.name} class="truncate text-base-content/45">
                 {thread_title(@thread)}
               </span>
             </.link>

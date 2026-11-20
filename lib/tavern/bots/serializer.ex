@@ -12,6 +12,7 @@ defmodule Tavern.Bots.Serializer do
   alias Tavern.Chat.Polls
   alias Tavern.Chat.Reaction
   alias Tavern.Chat.User
+  alias Tavern.Repo
 
   def serialize_bot_user(%User{} = bot_user) do
     serialize_user(bot_user)
@@ -199,7 +200,7 @@ defmodule Tavern.Bots.Serializer do
   defp serialize_channel_summary(%Channel{} = channel) do
     %{
       id: channel.id,
-      name: channel.name,
+      name: channel_title(channel),
       slug: channel.slug,
       kind: to_string(channel.kind),
       topic: channel.topic,
@@ -212,7 +213,14 @@ defmodule Tavern.Bots.Serializer do
   end
 
   defp serialize_channel_summary(%NotLoaded{}), do: nil
+
   defp serialize_channel_summary(nil), do: nil
+
+  # A message's channel comes without its starter message, which an unnamed thread's title needs.
+  defp channel_title(%Channel{name: name}) when is_binary(name), do: name
+
+  defp channel_title(%Channel{} = channel),
+    do: channel |> Repo.preload(:starter_message) |> Channel.title()
 
   defp serialize_message_reference(%Message{} = message) do
     %{

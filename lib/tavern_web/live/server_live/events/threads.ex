@@ -17,6 +17,7 @@ defmodule TavernWeb.ServerLive.Events.Threads do
     close_thread
     archive_thread
     unarchive_thread
+    rename_thread
     lock_thread
     unlock_thread
     delete_thread
@@ -98,6 +99,25 @@ defmodule TavernWeb.ServerLive.Events.Threads do
 
       {:error, _refusal} ->
         {:noreply, put_flash(socket, :error, "You cannot change that thread.")}
+    end
+  end
+
+  def handle_event("rename_thread", %{"thread_rename" => %{"name" => name}}, socket)
+      when is_binary(name) do
+    with %{} = thread <- socket.assigns.active_thread,
+         {:ok, thread} <- Chat.rename_thread(socket.assigns.current_scope, thread.id, name) do
+      # The renamer's own view hears no broadcast, so it runs the handler of
+      # `{:channel_updated, _}` itself, as every other session does on receiving it.
+      Navigation.handle_info({:channel_updated, thread}, socket)
+    else
+      nil ->
+        {:noreply, socket}
+
+      {:error, %Ecto.Changeset{}} ->
+        {:noreply, put_flash(socket, :error, "A thread title takes 1 to 40 characters.")}
+
+      {:error, _refusal} ->
+        {:noreply, put_flash(socket, :error, "You cannot rename that thread.")}
     end
   end
 

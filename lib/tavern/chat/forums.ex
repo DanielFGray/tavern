@@ -186,6 +186,7 @@ defmodule Tavern.Chat.Forums do
            forum
            |> Threads.new_thread(scope.user_id)
            |> Channel.thread_changeset(%{"name" => post.title})
+           |> Ecto.Changeset.validate_required([:name])
            |> Repo.insert(),
          :ok <- Channels.ensure_channel_memberships(scope, [thread]),
          :ok <- ThreadFollows.follow_created(thread, scope.user_id) do

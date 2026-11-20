@@ -123,13 +123,35 @@ defmodule Tavern.Chat.Channel do
   def slugify(_name), do: "channel"
 
   @doc """
-  A changeset for a new thread. The caller sets the kind, slug, position, parent channel,
-  starter message and creator on the struct; a client chooses only the name.
+  A changeset for a thread. The caller sets the kind, slug, position, parent channel, starter
+  message and creator on the struct; a client chooses only the name.
+
+  A thread's `name` is its title once someone has named it (a forum post's author, a rename, a
+  bot that names a thread it starts), and nil until then. `title/1` gives what a view shows.
   """
   def thread_changeset(%__MODULE__{kind: kind} = thread, attrs) when kind in @thread_kinds do
     thread
     |> cast(attrs, [:name])
-    |> validate_settings()
+    |> validate_settings([:slug, :position])
+  end
+
+  @title_length 40
+
+  @doc """
+  What a view shows as the name of `channel`. A channel and a named thread show their name. A
+  thread that no one has named shows the start of its starter message, so the starter must be
+  loaded (`Repo.preload(thread, :starter_message)`); a thread with no starter shows `"Thread"`.
+  """
+  def title(%__MODULE__{name: name}) when is_binary(name), do: name
+  def title(%__MODULE__{starter_message: %Tavern.Chat.Message{body: body}}), do: title_from(body)
+  def title(%__MODULE__{starter_message: nil}), do: "Thread"
+
+  @doc "The title of a thread that starts from a message with `body`: its first 40 characters."
+  def title_from(body) when is_binary(body) do
+    case String.trim(body) do
+      "" -> "Thread"
+      text -> String.slice(text, 0, @title_length)
+    end
   end
 
   defp validate_not_thread(changeset) do
@@ -145,13 +167,13 @@ defmodule Tavern.Chat.Channel do
     end
   end
 
-  defp validate_settings(changeset) do
+  defp validate_settings(changeset, required \\ [:name, :slug, :position]) do
     changeset
     |> update_change(:name, &normalize_text/1)
     |> update_change(:slug, &normalize_slug/1)
     |> update_change(:topic, &normalize_optional_text/1)
-    |> validate_required([:name, :slug, :position])
-    |> validate_length(:name, min: 1, max: 40)
+    |> validate_required(required)
+    |> validate_length(:name, min: 1, max: @title_length)
     |> validate_length(:slug, min: 1, max: 48)
     |> validate_length(:topic, max: 160)
     |> validate_number(:slowmode_seconds,

@@ -95,8 +95,14 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
     end
   end
 
+  # A thread's reply pill under its starter shows its title and state, so a change to the thread
+  # refreshes the summaries as well.
   def handle_info({:channel_updated, channel}, socket) do
-    {:noreply, socket |> State.refresh_channels() |> State.refresh_active_thread(channel.id)}
+    {:noreply,
+     socket
+     |> State.refresh_channels()
+     |> State.refresh_active_thread(channel.id)
+     |> State.maybe_refresh_thread_summaries(channel)}
   end
 
   def handle_info({:channel_deleted, channel}, socket) do

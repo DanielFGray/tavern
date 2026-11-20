@@ -264,6 +264,7 @@ defmodule Tavern.Chat.Visibility do
     :manage_messages,
     :mention_everyone,
     :archive_thread,
+    :rename_thread,
     :lock_thread,
     :delete_thread
   ]
@@ -625,14 +626,15 @@ defmodule Tavern.Chat.Visibility do
   defp channel_decision(:embed_links, ctx, channel),
     do: view?(ctx, channel) and bit?(ctx, channel, :embed_links)
 
-  # Archiving and unarchiving: the thread's creator or a manager. A locked thread takes them from a
-  # manager only. Locking and unlocking are the manager's alone.
-  defp channel_decision(action, ctx, channel) when action in [:archive_thread, :unarchive_thread],
-    do:
-      Channel.thread?(channel) and view?(ctx, channel) and
-        (thread_manager?(ctx, channel) or
-           (is_nil(channel.locked_at) and not acting_timed_out?(ctx) and
-              channel.created_by_id == ctx.member.id))
+  # Archiving, unarchiving and renaming: the thread's creator or a manager. A locked thread takes
+  # them from a manager only. Locking and unlocking are the manager's alone.
+  defp channel_decision(action, ctx, channel)
+       when action in [:archive_thread, :unarchive_thread, :rename_thread],
+       do:
+         Channel.thread?(channel) and view?(ctx, channel) and
+           (thread_manager?(ctx, channel) or
+              (is_nil(channel.locked_at) and not acting_timed_out?(ctx) and
+                 channel.created_by_id == ctx.member.id))
 
   defp channel_decision(action, ctx, channel) when action in [:lock_thread, :unlock_thread],
     do: Channel.thread?(channel) and view?(ctx, channel) and thread_manager?(ctx, channel)

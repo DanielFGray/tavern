@@ -22,8 +22,10 @@ defmodule TavernWeb.ServerComponents.Threads do
     assigns =
       assign(assigns,
         menu_id: "thread-actions-menu-#{assigns.message.id}",
+        rename_form: to_form(%{"name" => thread_title(assigns.thread)}, as: :thread_rename),
         menu?:
           assigns.server.thread_pane.abilities.archive_thread or
+            assigns.server.thread_pane.abilities.rename_thread or
             assigns.server.thread_pane.abilities.lock_thread or
             assigns.server.thread_pane.abilities.delete_thread
       )
@@ -36,9 +38,41 @@ defmodule TavernWeb.ServerComponents.Threads do
     >
       <header class="flex min-w-0 items-center gap-2 py-1 pl-3 pr-1">
         <.icon name="hero-chat-bubble-left-right" class="size-4 shrink-0 text-base-content/45" />
-        <h3 class="min-w-0 truncate text-sm font-semibold text-base-content">
+        <h3
+          id={"thread-title-#{@message.id}"}
+          class="min-w-0 truncate text-sm font-semibold text-base-content"
+        >
           {thread_title(@thread)}
         </h3>
+        <%!-- Shown client-side by the Rename menu item; a submit or Escape hides it again. --%>
+        <.form
+          :if={@server.thread_pane.abilities.rename_thread}
+          for={@rename_form}
+          id={"thread-rename-form-#{@message.id}"}
+          phx-submit={
+            JS.push("rename_thread")
+            |> JS.hide(to: "#thread-rename-form-#{@message.id}")
+            |> JS.show(to: "#thread-title-#{@message.id}")
+          }
+          class="hidden min-w-0 flex-1"
+        >
+          <input
+            type="text"
+            id={"thread-rename-input-#{@message.id}"}
+            name={@rename_form[:name].name}
+            value={@rename_form[:name].value}
+            phx-keydown={
+              JS.hide(to: "#thread-rename-form-#{@message.id}")
+              |> JS.show(to: "#thread-title-#{@message.id}")
+            }
+            phx-key="Escape"
+            maxlength="40"
+            required
+            autocomplete="off"
+            aria-label="Thread title"
+            class="w-full min-w-0 rounded-md border border-base-300 bg-base-100 px-2 py-0.5 text-sm font-semibold text-base-content outline-none transition focus:border-primary"
+          />
+        </.form>
         <span
           id={"thread-reply-count-#{@message.id}"}
           class="shrink-0 text-xs text-base-content/55"
@@ -112,6 +146,21 @@ defmodule TavernWeb.ServerComponents.Threads do
               >
                 <.icon name="hero-archive-box" class="size-4 text-base-content/50" />
                 {if @thread.archived_at, do: "Unarchive", else: "Archive"}
+              </button>
+              <button
+                :if={@server.thread_pane.abilities.rename_thread}
+                type="button"
+                role="menuitem"
+                phx-click={
+                  JS.hide(to: "##{@menu_id}")
+                  |> JS.hide(to: "#thread-title-#{@message.id}")
+                  |> JS.show(to: "#thread-rename-form-#{@message.id}", display: "block")
+                  |> JS.focus(to: "#thread-rename-input-#{@message.id}")
+                }
+                id={"rename-thread-#{@message.id}"}
+                class={thread_menu_item_classes()}
+              >
+                <.icon name="hero-pencil-square" class="size-4 text-base-content/50" /> Rename
               </button>
               <button
                 :if={@server.thread_pane.abilities.lock_thread}

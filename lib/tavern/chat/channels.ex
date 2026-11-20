@@ -222,7 +222,7 @@ defmodule Tavern.Chat.Channels do
         with {:ok, thread} <- soft_delete(thread) do
           AuditLog.record!(scope.user_id, "thread_deleted", nil, {"channel", thread.id},
             metadata: %{
-              "channel_name" => thread.name,
+              "channel_name" => thread |> Repo.preload(:starter_message) |> Channel.title(),
               "parent_channel_id" => thread.parent_channel_id
             }
           )
