@@ -347,6 +347,89 @@ defmodule Tavern.Chat.InviteRequestsTest do
              )
   end
 
+  describe "registering through the mailed link" do
+    test "with the mailed address verifies it once, without a second mail", %{
+      moderator: moderator
+    } do
+      code = mailed_code!(moderator, "Waitlist@Example.com")
+      ref = :telemetry_test.attach_event_handlers(self(), [Tavern.ProductEvents.event()])
+      on_exit(fn -> :telemetry.detach(ref) end)
+
+      assert {:ok, user} =
+               Accounts.register_user(register_attrs("waitlist@example.com"), invite_code: code)
+
+      assert %DateTime{} = user.confirmed_at
+      assert %DateTime{} = Repo.get!(Tavern.Chat.User, user.id).confirmed_at
+      refute Accounts.unverified?(user)
+
+      event = Tavern.ProductEvents.event()
+      member = Tavern.ProductEvents.pseudonym(user.id)
+      assert_receive {^event, ^ref, %{}, %{event: "member.verified", member: ^member}}
+
+      assert :ok = Accounts.deliver_user_confirmation_instructions(user)
+      refute_receive {:mail_captured, _}, 100
+    end
+
+    test "with another address leaves the member unverified", %{moderator: moderator} do
+      code = mailed_code!(moderator, "mailed@example.com")
+
+      assert {:ok, user} =
+               Accounts.register_user(register_attrs("someone-else@example.com"),
+                 invite_code: code
+               )
+
+      assert is_nil(user.confirmed_at)
+      assert Accounts.unverified?(user)
+    end
+
+    test "an invite not made from a mailed request verifies nobody", %{moderator: moderator} do
+      {:ok, invite} =
+        Tavern.Repo.transact(fn ->
+          {:ok,
+           Chat.Invites.insert_single_use!(
+             moderator.user_id,
+             DateTime.add(DateTime.utc_now(), 3600)
+           )}
+        end)
+
+      assert {:ok, user} =
+               Accounts.register_user(register_attrs("by-hand@example.com"),
+                 invite_code: invite.code
+               )
+
+      assert is_nil(user.confirmed_at)
+    end
+
+    test "a registration with no invite is unchanged" do
+      set_settings!(registration_mode: :open)
+      assert {:ok, user} = Accounts.register_user(register_attrs("open@example.com"))
+      assert is_nil(user.confirmed_at)
+    end
+  end
+
+  # Requests and approves an invite for `email`, and returns the code from the mailed link.
+  defp mailed_code!(moderator, email) do
+    request = request!(email)
+    {:ok, _} = Chat.approve_invite_request(moderator, request.id)
+    assert_received {:mail_captured, %{text: text}}
+    [_, code] = Regex.run(~r{/register\?code=([a-z0-9]+)}, text)
+    code
+  end
+
+  defp register_attrs(email) do
+    %{
+      email: email,
+      username:
+        email
+        |> String.split("@")
+        |> hd()
+        |> String.replace(~r/[^a-z0-9_]/, "_")
+        |> String.downcase(),
+      display_name: "Member",
+      password: "supersecurepass"
+    }
+  end
+
   defp request!(email, ip \\ @ip) do
     {:ok, :received} = Chat.request_invite(%{"email" => email}, ip)
     Repo.get_by!(InviteRequest, email: email)

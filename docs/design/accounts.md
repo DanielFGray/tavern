@@ -142,7 +142,7 @@ Each use runs in one transaction that locks the token row and the user row `FOR 
 
 `UserRegistrationLive` calls `Accounts.deliver_user_confirmation_instructions/1` after the account is created. The function sends nothing to a verified, bot, deleted or email-less account, or while verification is inactive. `Accounts.register_user/2` sends no mail itself, so fixtures and the test support commands do not fill test mailboxes.
 
-A failed send does not block registration. The member can ask for a new link from the banner (`Accounts.resend_user_confirmation/1`). `LoginRateLimiter.check_email_link/1` allows 3 link mails per member per 15 minutes, resends and email changes together, in the same bucket store as the login limit (Valkey, with an ETS fallback). Past the limit the banner flashes how long to wait.
+Registering with the address an invite request's link was mailed to verifies it at once, so no confirmation mail follows (invite-requests.md, "Flow", step 5). A failed send does not block registration. The member can ask for a new link from the banner (`Accounts.resend_user_confirmation/1`). `LoginRateLimiter.check_email_link/1` allows 3 link mails per member per 15 minutes, resends and email changes together, in the same bucket store as the login limit (Valkey, with an ETS fallback). Past the limit the banner flashes how long to wait.
 
 ### Opening a link
 

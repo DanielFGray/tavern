@@ -136,7 +136,9 @@ defmodule Tavern.Accounts do
       with :ok <- authorize_registration(invite_code),
            {:ok, user} <- %User{} |> User.registration_changeset(attrs) |> Repo.insert(),
            membership = create_first_membership!(user),
-           :ok <- redeem_invite(invite_code, user) do
+           {:ok, invite} <- redeem_invite(invite_code, user) do
+        user = confirm_if_invite_mailed!(user, invite)
+
         {:ok,
          user
          |> Repo.preload([:membership, member_roles: :role])
@@ -144,9 +146,24 @@ defmodule Tavern.Accounts do
       end
     end)
     |> tap(fn
-      {:ok, user} -> ProductEvents.record({:member_signed_up, user, invite_code != nil})
-      {:error, _reason} -> :ok
+      {:ok, user} ->
+        ProductEvents.record({:member_signed_up, user, invite_code != nil})
+
+        # A member who registers with the address their invite was mailed to has proved they read
+        # that mailbox, so they start verified (the first-verification effects run once).
+        if user.confirmed_at, do: after_email_confirmed({:ok, {nil, user}})
+
+      {:error, _reason} ->
+        :ok
     end)
+  end
+
+  defp confirm_if_invite_mailed!(user, nil), do: user
+
+  defp confirm_if_invite_mailed!(%User{} = user, invite) do
+    if Invites.mailed_to?(invite, user.email),
+      do: user |> Changeset.change(confirmed_at: DateTime.utc_now()) |> Repo.update!(),
+      else: user
   end
 
   # The first human member owns the server, as the seeded welcome message says.
@@ -158,11 +175,8 @@ defmodule Tavern.Accounts do
       else: membership |> Membership.ownership_changeset(true) |> Repo.update!()
   end
 
-  defp redeem_invite(nil, _user), do: :ok
-
-  defp redeem_invite(invite_code, user) do
-    with {:ok, _invite} <- Invites.redeem(invite_code, user), do: :ok
-  end
+  defp redeem_invite(nil, _user), do: {:ok, nil}
+  defp redeem_invite(invite_code, user), do: Invites.redeem(invite_code, user)
 
   @doc """
   Promote an existing active human member to the first server owner.

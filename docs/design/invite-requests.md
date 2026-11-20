@@ -22,6 +22,8 @@ Terms:
 4. After the commit, the server reserves a send under the send limits and mails the link `/register?code=<code>`. The outcome goes on the request: `delivered_at`, or `delivery_error`.
 5. The link opens the sign-up page with the code filled in. `Accounts.register_user/2` redeems it through the existing invite path, inside its own transaction.
 
+   A link from an email verifies that email: when the invite is bound to an approved request (`invite_requests.invite_id`) and the new account's email equals the request's (`Invites.mailed_to?/2`, case-insensitive), `register_user/2` sets `confirmed_at` in the same transaction and, after the commit, runs the shared first-verification path (`after_email_confirmed/1`: the `{:email_confirmed, user_id}` broadcast and the `member_verified` product event). `UserRegistrationLive` then mails no confirmation link, because that function skips verified accounts. Another address, or an invite made by hand, leaves the account unverified.
+
 ## Rules and reasons
 
 - **The form answers the same every time.** A new address, a duplicate pending request, a member's address and a request over an intake limit all get "Request received". Different answers would tell a stranger who is registered and where the limits sit.

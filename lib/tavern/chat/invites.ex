@@ -14,6 +14,7 @@ defmodule Tavern.Chat.Invites do
   alias Tavern.Accounts.Scope
   alias Tavern.Chat.Channel
   alias Tavern.Chat.Invite
+  alias Tavern.Chat.InviteRequest
   alias Tavern.Chat.InviteUse
   alias Tavern.Chat.User
   alias Tavern.Chat.Visibility
@@ -178,6 +179,19 @@ defmodule Tavern.Chat.Invites do
       {:error, %Changeset{} = changeset} -> {:error, changeset}
       _unusable -> {:error, :invalid_invite}
     end
+  end
+
+  @doc """
+  Whether `invite` was mailed to `email`: it is bound to an approved invite request for that
+  address (the column is case-insensitive). An invite made by hand is mailed nowhere.
+  """
+  def mailed_to?(%Invite{id: invite_id}, email) when is_binary(email) do
+    Repo.exists?(
+      from request in InviteRequest,
+        where:
+          request.invite_id == ^invite_id and request.status == :approved and
+            request.email == ^email
+    )
   end
 
   defp unexpired?(%Invite{expires_at: nil}, _now), do: true
