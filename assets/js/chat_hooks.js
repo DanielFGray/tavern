@@ -3,9 +3,12 @@ import StarterKit from "@tiptap/starter-kit"
 import Placeholder from "@tiptap/extension-placeholder"
 import Mention from "@tiptap/extension-mention"
 import Link from "@tiptap/extension-link"
+import Suggestion from "@tiptap/suggestion"
+import { PluginKey } from "@tiptap/pm/state"
 import MarkdownIt from "markdown-it"
 import DOMPurify from "dompurify"
 import { highlightCode } from "./code_highlight"
+import { emojiShortcodePlugin, searchEmojiShortcodes } from "./emoji_shortcodes"
 import { CATEGORY_ICONS, CATEGORY_ORDER, CATEGORY_LABELS, filterEmojiCatalog } from "./emoji_catalog"
 
 const md = new MarkdownIt({
@@ -20,6 +23,8 @@ const md = new MarkdownIt({
     return `<div class="message-code-block overflow-hidden rounded-[0.9rem] border border-white/6 bg-[rgb(17_18_20_/_0.92)]">${languageLabel}<pre class="m-0 overflow-x-auto px-[0.95rem] pt-[0.85rem] pb-4"><code class="text-[13px] text-zinc-200">${highlightCode(code, language) ?? escapeHtml(code)}</code></pre></div>`
   },
 })
+
+md.use(emojiShortcodePlugin)
 
 const LINK_ATTRIBUTES = [
   ["target", "_blank"],
@@ -93,6 +98,47 @@ const ComposerEntity = Mention.extend({
     ]
   },
 })
+
+// Typing `:` and two letters opens a list of emoji. A unicode pick is inserted as the emoji
+// itself; a custom pick as its `:shortcode:` text, which messages draw as the server's image.
+const EmojiShortcode = Extension.create({
+  name: "emojiShortcode",
+  priority: SUGGESTION_PRIORITY,
+
+  addOptions() {
+    return { customEmojis: () => [] }
+  },
+
+  addProseMirrorPlugins() {
+    const { customEmojis } = this.options
+
+    return [
+      Suggestion({
+        editor: this.editor,
+        pluginKey: new PluginKey("emojiShortcodeSuggestion"),
+        ...buildSuggestion({
+          char: ":",
+          items: query => searchEmojiShortcodes(query, customEmojis()),
+          filter: false,
+          emptyText: null,
+          renderOption: emojiOption,
+        }),
+        command: ({ editor, range, props }) => {
+          const text = props.native || `:${props.name}:`
+          editor.chain().focus().insertContentAt(range, `${text} `).run()
+        },
+      }),
+    ]
+  },
+})
+
+function emojiOption(item) {
+  const glyph = item.native
+    ? `<span class="w-6 text-center text-[1.15rem] leading-none">${escapeHtml(item.native)}</span>`
+    : `<img class="h-6 w-6 object-contain" src="${escapeHtml(item.url)}" alt="">`
+
+  return `<span class="flex items-center gap-2.5">${glyph}<span class="text-[0.86rem] font-bold text-zinc-100">:${escapeHtml(item.name)}:</span></span>`
+}
 
 const RichComposerHook = {
   mounted() {
@@ -203,6 +249,9 @@ const RichComposerHook = {
           autolink: true,
           openOnClick: false,
           protocols: ["http", "https"],
+        }),
+        EmojiShortcode.configure({
+          customEmojis: () => parseDatasetJson(this.el.dataset.customEmojis).custom || [],
         }),
         ComposerEntity.configure({
           suggestions: [
@@ -446,14 +495,19 @@ const MessageListHook = {
   },
 
   renderMarkdownBodies() {
+    // Custom emoji arrive after the first render, so a body is drawn again when the list changes.
+    const emojiKey = this.el.dataset.customEmojis || ""
+    const customEmojis = parseDatasetJson(emojiKey).custom || []
+
     this.el.querySelectorAll("[data-markdown-source]").forEach(node => {
       const source = node.dataset.markdownSource || ""
-      if(node.dataset.renderedSource === source) return
+      if(node.dataset.renderedSource === source && node.dataset.renderedEmojis === emojiKey) return
 
-      const rendered = DOMPurify.sanitize(md.render(source))
+      const rendered = DOMPurify.sanitize(md.render(source, { customEmojis }))
 
       node.innerHTML = rendered
       node.dataset.renderedSource = source
+      node.dataset.renderedEmojis = emojiKey
     })
   },
 
@@ -643,11 +697,23 @@ const ReactionPickerHook = {
   },
 }
 
-function buildSuggestion({ char, items, startOfLine = false }) {
+// `items` returns the candidates, filtered by label here unless `filter` is false. `renderOption`
+// gives a row's HTML, `emptyText` is shown when nothing matches (null hides the list), and a
+// row's item is passed whole to the suggestion's command.
+function buildSuggestion({
+  char,
+  items,
+  startOfLine = false,
+  filter = true,
+  emptyText = "No matches",
+  renderOption = mentionOption(char),
+}) {
+  const choose = item => (filter ? { id: item.id, label: item.label } : item)
+
   return {
     char,
     startOfLine,
-    items: ({ query }) => filterItems(items(), query),
+    items: ({ query }) => (filter ? filterItems(items(), query) : items(query)),
     render: () => {
       let popup
       let selectedIndex = 0
@@ -659,9 +725,10 @@ function buildSuggestion({ char, items, startOfLine = false }) {
 
         activeItems = props.items
         popup.innerHTML = ""
+        popup.hidden = activeItems.length === 0 && emptyText === null
 
         if(activeItems.length === 0) {
-          popup.innerHTML = '<div class="flex w-full flex-col gap-0.5 px-[0.85rem] py-[0.7rem] text-left text-[0.72rem] text-zinc-400">No matches</div>'
+          if(emptyText !== null) popup.innerHTML = `<div class="flex w-full flex-col gap-0.5 px-[0.85rem] py-[0.7rem] text-left text-[0.72rem] text-zinc-400">${emptyText}</div>`
           return
         }
 
@@ -672,13 +739,10 @@ function buildSuggestion({ char, items, startOfLine = false }) {
             "flex w-full flex-col gap-0.5 px-[0.85rem] py-[0.7rem] text-left transition",
             index === selectedIndex ? "bg-white/6" : "bg-transparent hover:bg-white/6",
           ].join(" ")
-          option.innerHTML = `
-            <span class="text-[0.86rem] font-bold text-zinc-100">${char}${escapeHtml(item.label)}</span>
-            <span class="text-[0.72rem] text-zinc-400">${escapeHtml(item.description || "")}</span>
-          `
+          option.innerHTML = renderOption(item)
           option.addEventListener("mousedown", event => {
             event.preventDefault()
-            props.command({ id: item.id, label: item.label })
+            props.command(choose(item))
           })
           popup.appendChild(option)
         })
@@ -733,7 +797,7 @@ function buildSuggestion({ char, items, startOfLine = false }) {
           }
 
           if(props.event.key === "Enter" && activeItems[selectedIndex]) {
-            command({ id: activeItems[selectedIndex].id, label: activeItems[selectedIndex].label })
+            command(choose(activeItems[selectedIndex]))
             return true
           }
 
@@ -746,6 +810,13 @@ function buildSuggestion({ char, items, startOfLine = false }) {
       }
     },
   }
+}
+
+function mentionOption(char) {
+  return item => `
+    <span class="text-[0.86rem] font-bold text-zinc-100">${char}${escapeHtml(item.label)}</span>
+    <span class="text-[0.72rem] text-zinc-400">${escapeHtml(item.description || "")}</span>
+  `
 }
 
 function filterItems(items, query) {
