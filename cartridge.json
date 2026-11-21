@@ -23,7 +23,9 @@
         { "name": "VALKEY_KEY_PREFIX", "valkey": "keyPrefix" },
         { "name": "TRUSTED_PROXY_HEADER", "value": "x-real-ip" },
         { "name": "EMAIL_FROM", "value": "tavern@danielfgray.com" },
-        { "name": "MAIL_PROVIDER", "value": "cloudflare" }
+        { "name": "MAIL_PROVIDER", "value": "cloudflare" },
+        { "name": "CLOUDFLARE_REALTIME_APP_ID", "value": "ae24a3b1b6d90b7ee95da3835b2c1cfe" },
+        { "name": "CLOUDFLARE_TURN_KEY_ID", "value": "297a8a1f0c895f2eaaddfc8acd4e2410" }
       ],
       "connections": [],
       "migrate": {
@@ -61,6 +63,8 @@
         { "_tag": "ValkeyCredentials", "urlEnv": "VALKEY_URL" },
         { "_tag": "KvSecret", "path": "secret/data/tavern", "key": "cloudflare_email_api_token", "env": "CLOUDFLARE_EMAIL_API_TOKEN" },
         { "_tag": "KvSecret", "path": "secret/data/tavern", "key": "cloudflare_account_id", "env": "CLOUDFLARE_ACCOUNT_ID" },
+        { "_tag": "KvSecret", "path": "secret/data/tavern", "key": "cloudflare_realtime_app_secret", "env": "CLOUDFLARE_REALTIME_APP_SECRET" },
+        { "_tag": "KvSecret", "path": "secret/data/tavern", "key": "cloudflare_turn_key_token", "env": "CLOUDFLARE_TURN_KEY_TOKEN" },
         {
           "_tag": "GeneratedSecret",
           "key": "secret_key_base",
