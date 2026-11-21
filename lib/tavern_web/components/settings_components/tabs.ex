@@ -5,8 +5,6 @@ defmodule TavernWeb.SettingsComponents.Tabs do
 
   import TavernWeb.SettingsComponents.Helpers
 
-  alias Tavern.Chat
-
   def profile_tab(assigns) do
     ~H"""
     <div id="settings-view-profile">
@@ -44,18 +42,7 @@ defmodule TavernWeb.SettingsComponents.Tabs do
                 class="size-16 rounded-full border border-base-300 object-cover"
               />
             <% else %>
-              <%= if @current_user.avatar_asset do %>
-                <img
-                  id="avatar-current"
-                  src={Chat.asset_url(@current_user.avatar_asset)}
-                  alt=""
-                  class="size-16 rounded-full border border-base-300 object-cover"
-                />
-              <% else %>
-                <span class="flex size-16 items-center justify-center rounded-full bg-primary/15 text-xl font-bold uppercase text-primary">
-                  {String.first(@current_user.display_name || "?")}
-                </span>
-              <% end %>
+              <.avatar user={@current_user} id="avatar-current" class="size-16 text-xl" />
             <% end %>
 
             <div class="min-w-0 flex-1">

@@ -80,6 +80,45 @@ defmodule TavernWeb.CoreComponents do
   end
 
   @doc """
+  A member's avatar: their image, cropped square by CSS, or the first letter of their display
+  name. `:class` sets the size, shape and text size. The avatar asset must be preloaded; a user
+  without a loaded asset shows the letter.
+  """
+  attr :user, :map, required: true
+  attr :class, :any, default: "size-10 text-[13px]"
+  attr :rest, :global
+
+  def avatar(assigns) do
+    assigns = assign(assigns, :url, avatar_url(assigns.user))
+
+    ~H"""
+    <img
+      :if={@url}
+      src={@url}
+      alt=""
+      class={["shrink-0 rounded-full bg-base-300 object-cover", @class]}
+      {@rest}
+    />
+    <span
+      :if={!@url}
+      aria-hidden="true"
+      class={[
+        "flex shrink-0 items-center justify-center rounded-full bg-base-300 font-semibold uppercase text-base-content",
+        @class
+      ]}
+      {@rest}
+    >
+      {String.first(@user.display_name || "?")}
+    </span>
+    """
+  end
+
+  defp avatar_url(%{avatar_asset: %Tavern.Chat.MediaAsset{} = asset}),
+    do: Tavern.Chat.asset_url(asset)
+
+  defp avatar_url(_user), do: nil
+
+  @doc """
   Renders a button with navigation support.
 
   ## Examples

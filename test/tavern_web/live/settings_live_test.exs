@@ -35,14 +35,14 @@ defmodule TavernWeb.SettingsLiveTest do
 
       view |> form("#profile-form", user: %{bio: "hi **there**"}) |> render_submit()
 
-      assert has_element?(view, "#avatar-current")
+      assert has_element?(view, "img#avatar-current")
       assert Tavern.UploadFixtures.stored?(png)
       assert %User{bio: "hi **there**", avatar_asset_id: id} = Repo.get!(User, user.id)
       assert id
 
       view |> element("#remove-avatar") |> render_click()
 
-      refute has_element?(view, "#avatar-current")
+      refute has_element?(view, "img#avatar-current")
       refute Tavern.UploadFixtures.stored?(png)
       assert %User{avatar_asset_id: nil} = Repo.get!(User, user.id)
     end

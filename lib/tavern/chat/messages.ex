@@ -35,8 +35,8 @@ defmodule Tavern.Chat.Messages do
   # What a message read needs to render and serialize. The channel is not here: a read sets it from
   # the decision that allowed the read, so it costs no query.
   @read_preloads [
-    :author,
     :user_mentions,
+    author: :avatar_asset,
     role_mentions: :mentioned_role,
     reactions: [emoji: :asset],
     reply_to: :author,

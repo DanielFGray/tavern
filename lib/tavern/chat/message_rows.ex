@@ -13,9 +13,9 @@ defmodule Tavern.Chat.MessageRows do
   # What a write returns and broadcasts. Reads carry the mention lists too, so a bot reads whom a
   # message mentions from either.
   @write_preloads [
-    :author,
     :channel,
     :user_mentions,
+    author: :avatar_asset,
     role_mentions: :mentioned_role,
     reactions: [emoji: :asset],
     reply_to: :author,

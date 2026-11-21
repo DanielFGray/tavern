@@ -140,9 +140,7 @@ defmodule TavernWeb.ServerComponents.Navigation do
     >
       <div class="flex items-start gap-3">
         <div class="relative mt-0.5 shrink-0">
-          <div class="flex size-8 items-center justify-center rounded-full bg-base-300 text-xs font-semibold text-base-content">
-            {@entry.user.display_name |> String.first()}
-          </div>
+          <.avatar user={@entry.user} class="size-8 text-xs" />
           <span class={[
             "absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-base-200",
             member_status_class(@entry.status)

@@ -3,8 +3,6 @@ defmodule TavernWeb.SettingsComponents.InviteTree do
 
   use TavernWeb, :html
 
-  alias Tavern.Chat
-
   def invite_tree_panel(assigns) do
     ~H"""
     <div id="settings-view-invites-tree" class="mt-5">
@@ -57,7 +55,7 @@ defmodule TavernWeb.SettingsComponents.InviteTree do
             phx-value-user_id={node.user.id}
             class="flex w-full items-center gap-3 p-3 text-left transition hover:bg-base-300"
           >
-            <.tree_avatar user={node.user} />
+            <.avatar user={node.user} class="size-8 text-xs" />
             <span class="min-w-0 break-words text-sm text-base-content">
               {node.user.display_name}
               <span class="text-base-content/50">@{node.user.username}</span>
@@ -133,7 +131,7 @@ defmodule TavernWeb.SettingsComponents.InviteTree do
           <% else %>
             <span class="size-8 shrink-0" aria-hidden="true"></span>
           <% end %>
-          <.tree_avatar user={node.user} />
+          <.avatar user={node.user} class="size-8 text-xs" />
           <div class="min-w-0 flex-1">
             <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5">
               <span class="break-words text-sm font-semibold text-base-content">
@@ -185,27 +183,6 @@ defmodule TavernWeb.SettingsComponents.InviteTree do
         />
       </li>
     </ul>
-    """
-  end
-
-  attr :user, :map, required: true
-
-  defp tree_avatar(assigns) do
-    ~H"""
-    <%= if @user.avatar_asset do %>
-      <img
-        src={Chat.asset_url(@user.avatar_asset)}
-        alt=""
-        class="size-8 shrink-0 rounded-full object-cover"
-      />
-    <% else %>
-      <span
-        class="inline-flex size-8 shrink-0 items-center justify-center rounded-full bg-base-300 text-xs font-bold uppercase text-base-content/70"
-        aria-hidden="true"
-      >
-        {String.first(@user.display_name || @user.username)}
-      </span>
-    <% end %>
     """
   end
 

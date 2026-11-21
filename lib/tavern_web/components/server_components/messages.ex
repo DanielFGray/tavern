@@ -162,9 +162,7 @@ defmodule TavernWeb.ServerComponents.Messages do
       <div class="group anchor-scope relative px-4 py-0.5 hover:bg-base-100/80">
         <article class="relative flex gap-3 py-2">
           <div class="shrink-0 pt-0.5">
-            <div class="flex size-10 items-center justify-center rounded-full bg-base-300 text-[13px] font-semibold text-base-content">
-              {@message.author.display_name |> String.first()}
-            </div>
+            <.avatar user={@message.author} />
           </div>
 
           <div class="min-w-0 flex-1" phx-click="toggle_message_controls" phx-value-id={@message.id}>

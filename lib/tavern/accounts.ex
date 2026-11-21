@@ -54,7 +54,7 @@ defmodule Tavern.Accounts do
       show_unverified? = Visibility.can?(scope, :manage_roles, :server)
 
       active_members()
-      |> preload([:membership])
+      |> preload([:avatar_asset, :membership])
       |> Repo.all()
       |> presence_entries()
       |> Enum.map(&Map.put(&1, :unverified?, show_unverified? and unverified?(&1.user)))

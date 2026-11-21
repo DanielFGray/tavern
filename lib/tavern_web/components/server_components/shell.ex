@@ -123,9 +123,7 @@ defmodule TavernWeb.ServerComponents.Shell do
               class="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left transition hover:bg-base-200"
             >
               <div class="relative shrink-0">
-                <div class="flex size-9 items-center justify-center rounded-full bg-base-300 text-xs font-semibold text-base-content">
-                  {@server.current_user.display_name |> String.first()}
-                </div>
+                <.avatar user={@server.current_user} class="size-9 text-xs" />
                 <span class="absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-base-100 bg-emerald-400" />
               </div>
               <div class="min-w-0">
