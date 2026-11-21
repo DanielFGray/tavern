@@ -115,7 +115,7 @@ defmodule TavernWeb.ServerComponents.Threads do
             />
           </button>
 
-          <div :if={@menu?} class="relative" phx-click-away={JS.hide(to: "##{@menu_id}")}>
+          <div :if={@menu?} class="anchor-scope relative" phx-click-away={JS.hide(to: "##{@menu_id}")}>
             <button
               type="button"
               id={"thread-actions-#{@message.id}"}
@@ -124,14 +124,14 @@ defmodule TavernWeb.ServerComponents.Threads do
               aria-controls={@menu_id}
               aria-label="Thread actions"
               title="Thread actions"
-              class={[thread_icon_button_classes(), "text-base-content/60"]}
+              class={["anchor-menu-trigger", thread_icon_button_classes(), "text-base-content/60"]}
             >
               <.icon name="hero-ellipsis-horizontal" class="size-4" />
             </button>
             <div
               id={@menu_id}
               role="menu"
-              class="absolute right-0 top-full z-20 mt-1 hidden min-w-36 rounded-xl border border-base-300 bg-base-100 p-1.5 shadow-xl"
+              class="anchored-menu z-20 hidden min-w-36 rounded-xl border border-base-300 bg-base-100 p-1.5 shadow-xl"
             >
               <button
                 :if={@server.thread_pane.abilities.archive_thread}

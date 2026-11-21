@@ -681,8 +681,13 @@ function buildSuggestion({ char, items, startOfLine = false }) {
         const rect = props.clientRect()
         if(!rect) return
 
-        popup.style.left = `${rect.left + window.scrollX}px`
-        popup.style.top = `${rect.bottom + window.scrollY + 8}px`
+        // Viewport coordinates: the composer sits at the bottom of the screen, so the list opens
+        // above the caret when it would run off the bottom.
+        const gap = 8
+        const { width, height } = popup.getBoundingClientRect()
+        const fitsBelow = rect.bottom + gap + height <= window.innerHeight
+        popup.style.left = `${Math.max(gap, Math.min(rect.left, window.innerWidth - width - gap))}px`
+        popup.style.top = `${fitsBelow ? rect.bottom + gap : Math.max(gap, rect.top - gap - height)}px`
       }
 
       return {
@@ -690,7 +695,7 @@ function buildSuggestion({ char, items, startOfLine = false }) {
           selectedIndex = 0
           command = props.command
           popup = document.createElement("div")
-          popup.className = "absolute z-80 min-w-60 max-w-80 overflow-hidden rounded-[0.9rem] border border-white/8 bg-[rgb(17_18_20_/_0.97)] shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
+          popup.className = "fixed z-80 min-w-60 max-w-80 overflow-hidden rounded-[0.9rem] border border-white/8 bg-[rgb(17_18_20_/_0.97)] shadow-[0_18px_40px_rgba(0,0,0,0.35)]"
           document.body.appendChild(popup)
           renderPopup(props)
           reposition(props)

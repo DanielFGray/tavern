@@ -159,7 +159,7 @@ defmodule TavernWeb.ServerComponents.Messages do
 
     ~H"""
     <div id={@dom_id}>
-      <div class="group relative px-4 py-0.5 hover:bg-base-100/80">
+      <div class="group anchor-scope relative px-4 py-0.5 hover:bg-base-100/80">
         <article class="relative flex gap-3 py-2">
           <div class="shrink-0 pt-0.5">
             <div class="flex size-10 items-center justify-center rounded-full bg-base-300 text-[13px] font-semibold text-base-content">
@@ -375,7 +375,7 @@ defmodule TavernWeb.ServerComponents.Messages do
       id={"reaction-picker-#{@message.id}"}
       phx-hook="ReactionPickerHook"
       data-custom-emojis={@server.custom_emojis_json}
-      class="fixed inset-x-0 bottom-0 z-20 rounded-t-[1.4rem] border border-base-300 bg-base-100 p-3 shadow-2xl md:absolute md:right-4 md:top-14 md:left-auto md:bottom-auto md:w-[22rem] md:rounded-2xl"
+      class="anchored-picker fixed inset-x-0 bottom-0 z-20 rounded-t-[1.4rem] border border-base-300 bg-base-100 p-3 shadow-2xl md:w-[22rem] md:rounded-2xl"
     >
       <div class="mb-2 flex items-center justify-between gap-3">
         <div>
@@ -499,19 +499,19 @@ defmodule TavernWeb.ServerComponents.Messages do
   def message_actions(assigns) do
     ~H"""
     <div class={[
-      "absolute right-4 top-0 z-10 flex items-center gap-1 rounded-full border border-base-300 bg-base-100/95 p-1 shadow-lg transition",
+      "anchor-toolbar absolute right-4 top-0 z-10 flex items-center gap-1 rounded-full border border-base-300 bg-base-100/95 p-1 shadow-lg transition",
       message_controls_visible?(
         @message.id,
         @server.active_message_controls_id,
         @server.message_action_menu_id
       ) &&
-        "opacity-100 translate-y-0 pointer-events-auto",
+        "opacity-100 translate-none pointer-events-auto",
       !message_controls_visible?(
         @message.id,
         @server.active_message_controls_id,
         @server.message_action_menu_id
       ) &&
-        "pointer-events-none -translate-y-1 opacity-0 group-hover:pointer-events-auto group-hover:translate-y-0 group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:translate-y-0 group-focus-within:opacity-100"
+        "pointer-events-none -translate-y-1 opacity-0 group-hover:pointer-events-auto group-hover:translate-none group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:translate-y-0 group-focus-within:opacity-100"
     ]}>
       <button
         :if={can_open_message_controls?(@server, @message)}
@@ -575,7 +575,7 @@ defmodule TavernWeb.ServerComponents.Messages do
         phx-click="toggle_message_action_menu"
         phx-value-id={@message.id}
         id={"open-message-actions-#{@message.id}"}
-        class="inline-flex size-8 items-center justify-center rounded-full text-base-content/75 transition hover:bg-base-200 hover:text-base-content"
+        class="anchor-menu-trigger inline-flex size-8 items-center justify-center rounded-full text-base-content/75 transition hover:bg-base-200 hover:text-base-content"
         aria-label="More actions"
         title="More actions"
       >
@@ -585,7 +585,7 @@ defmodule TavernWeb.ServerComponents.Messages do
       <div
         :if={message_action_menu_open?(@message.id, @server.message_action_menu_id)}
         id={"message-actions-menu-#{@message.id}"}
-        class="absolute right-0 top-full mt-2 min-w-40 rounded-xl border border-base-300 bg-base-100 p-1.5 shadow-xl"
+        class="anchored-menu z-20 min-w-40 rounded-xl border border-base-300 bg-base-100 p-1.5 shadow-xl"
       >
         <%= if @thread do %>
           <button

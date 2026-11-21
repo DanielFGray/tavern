@@ -137,3 +137,38 @@
 
 .message-code-block .hljs-emphasis { font-style: italic }
 .message-code-block .hljs-strong { font-weight: 700 }
+
+
+/* Anchored popups: a menu or picker opens below its trigger and flips above it when it would leave
+   the viewport. `fixed` makes the viewport the box it flips within, so no ancestor may carry a
+   transform. `.anchor-scope` limits the anchor names to one row, so each row anchors its own popup. */
+.anchor-scope {
+  anchor-scope: --toolbar, --menu-trigger;
+}
+
+.anchor-toolbar {
+  anchor-name: --toolbar;
+}
+
+.anchor-menu-trigger {
+  anchor-name: --menu-trigger;
+}
+
+.anchored-menu {
+  position: fixed;
+  position-anchor: --menu-trigger;
+  position-area: block-end span-inline-start;
+  position-try-fallbacks: flip-block;
+  margin-block: 0.25rem;
+}
+
+/* The reaction picker is a bottom sheet on a phone and an anchored popup from the md breakpoint. */
+@media (min-width: 48rem) {
+  .anchored-picker {
+    inset: auto;
+    position-anchor: --toolbar;
+    position-area: block-end span-inline-start;
+    position-try-fallbacks: flip-block;
+    margin-block: 0.25rem;
+  }
+}
