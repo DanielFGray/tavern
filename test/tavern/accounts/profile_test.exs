@@ -89,4 +89,25 @@ defmodule Tavern.Accounts.ProfileTest do
       refute UploadFixtures.stored?(second.body)
     end
   end
+
+  describe "get_profile/2" do
+    test "a viewer who has left the server gets no card", %{user: user} do
+      viewer = user_fixture()
+      {:ok, _} = Accounts.delete_account(viewer.id)
+
+      assert Accounts.get_profile(scope_for(viewer), {:id, user.id}) == nil
+    end
+
+    test "lists roles highest first and leaves out the default role", %{user: user} do
+      low = role_fixture(%{name: "Low", position: 1})
+      high = role_fixture(%{name: "High", position: 2})
+      member_role_fixture(user, low)
+      member_role_fixture(user, high)
+
+      card = Accounts.get_profile(scope_for(user), {:id, user.id})
+
+      assert Enum.map(card.roles, & &1.name) == ["High", "Low"]
+      assert card.status in [:online, :recent, :offline]
+    end
+  end
 end

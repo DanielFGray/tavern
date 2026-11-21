@@ -21,6 +21,15 @@ A member edits their own bio and avatar in Settings > Profile (`Accounts.update_
 - A replaced or removed avatar loses its `media_assets` row in the same transaction as the user update, and its object after the commit. Only an asset of kind `:avatar` is deleted. A failed write stores no new object.
 - LiveView deletes an upload's temporary file when the consume callback returns, so `SettingsLive.State.save_profile/2` runs the write inside the callback.
 
+## Profile card
+
+Hovering (after 300 ms), clicking, tapping or focusing a member's name or avatar in a message row or the member list, or an `@username` in message text, opens one profile card (`ServerComponents.ProfileCard`). A trigger is any element with `data-profile-user-id` or `data-profile-username`.
+
+- `ProfileCardHook` gives the open trigger the CSS anchor name `--profile-trigger` and pushes `show_profile`. The server keeps at most one card in the `:profile_card` assign; a newer request replaces it and `hide_profile` clears it. The card closes on Escape, a click elsewhere, or when the pointer leaves the trigger and the card.
+- `Accounts.get_profile/2` reads the card: avatar, name, username, Owner and Bot badges, status, join date, bio and roles (highest first, without the default role). A viewer outside the server, a deleted, removed or deactivated account, and an unknown username all give nil, so no card opens.
+- The bio shows through the same client Markdown renderer and sanitiser as messages. An `@name` in text becomes a trigger whether or not a member has that name; the server finds no card for a stray name.
+- Reaction and poll voter names are not triggers yet: they are a joined string inside a vote button.
+
 ## Deleting an account
 
 `delete_account(user_id, actor_id)` runs one transaction. It locks the membership row, then the user row. Every deletion path takes the locks in that order, so two deletions of one account wait for each other and do not deadlock. It reads the account's state under those locks:

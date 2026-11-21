@@ -162,6 +162,16 @@
   margin-block: 0.25rem;
 }
 
+/* The profile card sits below the name or avatar that opened it and flips above or to the other
+   side when it would leave the viewport. The ProfileCardHook gives the trigger the anchor name. */
+.profile-card {
+  position: fixed;
+  position-anchor: --profile-trigger;
+  position-area: block-end span-inline-end;
+  position-try-fallbacks: flip-block, flip-inline, flip-block flip-inline;
+  margin: 0.25rem;
+}
+
 /* The reaction picker is a bottom sheet on a phone and an anchored popup from the md breakpoint. */
 @media (min-width: 48rem) {
   .anchored-picker {

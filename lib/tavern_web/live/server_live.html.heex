@@ -35,6 +35,9 @@
       <TavernWeb.ServerComponents.active_channel_view :if={@active_channel} server={assigns} />
     </section>
 
+    <%!-- Outside every drawer and panel: a transformed ancestor would become the card's fixed frame. --%>
+    <TavernWeb.ServerComponents.ProfileCard.profile_card card={@profile_card} />
+
     <TavernWeb.ServerComponents.members_drawer server={assigns} />
     <TavernWeb.ServerComponents.Threads.thread_browser :if={@thread_browser} server={assigns} />
   </div>

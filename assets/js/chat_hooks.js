@@ -21,6 +21,17 @@ const md = new MarkdownIt({
   },
 })
 
+// Renders each `data-markdown-source` element under `root` as sanitised Markdown, once per source.
+export function renderMarkdownIn(root) {
+  root.querySelectorAll("[data-markdown-source]").forEach(node => {
+    const source = node.dataset.markdownSource || ""
+    if(node.dataset.renderedSource === source) return
+
+    node.innerHTML = DOMPurify.sanitize(md.render(source))
+    node.dataset.renderedSource = source
+  })
+}
+
 const LINK_ATTRIBUTES = [
   ["target", "_blank"],
   ["rel", "noopener noreferrer nofollow"],
@@ -47,6 +58,56 @@ md.renderer.rules.image = (tokens, idx, options, env, self) => {
     .map(([name, value]) => `${name}="${escapeHtml(value)}"`)
     .join(" ")
   return `<a ${attributes}>${escapeHtml(text)}</a>`
+}
+
+// An @username in text becomes a trigger for the profile card. Any @name matches: the server shows
+// a card only when the name belongs to a member, so a stray @word opens nothing. Text inside a
+// link or code stays as written.
+const MENTION_PATTERN = /(^|[^\w@/])@([a-z0-9_]{2,24})\b/g
+
+md.core.ruler.after("inline", "profile_mentions", state => {
+  for(const block of state.tokens) {
+    if(block.type !== "inline" || !block.children) continue
+
+    const children = []
+    let linkDepth = 0
+    for(const token of block.children) {
+      if(token.type === "link_open") linkDepth++
+      if(token.type === "link_close") linkDepth--
+      if(token.type !== "text" || linkDepth > 0) {
+        children.push(token)
+        continue
+      }
+      children.push(...splitMentions(token.content, state.Token))
+    }
+    block.children = children
+  }
+})
+
+function splitMentions(text, Token) {
+  const tokens = []
+  let last = 0
+  for(const match of text.matchAll(MENTION_PATTERN)) {
+    const start = match.index + match[1].length
+    if(start > last) tokens.push(textToken(text.slice(last, start), Token))
+    const mention = new Token("profile_mention", "", 0)
+    mention.content = match[2]
+    tokens.push(mention)
+    last = start + match[2].length + 1
+  }
+  if(last < text.length) tokens.push(textToken(text.slice(last), Token))
+  return tokens
+}
+
+function textToken(content, Token) {
+  const token = new Token("text", "", 0)
+  token.content = content
+  return token
+}
+
+md.renderer.rules.profile_mention = (tokens, idx) => {
+  const username = escapeHtml(tokens[idx].content)
+  return `<span data-profile-username="${username}" tabindex="0" role="button" class="cursor-pointer rounded px-0.5 font-medium text-primary hover:bg-primary/15">@${username}</span>`
 }
 
 // Tiptap offers a key to extensions from the highest priority down, and the first handler that
@@ -446,15 +507,7 @@ const MessageListHook = {
   },
 
   renderMarkdownBodies() {
-    this.el.querySelectorAll("[data-markdown-source]").forEach(node => {
-      const source = node.dataset.markdownSource || ""
-      if(node.dataset.renderedSource === source) return
-
-      const rendered = DOMPurify.sanitize(md.render(source))
-
-      node.innerHTML = rendered
-      node.dataset.renderedSource = source
-    })
+    renderMarkdownIn(this.el)
   },
 
   isNearBottom() {

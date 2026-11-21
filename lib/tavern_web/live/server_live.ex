@@ -48,6 +48,7 @@ defmodule TavernWeb.ServerLive do
       |> assign(:mobile_members_open?, false)
       |> assign(:members_collapsed?, false)
       |> assign(:user_menu_open?, false)
+      |> assign(:profile_card, nil)
       |> assign(:reaction_picker_message_id, nil)
       |> assign(:active_message_controls_id, nil)
       |> assign(:message_action_menu_id, nil)

@@ -77,6 +77,48 @@ defmodule Tavern.Accounts do
     end
   end
 
+  @doc """
+  What a profile card shows about an active member, for a scope that is itself an active member:
+  `%{user:, status:, last_active_at:, roles:}`, with `roles` highest first and without the default
+  role every member holds. `ref` is `{:id, id}` or `{:username, username}`. A deleted, removed or
+  deactivated account, an unknown member and a scope outside the server all give nil.
+  """
+  def get_profile(%Scope{} = scope, ref) do
+    with %User{} <- Visibility.member(scope),
+         %User{} = user <- profile_user(ref) do
+      [entry] = presence_entries([user])
+
+      roles =
+        user.member_roles
+        |> Enum.map(& &1.role)
+        |> Enum.reject(&(&1.position == 0))
+        |> Enum.sort_by(& &1.position, :desc)
+
+      Map.put(entry, :roles, roles)
+    else
+      _ -> nil
+    end
+  end
+
+  defp profile_user({:id, id}) do
+    case Ecto.UUID.cast(id) do
+      {:ok, id} -> profile_user_where(dynamic([user], user.id == ^id))
+      :error -> nil
+    end
+  end
+
+  defp profile_user({:username, username}) when is_binary(username),
+    do: profile_user_where(dynamic([user], user.username == ^username))
+
+  defp profile_user(_ref), do: nil
+
+  defp profile_user_where(condition) do
+    active_members()
+    |> where(^condition)
+    |> preload([:avatar_asset, :membership, member_roles: :role])
+    |> Repo.one()
+  end
+
   defp active_members do
     User
     |> join(:inner, [user], membership in Membership, on: membership.user_id == user.id)

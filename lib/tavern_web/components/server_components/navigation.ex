@@ -139,7 +139,13 @@ defmodule TavernWeb.ServerComponents.Navigation do
       class="rounded-md px-2 py-2 transition hover:bg-base-100"
     >
       <div class="flex items-start gap-3">
-        <div class="relative mt-0.5 shrink-0">
+        <div
+          class="relative mt-0.5 shrink-0 cursor-pointer"
+          data-profile-user-id={@entry.user.id}
+          tabindex="0"
+          role="button"
+          aria-label={"Profile of #{@entry.user.display_name}"}
+        >
           <.avatar user={@entry.user} class="size-8 text-xs" />
           <span class={[
             "absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-base-200",
@@ -150,7 +156,13 @@ defmodule TavernWeb.ServerComponents.Navigation do
         <div class="min-w-0 flex-1">
           <div class="flex items-center gap-2">
             <p class="truncate text-[13px] font-medium text-base-content">
-              {@entry.user.display_name}
+              <button
+                type="button"
+                data-profile-user-id={@entry.user.id}
+                class="max-w-full truncate text-left hover:underline"
+              >
+                {@entry.user.display_name}
+              </button>
             </p>
             <span
               :if={@entry.user.membership.is_owner}
