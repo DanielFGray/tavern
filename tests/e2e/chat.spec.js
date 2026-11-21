@@ -54,7 +54,8 @@ test('desktop user can switch channels and send a chat message', async ({ page, 
   await page.getByRole('button', { name: 'Code block' }).click()
   await composer.pressSequentially(code)
   await page.getByRole('button', { name: 'Code block' }).click()
-  await composer.pressSequentially(`\n\n${link}`)
+  await composer.press('Shift+Enter')
+  await composer.pressSequentially(link)
   await page.getByRole('button', { name: 'Send message' }).click()
 
   const sentMessage = page.locator(`#message-list [data-markdown-source*="${unique}"]`).last()
@@ -64,6 +65,25 @@ test('desktop user can switch channels and send a chat message', async ({ page, 
   await expect(sentMessage).toContainText(code)
   await expect(sentMessage).toContainText(link)
   await expect(page.locator('#message-list')).toContainText(displayName)
+})
+
+test('Enter sends the message and Shift+Enter starts a new line', async ({ page }, testInfo) => {
+  const unique = runSuffix(testInfo)
+  await login(page)
+
+  const composer = page.locator('#message-form [contenteditable="true"]').first()
+  await composer.click()
+  await composer.pressSequentially(`first ${unique}`)
+  await composer.press('Shift+Enter')
+  await composer.pressSequentially(`second ${unique}`)
+  await expect(page.locator(`#message-list [data-markdown-source*="${unique}"]`)).toHaveCount(0)
+
+  await composer.press('Enter')
+
+  const sent = page.locator(`#message-list [data-markdown-source*="${unique}"]`)
+  await expect(sent).toHaveCount(1)
+  await expect(sent).toHaveAttribute('data-markdown-source', `first ${unique}\nsecond ${unique}`)
+  await expect(composer).toHaveText('')
 })
 
 test('mobile user can open drawers and reaction bottom sheet', async ({ page, isMobile }, testInfo) => {

@@ -49,7 +49,15 @@ md.renderer.rules.image = (tokens, idx, options, env, self) => {
   return `<a ${attributes}>${escapeHtml(text)}</a>`
 }
 
+// Tiptap offers a key to extensions from the highest priority down, and the first handler that
+// returns true takes it. Enter goes to an open @ or / suggestion list first, then to the send
+// shortcut, then to the editor's core keymap (priority 100), which would split the paragraph.
+const SUGGESTION_PRIORITY = 200
+const SEND_PRIORITY = 150
+
 const ComposerEntity = Mention.extend({
+  priority: SUGGESTION_PRIORITY,
+
   addAttributes() {
     return {
       ...this.parent?.(),
@@ -176,10 +184,10 @@ const RichComposerHook = {
           strike: false,
           link: false,
         }),
-        // Low priority so an open mention/slash suggestion list consumes Enter first.
+        // Enter sends; Shift+Enter is StarterKit's hard break, a new line in the message.
         Extension.create({
           name: "submitOnEnter",
-          priority: 1,
+          priority: SEND_PRIORITY,
           addKeyboardShortcuts: () => ({
             Enter: ({ editor }) => {
               if(editor.isActive("codeBlock") || editor.isEmpty) return false
