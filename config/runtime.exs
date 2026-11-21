@@ -116,16 +116,6 @@ if config_env() == :prod do
     account_id: System.get_env("CLOUDFLARE_ACCOUNT_ID"),
     api_token: System.get_env("CLOUDFLARE_EMAIL_API_TOKEN")
 
-  # Voice media (docs/design/voice.md). One Realtime app and secret pair serves local, staged
-  # and production. With CLOUDFLARE_REALTIME_APP_SECRET unset voice stays off. TURN credentials
-  # come from their own TURN app pair — never the Realtime app secret, which must not reach a
-  # browser. Without them the browser falls back to Cloudflare's STUN server.
-  config :tavern, Tavern.Voice.Cloudflare,
-    app_id: System.get_env("CLOUDFLARE_REALTIME_APP_ID"),
-    app_secret: System.get_env("CLOUDFLARE_REALTIME_APP_SECRET"),
-    turn_username: System.get_env("CLOUDFLARE_TURN_APP_ID"),
-    turn_credential: System.get_env("CLOUDFLARE_TURN_APP_SECRET")
-
   # Phoenix's default `check_origin: true` accepts a socket only from a page on this url's host.
   config :tavern, TavernWeb.Endpoint,
     url: [host: public_url.host, port: public_url.port, scheme: public_url.scheme],
@@ -138,3 +128,13 @@ if config_env() == :prod do
     ],
     secret_key_base: secret_key_base
 end
+
+# Voice media (docs/design/voice.md). One Realtime app and secret pair serves local, staged
+# and production. With CLOUDFLARE_REALTIME_APP_SECRET unset voice stays off. The TURN key is
+# a server-side secret of its own — never the Realtime app secret; browsers receive only the
+# short-lived credentials the backend mints from it.
+config :tavern, Tavern.Voice.Cloudflare,
+  app_id: System.get_env("CLOUDFLARE_REALTIME_APP_ID"),
+  app_secret: System.get_env("CLOUDFLARE_REALTIME_APP_SECRET"),
+  turn_key_id: System.get_env("CLOUDFLARE_TURN_KEY_ID"),
+  turn_key_token: System.get_env("CLOUDFLARE_TURN_KEY_TOKEN")

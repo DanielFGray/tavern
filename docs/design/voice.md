@@ -127,9 +127,16 @@ A voice channel's pane is a grid of participant tiles with the message transcrip
 config :tavern, Tavern.Voice.Cloudflare,
   app_id: System.get_env("CLOUDFLARE_REALTIME_APP_ID"),
   app_secret: System.get_env("CLOUDFLARE_REALTIME_APP_SECRET"),
-  turn_urls: ~w(turn:stun.cloudflare.com:3478),        # filled from the TURN app when provisioned
-  turn_username: System.get_env("CLOUDFLARE_TURN_APP_ID"),
-  turn_credential: System.get_env("CLOUDFLARE_TURN_APP_SECRET")
+  turn_key_id: System.get_env("CLOUDFLARE_TURN_KEY_ID"),
+  turn_key_token: System.get_env("CLOUDFLARE_TURN_KEY_TOKEN")
 ```
 
-One app and secret pair serves local, staged and production. `Tavern.Voice.Cloudflare.configured?/0` is false unless `app_id` and `app_secret` are set; without them the voice join button shows "voice not configured" and `Tavern.Voice.join/3` is never reached. Tests stub the API with `Req.Test` (test config pins `req_opts: [plug: {Req.Test, Tavern.Voice.Cloudflare}]`); the two-browser smoke against real Cloudflare runs by hand on staged (ts-84fdd2).
+One Realtime app and secret pair serves local, staged and production. The TURN key is a
+separate server-side secret: Tavern never sends it to a browser. `Tavern.Voice.Cloudflare.turn_ice_servers/1`
+mints short-lived credentials for each joining session (Cloudflare's credential endpoint, the
+same ICE-servers response the browser passes to `RTCPeerConnection`); without a TURN key the
+mint is skipped and the browser gets Cloudflare's STUN server. `Tavern.Voice.Cloudflare.configured?/0`
+is false unless `app_id` and `app_secret` are set; without them the voice join button shows
+"voice not configured" and `Tavern.Voice.join/3` is never reached. Tests stub the API with
+`Req.Test` (test config pins `req_opts: [plug: {Req.Test, Tavern.Voice.Cloudflare}]`); the
+two-browser smoke against real Cloudflare runs by hand on staged (ts-84fdd2).

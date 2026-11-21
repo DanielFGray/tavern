@@ -59,7 +59,7 @@
 
           async start(data) {
             this.stop()
-            this.turnServers = data.turn_servers || []
+            this.iceServers = data.ice_servers || []
             this.userId = data.user_id
             this.published = { mic: false, camera: false, screen: false }
 
@@ -254,7 +254,7 @@
           },
 
           newPeerConnection() {
-            const pc = new RTCPeerConnection({ iceServers: this.turnServers })
+            const pc = new RTCPeerConnection({ iceServers: this.iceServers })
             pc.onconnectionstatechange = () => {
               if (pc.connectionState === "failed" || pc.connectionState === "closed") {
                 // Cloudflare will answer a fresh exchange on the next publish; nothing to do here.

@@ -8,8 +8,6 @@ defmodule TavernWeb.ServerComponents.Voice do
 
   use TavernWeb, :html
 
-  import TavernWeb.ServerComponents.Helpers
-
   attr :server, :map, required: true
 
   # A voice channel's pane is the room beside its own text chat (docs/design/voice.md): the

@@ -262,7 +262,7 @@ defmodule TavernWeb.ServerLive.Voice do
       Process.send_after(self(), :voice_heartbeat, @heartbeat_interval_ms)
 
       push_event(socket, "voice_ready", %{
-        turn_servers: Cloudflare.turn_servers(),
+        ice_servers: Cloudflare.turn_ice_servers(),
         user_id: socket.assigns.current_user.id
       })
     else

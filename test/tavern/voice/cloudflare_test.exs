@@ -75,8 +75,8 @@ defmodule Tavern.Voice.CloudflareTest do
     assert {:error, {:status, 400, %{"errorCode" => "bad"}}} = Cloudflare.new_session()
   end
 
-  test "turn_servers/0 falls back to STUN when TURN credentials are missing" do
-    assert [%{urls: urls}] = Cloudflare.turn_servers()
+  test "turn_ice_servers/1 falls back to STUN when no TURN key is configured" do
+    assert [%{"urls" => urls}] = Cloudflare.turn_ice_servers()
     assert urls == "stun:stun.cloudflare.com:3478"
   end
 end

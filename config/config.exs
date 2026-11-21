@@ -82,14 +82,13 @@ config :opentelemetry,
   resource: %{service: %{name: "tavern"}}
 
 # Voice over Cloudflare Realtime SFU (docs/design/voice.md). runtime.exs fills the app id and
-# secret, and the TURN credentials when a TURN app exists. Without the secret pair voice is
-# off: the UI shows "voice not configured" and nothing calls the SFU.
+# secret, and the TURN key id and token (server-side only; browsers get short-lived minted
+# credentials). Without the app secret pair voice is off.
 config :tavern, Tavern.Voice.Cloudflare,
   app_id: nil,
   app_secret: nil,
-  turn_urls: nil,
-  turn_username: nil,
-  turn_credential: nil
+  turn_key_id: nil,
+  turn_key_token: nil
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

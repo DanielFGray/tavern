@@ -12,24 +12,47 @@ defmodule Tavern.Voice.Cloudflare do
   """
 
   @base_url "https://rtc.live.cloudflare.com/v1/apps"
+  @turn_base_url "https://rtc.live.cloudflare.com/v1/turn"
 
   @doc "Whether the deploy holds a Realtime app id and secret. Without both, voice is off."
   def configured? do
     not is_nil(app_id()) and not is_nil(app_secret())
   end
 
-  def turn_servers do
-    config = config()
-
-    case {config[:turn_urls], config[:turn_username], config[:turn_credential]} do
-      {urls, username, credential} when urls != nil and username != nil and credential != nil ->
-        [%{urls: urls, username: username, credential: credential}]
+  @doc """
+  The ICE servers one browser session connects with: a freshly minted short-lived TURN
+  credential when the deploy holds a TURN key (the key never leaves the backend), else
+  Cloudflare's public STUN server. `ttl` is the credential's lifetime in seconds; it should
+  cover the longest call a member is expected to make before a rejoin mints again.
+  """
+  def turn_ice_servers(ttl \\ 86_400) do
+    case {turn_key_id(), turn_key_token()} do
+      {key_id, token} when key_id != nil and token != nil ->
+        case request_turn_credentials(key_id, token, ttl) do
+          {:ok, ice_servers} -> ice_servers
+          _ -> stun_only()
+        end
 
       _ ->
-        # STUN alone: Cloudflare's public server helps most networks; TURN covers the rest.
-        [%{urls: "stun:stun.cloudflare.com:3478"}]
+        stun_only()
     end
   end
+
+  defp request_turn_credentials(key_id, token, ttl) do
+    [method: :post, url: @turn_base_url <> "/keys/#{key_id}/credentials/generate-ice-servers", json: %{"ttl" => ttl}]
+    |> Keyword.merge(Keyword.get(config(), :req_options, []))
+    |> Req.new(headers: [{"authorization", "Bearer " <> token}], retry: false, receive_timeout: 10_000)
+    |> Req.request()
+    |> case do
+      {:ok, %Req.Response{status: status, body: %{"iceServers" => servers}}} when status in 200..299 ->
+        {:ok, servers}
+
+      _ ->
+        {:error, :turn_credentials}
+    end
+  end
+
+  defp stun_only, do: [%{"urls" => "stun:stun.cloudflare.com:3478"}]
   @doc """
   Opens a session: `POST /sessions/new` with no body. Answers `{:ok, session_id}` or an error.
   """
@@ -99,6 +122,8 @@ defmodule Tavern.Voice.Cloudflare do
 
   defp app_id, do: config()[:app_id]
   defp app_secret, do: config()[:app_secret]
+  defp turn_key_id, do: config()[:turn_key_id]
+  defp turn_key_token, do: config()[:turn_key_token]
 
   defp config do
     Application.get_env(:tavern, __MODULE__, [])
