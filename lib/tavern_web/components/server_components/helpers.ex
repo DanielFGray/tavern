@@ -78,12 +78,6 @@ defmodule TavernWeb.ServerComponents.Helpers do
   def section_label(nil), do: "Text channels"
   def section_label(category), do: category.name
 
-  def channel_kind_badge(:forum), do: "forum"
-  def channel_kind_badge(:announcement), do: "news"
-  def channel_kind_badge(:voice), do: "voice"
-  def channel_kind_badge(:stage), do: "stage"
-  def channel_kind_badge(_kind), do: "text"
-
   def member_status_class(:online), do: "bg-emerald-400"
   def member_status_class(:recent), do: "bg-amber-400"
   def member_status_class(:offline), do: "bg-base-content/35"

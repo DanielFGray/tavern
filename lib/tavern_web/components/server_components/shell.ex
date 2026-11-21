@@ -154,7 +154,8 @@ defmodule TavernWeb.ServerComponents.Shell do
       id="mobile-members-drawer"
       class={[
         "fixed inset-y-0 right-0 z-40 flex h-dvh w-[82vw] max-w-72 shrink-0 flex-col border-l border-base-300 bg-base-200 transition-transform duration-200 ease-out xl:static xl:z-auto xl:h-auto xl:w-60 xl:max-w-none",
-        mobile_members_class(@server.mobile_members_open?)
+        mobile_members_class(@server.mobile_members_open?),
+        @server.members_collapsed? && "xl:hidden"
       ]}
     >
       <div class="border-b border-base-300 px-4 py-3">

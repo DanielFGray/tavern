@@ -72,6 +72,20 @@ defmodule TavernWeb.ServerComponents.Messages do
           <span aria-hidden="true">👥</span>
           <span>{length(@server.member_presence)}</span>
         </button>
+        <button
+          type="button"
+          phx-click="toggle_members_collapsed"
+          id="toggle-members-sidebar"
+          aria-pressed={to_string(!@server.members_collapsed?)}
+          title="Toggle member list"
+          class={[
+            "hidden items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold transition hover:bg-base-100 hover:text-base-content xl:inline-flex",
+            if(@server.members_collapsed?, do: "text-base-content/50", else: "text-base-content/90")
+          ]}
+        >
+          <span aria-hidden="true">👥</span>
+          <span>{length(@server.member_presence)}</span>
+        </button>
         <span
           :if={!Chat.Channel.forum?(@server.active_channel)}
           id="channel-message-count"

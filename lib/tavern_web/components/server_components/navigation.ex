@@ -38,9 +38,6 @@ defmodule TavernWeb.ServerComponents.Navigation do
               #
             </span>
             <span class="min-w-0 flex-1 truncate">{channel.name}</span>
-            <span class="rounded bg-base-300 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-[0.16em] text-base-content/60">
-              {channel_kind_badge(channel.kind)}
-            </span>
             <span
               :if={unread_count_for(channel, @server.unread_counts) > 0}
               id={"channel-unread-#{channel.slug}"}

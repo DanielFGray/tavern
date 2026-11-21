@@ -77,7 +77,46 @@ defmodule TavernWeb.ServerComponents.Composer do
           </button>
         </div>
 
-        <div class="flex items-end gap-2 px-3 py-3">
+        <div class="flex items-end gap-2 px-3 py-2">
+          <div class="relative shrink-0">
+            <button
+              type="button"
+              id={@ids.plus}
+              phx-click={JS.toggle(to: "##{@ids.menu}")}
+              aria-label="Add to message"
+              title="Add to message"
+              aria-haspopup="menu"
+              class="inline-flex size-7 items-center justify-center rounded-md border border-base-300 bg-base-200 text-base-content/70 transition hover:border-violet-400/50 hover:text-violet-300"
+            >
+              <.icon name="hero-plus" class="size-4" />
+            </button>
+            <div
+              id={@ids.menu}
+              role="menu"
+              phx-click-away={JS.hide(to: "##{@ids.menu}")}
+              class="absolute bottom-full left-0 z-20 mb-2 hidden w-44 rounded-lg border border-base-300 bg-base-100 p-1 shadow-lg"
+            >
+              <button
+                type="button"
+                id={@ids.poll}
+                role="menuitem"
+                phx-click={JS.push("open_poll") |> JS.hide(to: "##{@ids.menu}")}
+                aria-expanded={to_string(not is_nil(@server.poll_form))}
+                class="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-base-content/80 transition hover:bg-base-200 hover:text-base-content"
+              >
+                <.icon name="hero-chart-bar" class="size-4" /> Create poll
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                disabled
+                class="flex w-full cursor-not-allowed items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-base-content/40"
+              >
+                <.icon name="hero-paper-clip" class="size-4" /> Upload attachment
+              </button>
+            </div>
+          </div>
+
           <div
             id={@ids.shell}
             data-rich-composer-shell
@@ -122,34 +161,12 @@ defmodule TavernWeb.ServerComponents.Composer do
             <textarea data-rich-composer-metadata name={@form[:metadata].name} class="hidden"></textarea>
           </div>
 
-          <div class="flex h-full shrink-0 flex-col items-center justify-end gap-2 pb-0.5">
-            <button
-              type="button"
-              id={@ids.poll}
-              phx-click="open_poll"
-              aria-label="Create poll"
-              title="Create poll"
-              aria-expanded={to_string(not is_nil(@server.poll_form))}
-              class="inline-flex size-8 items-center justify-center rounded-md border border-base-300 bg-base-200 text-base-content/70 transition hover:border-violet-400/50 hover:text-violet-300 aria-expanded:border-violet-400/60 aria-expanded:text-violet-300"
-            >
-              <.icon name="hero-chart-bar" class="size-4" />
-            </button>
-
-            <button
-              type="button"
-              aria-label="Upload attachments"
-              title="Upload attachments"
-              disabled
-              class="inline-flex size-8 cursor-not-allowed items-center justify-center rounded-md border border-base-300 bg-base-200 text-base-content/50 opacity-70 pointer-events-none"
-            >
-              <.icon name="hero-paper-clip" class="size-4" />
-            </button>
-
+          <div class="flex shrink-0 items-center">
             <.button
               aria-label={@send_label}
               title={@send_label}
               id={@ids.send}
-              class="inline-flex size-8 items-center justify-center rounded-md bg-violet-500 p-0 text-white transition hover:bg-violet-400"
+              class="inline-flex size-7 items-center justify-center rounded-md bg-violet-500 p-0 text-white transition hover:bg-violet-400"
             >
               <.icon name="hero-paper-airplane" class="size-4" />
             </.button>
@@ -190,7 +207,9 @@ defmodule TavernWeb.ServerComponents.Composer do
         shell: "rich-composer-shell",
         toolbar: "rich-composer-toolbar",
         send: "send-message-button",
-        poll: "open-poll-button"
+        poll: "open-poll-button",
+        plus: "composer-plus-button",
+        menu: "composer-plus-menu"
       }
     }
   end
@@ -206,7 +225,9 @@ defmodule TavernWeb.ServerComponents.Composer do
         shell: "thread-rich-composer-shell",
         toolbar: "thread-rich-composer-toolbar",
         send: "send-thread-message-button",
-        poll: "thread-open-poll-button"
+        poll: "thread-open-poll-button",
+        plus: "thread-composer-plus-button",
+        menu: "thread-composer-plus-menu"
       }
     }
   end

@@ -1,4 +1,4 @@
-import { Editor } from "@tiptap/core"
+import { Editor, Extension } from "@tiptap/core"
 import StarterKit from "@tiptap/starter-kit"
 import Placeholder from "@tiptap/extension-placeholder"
 import Mention from "@tiptap/extension-mention"
@@ -176,6 +176,18 @@ const RichComposerHook = {
           strike: false,
           link: false,
         }),
+        // Low priority so an open mention/slash suggestion list consumes Enter first.
+        Extension.create({
+          name: "submitOnEnter",
+          priority: 1,
+          addKeyboardShortcuts: () => ({
+            Enter: ({ editor }) => {
+              if(editor.isActive("codeBlock") || editor.isEmpty) return false
+              this.el.requestSubmit()
+              return true
+            },
+          }),
+        }),
         Placeholder.configure({
           placeholder: this.el.dataset.placeholder || "Message channel",
         }),
@@ -201,7 +213,7 @@ const RichComposerHook = {
       editorProps: {
         attributes: {
           class: [
-            "ProseMirror min-h-[44px] whitespace-pre-wrap break-words text-[15px] leading-6 text-zinc-100 outline-none",
+            "ProseMirror min-h-6 whitespace-pre-wrap break-words text-[15px] leading-6 text-zinc-100 outline-none",
             "[&>p]:m-0",
             "[&_p.is-editor-empty:first-child::before]:pointer-events-none",
             "[&_p.is-editor-empty:first-child::before]:float-left",
