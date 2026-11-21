@@ -94,13 +94,17 @@ Each cancellation clears the date and writes an `account_deletion_canceled` entr
 
 An entry about a deleted account shows its tombstone handle. No entry stores the old username or email.
 
+## First owner
+
+A fresh server has no owner, and its first human registration becomes the owner, even when registration is invite only (`Accounts.register_user/2`). So a new production database is served on a tailnet route first: the operator registers there, sets registration to invite only, and only then does the route change to the public host. `Tavern.Release.make_owner/1` promotes an existing account when the first owner must be someone else.
+
 ## Client address
 
 The login, registration, password-reset and invite-request limits count requests per client IP, so the address must be one the client cannot choose. `TavernWeb.Plugs.ClientIp` (and `socket_client_ip/1` for LiveView mounts) sets `remote_ip` from the one header that `TRUSTED_PROXY_HEADER` names. The header holds a single address. When it is unset, missing or not an address, the peer address stays.
 
 The cartridge sets the header to `x-real-ip`. On a public route Traefik is the only proxy; it writes `X-Real-Ip` from the socket address and drops any value the client sent (roamancer `tools/alchemy/platform/ingress/README.md:10`). `X-Forwarded-For` is not used: a client can write it, and no platform document says Traefik overwrites it.
 
-Production's route is the public host `tavern.danielfgray.com` (Traefik's `web` entry point, with no Cloudflare proxy in front), where `X-Real-Ip` is the client's socket address. The staged copy stays on a tailnet route, where `X-Real-Ip` is cynic's address (same README line), so every staged visitor shares one limiter bucket.
+Production's route is the public host `tavern.danielfgray.com` once the first owner exists (Traefik's `web` entry point, with no Cloudflare proxy in front), where `X-Real-Ip` is the client's socket address. The staged copy stays on a tailnet route, where `X-Real-Ip` is cynic's address (same README line), so every staged visitor shares one limiter bucket.
 
 ## Email verification
 

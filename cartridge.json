@@ -14,15 +14,15 @@
       "cpu": 500,
       "memoryMB": 512,
       "networkMode": "bridge",
-      "routes": [{ "host": "tavern.danielfgray.com" }],
+      "routes": [{ "access": "tailnet" }],
       "environment": [
         { "name": "PHX_SERVER", "value": "true" },
         { "name": "PORT", "value": "4000" },
         { "name": "DATABASE_VISITOR", "database": "tavern", "role": "visitor" },
-        { "name": "PHX_URL", "value": "https://tavern.danielfgray.com" },
+        { "name": "PHX_URL", "route": "tavern" },
         { "name": "VALKEY_KEY_PREFIX", "valkey": "keyPrefix" },
         { "name": "TRUSTED_PROXY_HEADER", "value": "x-real-ip" },
-        { "name": "EMAIL_FROM", "value": "tavern@dfg.rocks" },
+        { "name": "EMAIL_FROM", "value": "tavern@danielfgray.com" },
         { "name": "MAIL_PROVIDER", "value": "cloudflare" }
       ],
       "connections": [],
