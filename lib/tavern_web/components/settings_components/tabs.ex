@@ -5,6 +5,8 @@ defmodule TavernWeb.SettingsComponents.Tabs do
 
   import TavernWeb.SettingsComponents.Helpers
 
+  alias Tavern.Chat
+
   def profile_tab(assigns) do
     ~H"""
     <div id="settings-view-profile">
@@ -13,17 +15,88 @@ defmodule TavernWeb.SettingsComponents.Tabs do
       </p>
       <h2 class="mt-1 text-xl font-semibold text-base-content">Account profile</h2>
 
-      <.form for={@profile_form} id="profile-form" phx-submit="save_profile" class="mt-5 space-y-4">
+      <.form
+        for={@profile_form}
+        id="profile-form"
+        phx-change="change_profile"
+        phx-submit="save_profile"
+        class="mt-5 space-y-4"
+      >
         <.input field={@profile_form[:display_name]} type="text" label="Display name" />
         <.input field={@profile_form[:username]} type="text" label="Username" />
+        <.input
+          field={@profile_form[:bio]}
+          type="textarea"
+          label="Bio (Markdown, up to 300 characters)"
+          maxlength="300"
+          rows="4"
+        />
 
-        <div class="rounded-xl border border-dashed border-base-300 bg-base-200 p-4">
+        <div id="avatar-field" class="rounded-xl border border-dashed border-base-300 bg-base-200 p-4">
           <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-base-content/50">
             Avatar
           </p>
-          <p class="mt-2 text-sm text-base-content/70">
-            Avatar upload will be added in next iteration. This route now owns profile settings.
+          <div class="mt-3 flex items-center gap-4">
+            <%= if entry = List.first(@uploads.avatar.entries) do %>
+              <.live_img_preview
+                entry={entry}
+                id="avatar-preview"
+                class="size-16 rounded-full border border-base-300 object-cover"
+              />
+            <% else %>
+              <%= if @current_user.avatar_asset do %>
+                <img
+                  id="avatar-current"
+                  src={Chat.asset_url(@current_user.avatar_asset)}
+                  alt=""
+                  class="size-16 rounded-full border border-base-300 object-cover"
+                />
+              <% else %>
+                <span class="flex size-16 items-center justify-center rounded-full bg-primary/15 text-xl font-bold uppercase text-primary">
+                  {String.first(@current_user.display_name || "?")}
+                </span>
+              <% end %>
+            <% end %>
+
+            <div class="min-w-0 flex-1">
+              <.live_file_input
+                upload={@uploads.avatar}
+                class="block w-full text-sm text-base-content/85"
+              />
+              <p class="mt-2 text-[11px] text-base-content/50">
+                png, jpg, gif, or webp, up to 2 MB. Shown as a square.
+              </p>
+            </div>
+          </div>
+
+          <p
+            :for={err <- upload_errors(@uploads.avatar)}
+            class="mt-2 text-[11px] text-rose-300"
+          >
+            {upload_error(err)}
           </p>
+
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button
+              :for={entry <- @uploads.avatar.entries}
+              type="button"
+              phx-click="cancel_avatar_upload"
+              phx-value-ref={entry.ref}
+              id="cancel-avatar-upload"
+              class="rounded-md px-3 py-1.5 text-[11px] font-semibold text-base-content/80 transition hover:bg-base-300 hover:text-base-content"
+            >
+              Cancel upload
+            </button>
+            <button
+              :if={@current_user.avatar_asset && @uploads.avatar.entries == []}
+              type="button"
+              phx-click="remove_avatar"
+              id="remove-avatar"
+              class="rounded-md px-3 py-1.5 text-[11px] font-semibold text-base-content/80 transition hover:bg-base-300 hover:text-base-content"
+            >
+              Remove avatar
+            </button>
+          </div>
         </div>
 
         <.button class="rounded-md bg-violet-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-400">

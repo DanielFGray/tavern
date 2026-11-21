@@ -132,7 +132,7 @@ defmodule Tavern.Chat.User do
     changeset
     |> validate_length(:username, min: 2, max: 24)
     |> validate_length(:display_name, min: 1, max: 40)
-    |> validate_length(:bio, max: 200)
+    |> validate_length(:bio, max: 300)
     |> validate_format(:username, ~r/^[a-z0-9_]+$/,
       message: "must contain only lowercase letters, numbers, and underscores"
     )

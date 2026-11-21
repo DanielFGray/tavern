@@ -118,6 +118,24 @@ defmodule TavernWeb.SettingsLive.State do
     end
   end
 
+  # Saves the profile form. A chosen avatar file replaces the avatar; otherwise it stays (removing
+  # is its own event). LiveView deletes the temporary file when the consume callback returns, so
+  # the write runs inside the callback.
+  def save_profile(socket, user_params) do
+    user = socket.assigns.current_user
+
+    result =
+      Phoenix.LiveView.consume_uploaded_entries(socket, :avatar, fn %{path: path}, entry ->
+        upload = %{path: path, client_name: entry.client_name}
+        {:ok, Accounts.update_profile_user(user, user_params, {:replace, upload})}
+      end)
+
+    case result do
+      [saved] -> saved
+      [] -> Accounts.update_profile_user(user, user_params)
+    end
+  end
+
   def channel_memberships(scope, channels),
     do: Chat.channel_memberships(scope, Enum.map(channels, & &1.id))
 

@@ -95,7 +95,7 @@ defmodule TavernWeb.SettingsComponents.Emoji do
                 :for={err <- upload_errors(@uploads.emoji_image)}
                 class="mt-2 text-[11px] text-rose-300"
               >
-                {emoji_upload_error(err)}
+                {upload_error(err)}
               </p>
             </div>
 

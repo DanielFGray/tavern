@@ -44,10 +44,10 @@ defmodule TavernWeb.SettingsComponents.Helpers do
     end
   end
 
-  def emoji_upload_error(:too_large), do: "That file is too large."
-  def emoji_upload_error(:too_many_files), do: "Choose only one file."
-  def emoji_upload_error(:not_accepted), do: "That file type is not allowed."
-  def emoji_upload_error(_error), do: "Upload failed."
+  def upload_error(:too_large), do: "That file is too large."
+  def upload_error(:too_many_files), do: "Choose only one file."
+  def upload_error(:not_accepted), do: "That file type is not allowed."
+  def upload_error(_error), do: "Upload failed."
 
   def tab_active?(active_tab, tab), do: active_tab == tab
 

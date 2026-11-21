@@ -36,7 +36,7 @@ defmodule Tavern.Chat.MediaAssets do
   end
 
   @doc """
-  Stores an uploaded image as an asset of `kind` (`:emoji` or `:server_icon`), with the scope's
+  Stores an uploaded image as an asset of `kind` (`:emoji`, `:avatar` or `:server_icon`), with the scope's
   member as its uploader, and runs `use_asset` with the asset row. Returns what `use_asset`
   returns, or `{:error, reason}`.
 
@@ -122,6 +122,7 @@ defmodule Tavern.Chat.MediaAssets do
     end
   end
 
+  defp upload_dir(:avatar), do: "avatars"
   defp upload_dir(:emoji), do: "emojis"
   defp upload_dir(:server_icon), do: "server_icons"
 end

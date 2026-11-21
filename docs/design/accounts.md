@@ -12,6 +12,15 @@ How an account verifies its email, how a forgotten password is reset, how it is 
 - A member who has not confirmed their email holds the Unverified role, which by default makes them read only. Registration mails a confirmation link. An email change applies only when the link sent to the new address opens. With no mail provider, verification is inactive and nobody is restricted.
 - A member who forgot their password asks for a reset link on the login page. The link works once, for 1 hour, and ends every session of the account. Without a mail provider the page says reset is unavailable.
 
+## Profile: bio and avatar
+
+A member edits their own bio and avatar in Settings > Profile (`Accounts.update_profile_user/3`).
+
+- The bio is Markdown, at most 300 characters (`User.profile_changeset/2`). Readers render it through the message renderer's sanitiser.
+- The avatar is a PNG, JPEG, GIF or WebP of at most 2 MB. `MediaAssets.store_upload/4` reads the type from the file's bytes, so a name or a claimed type decides nothing. The server does not resize: the page crops to a square with CSS.
+- A replaced or removed avatar loses its `media_assets` row in the same transaction as the user update, and its object after the commit. Only an asset of kind `:avatar` is deleted. A failed write stores no new object.
+- LiveView deletes an upload's temporary file when the consume callback returns, so `SettingsLive.State.save_profile/2` runs the write inside the callback.
+
 ## Deleting an account
 
 `delete_account(user_id, actor_id)` runs one transaction. It locks the membership row, then the user row. Every deletion path takes the locks in that order, so two deletions of one account wait for each other and do not deadlock. It reads the account's state under those locks:

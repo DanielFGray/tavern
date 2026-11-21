@@ -13,6 +13,40 @@ defmodule TavernWeb.SettingsLiveTest do
   import Tavern.ChatFixtures
 
   describe "profile save" do
+    setup do
+      LoginRateLimiter.reset!()
+      on_exit(&LoginRateLimiter.reset!/0)
+    end
+
+    test "uploads an avatar with the profile and removes it", %{conn: conn} do
+      Bootstrap.ensure_seed_data!()
+      user = user_fixture(%{email: "avatar-me@example.com", username: "avatar_me"})
+      {:ok, view, _html} = live(log_in_as(conn, user), ~p"/settings?tab=profile")
+
+      png = Tavern.UploadFixtures.unique_png()
+
+      avatar =
+        file_input(view, "#profile-form", :avatar, [
+          %{last_modified: 1_711_000_000_000, name: "me.png", content: png, type: "image/png"}
+        ])
+
+      render_upload(avatar, "me.png")
+      assert has_element?(view, "#avatar-preview")
+
+      view |> form("#profile-form", user: %{bio: "hi **there**"}) |> render_submit()
+
+      assert has_element?(view, "#avatar-current")
+      assert Tavern.UploadFixtures.stored?(png)
+      assert %User{bio: "hi **there**", avatar_asset_id: id} = Repo.get!(User, user.id)
+      assert id
+
+      view |> element("#remove-avatar") |> render_click()
+
+      refute has_element?(view, "#avatar-current")
+      refute Tavern.UploadFixtures.stored?(png)
+      assert %User{avatar_asset_id: nil} = Repo.get!(User, user.id)
+    end
+
     test "saves name, username and bio, and ignores asset ids and email", %{conn: conn} do
       Bootstrap.ensure_seed_data!()
       user = user_fixture(%{email: "profile-me@example.com", username: "profile_me"})

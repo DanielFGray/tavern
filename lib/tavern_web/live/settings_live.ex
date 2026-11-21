@@ -42,6 +42,11 @@ defmodule TavernWeb.SettingsLive do
         max_entries: 1,
         max_file_size: 1_000_000
       )
+      |> allow_upload(:avatar,
+        accept: ~w(.png .jpg .jpeg .gif .webp),
+        max_entries: 1,
+        max_file_size: 2_000_000
+      )
       |> allow_upload(:emoji_image,
         accept: ~w(.png .jpg .jpeg .gif .webp),
         max_entries: 1,
@@ -98,8 +103,17 @@ defmodule TavernWeb.SettingsLive do
   end
 
   @impl true
+  def handle_event("change_profile", %{"user" => user_params}, socket) do
+    changeset =
+      socket.assigns.current_user
+      |> Accounts.change_profile_user(user_params)
+      |> Map.put(:action, :validate)
+
+    {:noreply, assign(socket, :profile_form, to_form(changeset, as: :user))}
+  end
+
   def handle_event("save_profile", %{"user" => user_params}, socket) do
-    case Accounts.update_profile_user(socket.assigns.current_user, user_params) do
+    case State.save_profile(socket, user_params) do
       {:ok, user} ->
         {:noreply,
          socket
@@ -107,9 +121,25 @@ defmodule TavernWeb.SettingsLive do
          |> assign(:profile_form, to_form(Accounts.change_profile_user(user), as: :user))
          |> put_flash(:info, "Profile updated.")}
 
-      {:error, changeset} ->
+      {:error, :invalid_upload_type} ->
+        {:noreply, put_flash(socket, :error, "Avatar must be a png, jpg, gif, or webp image.")}
+
+      {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, :profile_form, to_form(changeset, as: :user))}
     end
+  end
+
+  def handle_event("remove_avatar", _params, socket) do
+    user = socket.assigns.current_user
+
+    case Accounts.update_profile_user(user, %{}, :remove) do
+      {:ok, user} -> {:noreply, assign(socket, :current_user, user)}
+      {:error, _reason} -> {:noreply, put_flash(socket, :error, "Could not remove the avatar.")}
+    end
+  end
+
+  def handle_event("cancel_avatar_upload", %{"ref" => ref}, socket) do
+    {:noreply, cancel_upload(socket, :avatar, ref)}
   end
 
   @impl true

@@ -112,7 +112,7 @@ defmodule Tavern.Accounts do
       |> where([_user, session], session.context == "session")
       |> where([_user, session], session.token_hash == ^hashed_token)
       |> where([_user, session], is_nil(session.revoked_at) and session.expires_at > ^now)
-      |> preload([user, _session], [:membership, member_roles: :role])
+      |> preload([user, _session], [:avatar_asset, :membership, member_roles: :role])
       |> Repo.one()
 
     if user do
@@ -243,18 +243,61 @@ defmodule Tavern.Accounts do
     User.profile_changeset(user, attrs)
   end
 
-  def update_profile_user(%User{} = user, attrs) do
-    user
-    |> User.profile_changeset(attrs)
-    |> Repo.update()
-    |> case do
-      {:ok, updated_user} ->
-        {:ok, Repo.preload(updated_user, [:membership, member_roles: :role])}
+  @doc """
+  Saves the profile fields a member edits on their own account, and changes their avatar as
+  `avatar` says: `:keep`, `:remove`, or `{:replace, upload}` for a file consumed from a LiveView
+  upload (`%{path:, client_name:}`). A file that is not a PNG, JPEG, GIF or WebP is
+  `{:error, :invalid_upload_type}`.
 
-      {:error, changeset} ->
-        {:error, changeset}
+  The row of a replaced or removed avatar goes in the same transaction; its object goes after
+  the commit. Only a `:avatar` asset is deleted, so an id pointed at another kind of asset
+  stays.
+  """
+  def update_profile_user(%User{} = user, attrs, avatar \\ :keep) do
+    Repo.transact(fn -> save_profile(user, attrs, avatar) end)
+    |> case do
+      {:ok, {updated_user, retired_keys}} ->
+        MediaAssets.delete_objects(retired_keys)
+
+        {:ok,
+         Repo.preload(updated_user, [:avatar_asset, :membership, member_roles: :role],
+           force: true
+         )}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
+
+  defp save_profile(user, attrs, :keep), do: write_profile(user, attrs, :keep)
+  defp save_profile(user, attrs, :remove), do: write_profile(user, attrs, {:set, nil})
+
+  defp save_profile(user, attrs, {:replace, upload}) do
+    MediaAssets.store_upload(%Scope{user_id: user.id}, upload, :avatar, fn asset ->
+      write_profile(user, attrs, {:set, asset.id})
+    end)
+  end
+
+  defp write_profile(user, attrs, avatar_change) do
+    old_asset = user.avatar_asset_id && Repo.get(MediaAsset, user.avatar_asset_id)
+    changeset = User.profile_changeset(user, attrs)
+
+    changeset =
+      case avatar_change do
+        :keep -> changeset
+        {:set, asset_id} -> Changeset.put_change(changeset, :avatar_asset_id, asset_id)
+      end
+
+    with {:ok, updated} <- Repo.update(changeset),
+         {:ok, retired_keys} <- retire_avatar(old_asset, avatar_change) do
+      {:ok, {updated, retired_keys}}
+    end
+  end
+
+  defp retire_avatar(%MediaAsset{kind: :avatar} = asset, {:set, _id}),
+    do: MediaAssets.delete_asset_row(asset)
+
+  defp retire_avatar(_asset, _change), do: {:ok, []}
 
   def change_user_email(%User{} = user, attrs \\ %{}) do
     User.email_changeset(user, attrs)
@@ -288,7 +331,10 @@ defmodule Tavern.Accounts do
         |> Repo.update()
         |> case do
           {:ok, updated_user} ->
-            {:ok, Repo.preload(updated_user, [:membership, member_roles: :role], force: true)}
+            {:ok,
+             Repo.preload(updated_user, [:avatar_asset, :membership, member_roles: :role],
+               force: true
+             )}
 
           {:error, changeset} ->
             {:error, changeset}
@@ -659,7 +705,7 @@ defmodule Tavern.Accounts do
     user = get_user_by_email(String.downcase(email))
 
     if valid_user_password?(user, password),
-      do: Repo.preload(user, [:membership, member_roles: :role])
+      do: Repo.preload(user, [:avatar_asset, :membership, member_roles: :role])
   end
 
   def valid_user_password?(%User{hashed_password: nil}, _password) do
