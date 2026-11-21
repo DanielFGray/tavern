@@ -33,7 +33,7 @@ defmodule TavernWeb.ServerLive.Voice do
 
   @kind_atoms %{"mic" => :mic, "camera" => :camera, "screen" => :screen}
 
-  @events ~w(voice_join voice_leave voice_mute_toggle voice_publish voice_unpublish voice_sf_offer_answer voice_speaking voice_permission_denied)
+  @events ~w(voice_join voice_leave voice_mute_toggle voice_toggle_video voice_publish voice_unpublish voice_sf_offer_answer voice_speaking voice_permission_denied)
 
   def events, do: @events
 
@@ -99,6 +99,26 @@ defmodule TavernWeb.ServerLive.Voice do
   end
 
   def handle_event("voice_leave", _params, socket), do: {:noreply, teardown(socket)}
+
+  # The controls ask before the browser captures: this decides the ability (`:stream_voice`)
+  # and answers with what the member is publishing now, so the click means on or off.
+  def handle_event("voice_toggle_video", %{"kind" => kind}, socket) when kind in @video_kinds do
+    with %Scope{} = scope <- socket.assigns.current_scope,
+         %{} = channel <- socket.assigns.voice_channel,
+         true <- Visibility.can?(scope, :stream_voice, channel) || {:error, :forbidden},
+         %{tracks: tracks} = record when is_map(record) <- socket.assigns.voice_record do
+      {:noreply,
+       push_event(socket, "voice_video_request", %{
+         kind: kind,
+         active: tracks[String.to_existing_atom(kind)] != nil
+       })}
+    else
+      {:error, :forbidden} -> {:noreply, put_flash(socket, :error, "You cannot stream here.")}
+      _ -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("voice_toggle_video", _params, socket), do: {:noreply, socket}
 
   def handle_event("voice_permission_denied", _params, socket) do
     {:noreply,
@@ -526,7 +546,6 @@ defmodule TavernWeb.ServerLive.Voice do
 
   defp publish_allowed?(scope, channel, kind) when kind in [:camera, :screen],
     do: Visibility.can?(scope, :stream_voice, channel)
-
   # Every per-track result must have succeeded; a partial failure leaves the tab and the SFU
   # session disagreeing, so the whole publish is refused and the browser retries.
   defp publish_tracks(session_id, params) do

@@ -43,12 +43,14 @@
             this.room = null
             this.midToPublisher = new Map()
             this.speaking = false
+            this.published = { mic: false, camera: false, screen: false }
 
             this.handleEvent("voice_ready", (data) => this.start(data))
             this.handleEvent("voice_sf_answer", (data) => this.applyAnswer(data))
             this.handleEvent("voice_sf_offer", (data) => this.applyRemoteOffer(data))
             this.handleEvent("voice_mic_state", (data) => this.setMicEnabled(!data.muted))
             this.handleEvent("voice_moderated_mute", () => this.setMicEnabled(false))
+            this.handleEvent("voice_video_request", (data) => this.toggleVideo(data.kind, data.active))
             this.handleEvent("voice_ended", () => this.stop())
             this.handleEvent("voice_replaced", () => this.stop())
           },
@@ -57,6 +59,7 @@
             this.stop()
             this.turnServers = data.turn_servers || []
             this.userId = data.user_id
+            this.published = { mic: false, camera: false, screen: false }
 
             try {
               const stream = await navigator.mediaDevices.getUserMedia({
@@ -82,8 +85,67 @@
               sdp: this.pcPublish.localDescription.sdp,
               mids: [{ mid: transceiver.mid }],
             })
+            this.published.mic = true
 
             this.startSpeakingDetection(micTrack)
+          },
+
+          // The controls bar asks the server first (it authorizes), and the server answers
+          // with `voice_video_request`. `active` means the member is publishing that kind, so
+          // the click turns it off.
+          async toggleVideo(kind, active) {
+            if (!this.pcPublish) return
+            if (active) {
+              this.stopVideo(kind)
+              this.pushEvent("voice_unpublish", { kind })
+              return
+            }
+
+            const stream =
+              kind === "camera"
+                ? await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } })
+                : await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+
+            if (!stream) return
+            this[kind + "Stream"] = stream
+            const track = stream.getVideoTracks()[0]
+
+            // The browser's own Stop sharing bar kills the track; the room must hear about it.
+            track.onended = () => {
+              if (this.published[kind]) {
+                this.stopVideo(kind)
+                this.pushEvent("voice_unpublish", { kind })
+              }
+            }
+
+            const transceiver = this.pcPublish.addTransceiver(track, {
+              direction: "sendonly",
+              sendEncodings: [
+                { rid: "f", scaleResolutionDownBy: 1 },
+                { rid: "h", scaleResolutionDownBy: 2 },
+                { rid: "q", scaleResolutionDownBy: 4 },
+              ],
+            })
+
+            const offer = await this.pcPublish.createOffer()
+            await this.pcPublish.setLocalDescription(offer)
+            await this.waitIce(this.pcPublish)
+
+            this.pushEvent("voice_publish", {
+              kind,
+              sdp: this.pcPublish.localDescription.sdp,
+              mids: [{ mid: transceiver.mid }],
+            })
+            this.published[kind] = true
+          },
+
+          stopVideo(kind) {
+            const stream = this[kind + "Stream"]
+            if (stream) {
+              for (const track of stream.getTracks()) track.stop()
+              this[kind + "Stream"] = null
+            }
+            this.published[kind] = false
           },
 
           async applyAnswer(data) {
@@ -201,6 +263,7 @@
 
           stop() {
             this.speaking = false
+            this.published = { mic: false, camera: false, screen: false }
             this.audioContext && this.audioContext.close()
             this.audioContext = null
 
@@ -210,9 +273,12 @@
             this.pcPublish = null
             this.pcRecv = null
 
-            if (this.micStream) {
-              for (const track of this.micStream.getTracks()) track.stop()
-              this.micStream = null
+            for (const kind of ["mic", "camera", "screen"]) {
+              const stream = this[kind + "Stream"]
+              if (stream) {
+                for (const track of stream.getTracks()) track.stop()
+                this[kind + "Stream"] = null
+              }
             }
 
             this.midToPublisher = new Map()

@@ -21,7 +21,8 @@ defmodule TavernWeb.ServerComponents.Messages do
         <.message_stream server={@server} />
     <% end %>
     <%!-- One composer, pinned below the transcript: it writes to the open thread, else the channel.
-         A forum takes no top-level messages, so it has none until a post is open. --%>
+         A forum takes no top-level messages, so it has none until a post is open. A voice
+         channel's pane carries its own transcript column with the composer in it. --%>
     <%= unless (Chat.Channel.forum?(@server.active_channel) and is_nil(@server.active_thread)) or
           @server.active_channel.kind == :voice do %>
       <TavernWeb.ServerComponents.Composer.composer_dock server={@server} />

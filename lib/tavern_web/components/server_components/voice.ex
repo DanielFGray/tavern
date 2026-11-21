@@ -12,6 +12,8 @@ defmodule TavernWeb.ServerComponents.Voice do
 
   attr :server, :map, required: true
 
+  # A voice channel's pane is the room beside its own text chat (docs/design/voice.md): the
+  # grid on the left, the channel's transcript on the right with the one composer under it.
   def active_voice_view(assigns) do
     channel = assigns.server.active_channel
     in_room? = voice_channel_id(assigns.server) == channel.id
@@ -24,36 +26,50 @@ defmodule TavernWeb.ServerComponents.Voice do
       |> assign(:room_participants, participants)
 
     ~H"""
-    <div
-      id="voice-room"
-      class="flex min-h-0 flex-1 flex-col items-center justify-center gap-6 overflow-y-auto p-6"
-    >
-      <div class="flex flex-col items-center gap-2 text-center">
-        <.icon name="hero-speaker-wave" class="size-8 text-base-content/40" />
-        <h2 class="text-lg font-semibold">{@channel.name}</h2>
-        <p class="text-sm text-base-content/60">
-          {length(@room_participants)} of {@channel.voice_member_limit} in voice
-        </p>
-      </div>
-
-      <%= if @server.voice_configured? do %>
-        <%= if @in_room? do %>
-          <.voice_grid server={@server} participants={@room_participants} />
-          <.voice_controls server={@server} />
-        <% else %>
-          <.join_card server={@server} channel={@channel} participants={@room_participants} />
-        <% end %>
-      <% else %>
-        <div
-          id="voice-not-configured"
-          class="rounded-lg border border-dashed border-base-300 bg-base-100 p-6 text-center"
-        >
-          <p class="text-sm font-semibold">Voice not configured</p>
-          <p class="mt-1 max-w-xs text-xs text-base-content/60">
-            This server has no Realtime app credentials set, so nobody can join voice channels yet.
+    <div id="voice-room" class="flex min-h-0 flex-1">
+      <div class="flex min-w-0 flex-1 flex-col items-center justify-center gap-6 overflow-y-auto p-6">
+        <div class="flex flex-col items-center gap-2 text-center">
+          <.icon name="hero-speaker-wave" class="size-8 text-base-content/40" />
+          <h2 class="text-lg font-semibold">{@channel.name}</h2>
+          <p class="text-sm text-base-content/60">
+            {length(@room_participants)} of {@channel.voice_member_limit} in voice
           </p>
         </div>
-      <% end %>
+
+        <%= if @server.voice_configured? do %>
+          <%= if @in_room? do %>
+            <.voice_grid server={@server} participants={@room_participants} />
+            <.voice_controls server={@server} />
+          <% else %>
+            <.join_card server={@server} channel={@channel} participants={@room_participants} />
+          <% end %>
+        <% else %>
+          <div
+            id="voice-not-configured"
+            class="rounded-lg border border-dashed border-base-300 bg-base-100 p-6 text-center"
+          >
+            <p class="text-sm font-semibold">Voice not configured</p>
+            <p class="mt-1 max-w-xs text-xs text-base-content/60">
+              This server has no Realtime app credentials set, so nobody can join voice channels yet.
+            </p>
+          </div>
+        <% end %>
+      </div>
+
+      <aside
+        id="voice-chat"
+        class="hidden w-96 min-w-0 shrink-0 flex-col border-l border-base-300 bg-base-200 lg:flex"
+      >
+        <p class="border-b border-base-300 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-base-content/50">
+          #{@channel.name} chat
+        </p>
+        <TavernWeb.ServerComponents.Messages.message_stream server={@server} />
+        <TavernWeb.ServerComponents.Messages.typing_indicator
+          users={@server.channel_pane.typing_users}
+          id="voice-typing-indicator"
+        />
+        <TavernWeb.ServerComponents.Composer.composer_dock server={@server} />
+      </aside>
     </div>
     """
   end
@@ -100,6 +116,7 @@ defmodule TavernWeb.ServerComponents.Voice do
         server={@server}
         participant={participant}
         speaking={MapSet.member?(@server.voice_speaking, participant.user_id)}
+        has_video?={participant.tracks[:camera] != nil or participant.tracks[:screen] != nil}
       />
     </div>
     """
@@ -108,6 +125,7 @@ defmodule TavernWeb.ServerComponents.Voice do
   attr :server, :map, required: true
   attr :participant, :map, required: true
   attr :speaking, :boolean, required: true
+  attr :has_video?, :boolean, required: true
 
   # The tile is what the hook touches: `data-voice-speaking` marks the ring, and the tile is
   # where received audio elements get attached.
@@ -119,12 +137,19 @@ defmodule TavernWeb.ServerComponents.Voice do
       data-user-id={@participant.user_id}
       data-voice-speaking={to_string(@speaking)}
       class={[
-        "relative flex flex-col items-center gap-2 rounded-xl border bg-base-100 p-4 transition",
+        "relative flex flex-col items-center gap-2 rounded-xl border bg-base-100 p-3 transition",
         @speaking && "border-emerald-400/70 shadow-[0_0_0_2px_color-mix(in_oklab,var(--color-success)_30%,transparent)]",
         !@speaking && "border-base-300"
       ]}
     >
-      <.avatar user={member(@server, @participant.user_id)} class="size-12 text-sm" />
+      <div
+        :if={@has_video?}
+        class="w-full aspect-video overflow-hidden rounded-lg bg-black"
+        data-voice-video
+      />
+      <%= if !@has_video? do %>
+        <.avatar user={member(@server, @participant.user_id)} class="size-12 text-sm" />
+      <% end %>
       <span class="max-w-full truncate text-xs font-semibold">
         {participant_name(@server, @participant.user_id)}
         <%= if @participant.user_id == @server.current_user.id do %>
@@ -145,9 +170,16 @@ defmodule TavernWeb.ServerComponents.Voice do
   attr :server, :map, required: true
 
   defp voice_controls(assigns) do
-    muted = assigns.server.voice_record && assigns.server.voice_record.muted
+    record = assigns.server.voice_record
+    muted = record && record.muted
+    camera_live? = record && record.tracks[:camera] != nil
+    screen_live? = record && record.tracks[:screen] != nil
 
-    assigns = assign(assigns, :muted, muted)
+    assigns =
+      assigns
+      |> assign(:muted, muted)
+      |> assign(:camera_live?, camera_live?)
+      |> assign(:screen_live?, screen_live?)
 
     ~H"""
     <div class="flex items-center gap-3">
@@ -165,6 +197,38 @@ defmodule TavernWeb.ServerComponents.Voice do
       >
         <.icon name={if @muted, do: "hero-signal-slash", else: "hero-microphone"} class="size-5" />
         {if @muted, do: "Unmute", else: "Mute"}
+      </button>
+
+      <button
+        type="button"
+        id="voice-camera-toggle"
+        phx-click="voice_toggle_video"
+        phx-value-kind="camera"
+        aria-pressed={to_string(@camera_live?)}
+        title={if @camera_live?, do: "Stop camera", else: "Start camera"}
+        class={[
+          "rounded-lg px-3 py-2.5 text-sm font-semibold shadow transition active:scale-[0.98]",
+          @camera_live? && "bg-sky-500 text-white hover:bg-sky-400",
+          !@camera_live? && "bg-base-100 text-base-content hover:bg-base-100/70"
+        ]}
+      >
+        <.icon name={if @camera_live?, do: "hero-video-camera-slash", else: "hero-video-camera"} class="size-5" />
+      </button>
+
+      <button
+        type="button"
+        id="voice-screen-toggle"
+        phx-click="voice_toggle_video"
+        phx-value-kind="screen"
+        aria-pressed={to_string(@screen_live?)}
+        title={if @screen_live?, do: "Stop sharing", else: "Share screen"}
+        class={[
+          "rounded-lg px-3 py-2.5 text-sm font-semibold shadow transition active:scale-[0.98]",
+          @screen_live? && "bg-violet-500 text-white hover:bg-violet-400",
+          !@screen_live? && "bg-base-100 text-base-content hover:bg-base-100/70"
+        ]}
+      >
+        <.icon name="hero-computer-desktop" class="size-5" />
       </button>
 
       <button
@@ -193,6 +257,7 @@ defmodule TavernWeb.ServerComponents.Voice do
       |> assign(:call_channel, server.voice_channel)
       |> assign(:show?, in_room? && not reading_elsewhere?)
       |> assign(:muted, server.voice_record && server.voice_record.muted)
+      |> assign(:sharing_screen?, server.voice_record && server.voice_record.tracks[:screen] != nil)
 
     ~H"""
     <div
@@ -208,7 +273,11 @@ defmodule TavernWeb.ServerComponents.Voice do
         <div class="min-w-0 flex-1">
           <p class="truncate text-[12px] font-semibold">{@call_channel.name}</p>
           <p class="truncate text-[10px] text-base-content/55">
-            {length(occupants(@server, @call_channel.id))} in voice
+            <%= if @sharing_screen? do %>
+              sharing screen · {length(occupants(@server, @call_channel.id))} in voice
+            <% else %>
+              {length(occupants(@server, @call_channel.id))} in voice
+            <% end %>
           </p>
         </div>
         <button

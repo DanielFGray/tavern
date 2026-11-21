@@ -73,7 +73,17 @@ Publish mic (event `voice_publish`, one per publish or unpublish):
 
 1. Authorize `:speak_voice` (mic) or `:stream_voice` (camera, screen).
 2. The browser hook captured the track, created the offer with `addTransceiver(track, {direction: "sendonly"})` (simulcast `sendEncodings` for video), waited for ICE gathering, and sent `{type, sdp, mids}`.
-3. The LiveView calls `POST /sessions/new`, then `POST /sessions/{id}/tracks/new` with the offer and the local track entries, and records the returned session id.
+
+Camera and screen start from the controls' `voice_toggle_video`: the LiveView authorizes
+`:stream_voice` first and answers with `voice_video_request {kind, active}`, so the browser
+captures (`getUserMedia` for camera, `getDisplayMedia` for screen) only after the right is
+decided. An `active: true` answer means the click turns the kind off: the hook stops its
+tracks and sends `voice_unpublish`, which force-closes the recorded mids at the SFU and
+clears the record entry. The screen's own "Stop sharing" bar kills the capture track; the
+hook listens for `track.onended` and takes the same unpublish path, so the room record
+cannot claim a screen that is gone. A later publish adds fresh transceivers to the same
+publish session; the SDP sections accumulate, which is accepted until real behavior shows
+otherwise (then: a fresh publish session per video cycle).3. The LiveView calls `POST /sessions/new`, then `POST /sessions/{id}/tracks/new` with the offer and the local track entries, and records the returned session id.
 4. It pushes the SFU answer to the browser; the hook applies `setRemoteDescription` and reports `connected`.
 5. The LiveView writes the track into the room record and broadcasts `{:voice_published, ...}`.
 
