@@ -39,44 +39,46 @@ defmodule Tavern.Bootstrap do
   ]
   @unverified_description "Held by every member who has not confirmed their email."
 
+  @starting_channels [
+    %{name: "General", slug: "general", position: 0, topic: "Default lobby for the server"},
+    %{
+      name: "Engineering",
+      slug: "engineering",
+      position: 1,
+      topic: "Build notes and technical chatter"
+    },
+    %{name: "Random", slug: "random", position: 2, topic: "Off-topic but still useful"}
+  ]
+
+  @doc """
+  Runs on every deploy (`Tavern.Release.migrate`). It keeps what the code relies on: the system
+  user, the two system roles, and the first-owner rule. A fresh server also gets its starting
+  content: the server settings, the starting channels and the welcome message. The settings
+  row is created once, with the server, so its absence is what marks a fresh server; after
+  that the channels and the server name belong to the server's managers, and a deploy leaves
+  them alone, deleted or renamed.
+  """
   def ensure_seed_data! do
     {:ok, seed} = Repo.transact(&seed/0)
     seed
   end
 
   defp seed do
-    user =
-      ensure_system_user!()
-
+    user = ensure_system_user!()
     default_role = ensure_default_role!()
     unverified_role = ensure_unverified_role!()
 
-    channels =
-      [
-        %{name: "General", slug: "general", position: 0, topic: "Default lobby for the server"},
-        %{
-          name: "Engineering",
-          slug: "engineering",
-          position: 1,
-          topic: "Build notes and technical chatter"
-        },
-        %{name: "Random", slug: "random", position: 2, topic: "Off-topic but still useful"}
-      ]
-      |> Enum.map(&ensure_channel!/1)
+    unless Repo.exists?(ServerSettings), do: create_starting_content!(user)
 
-    general_channel = Enum.find(channels, &(&1.slug == "general"))
-
-    ensure_welcome_message!(general_channel, user)
-    ensure_server_settings!()
     Accounts.ensure_first_owner!()
 
-    {:ok,
-     %{
-       system_user: user,
-       default_role: default_role,
-       unverified_role: unverified_role,
-       channels: channels
-     }}
+    {:ok, %{system_user: user, default_role: default_role, unverified_role: unverified_role}}
+  end
+
+  defp create_starting_content!(user) do
+    [general | _] = Enum.map(@starting_channels, &create_channel!/1)
+    create_welcome_message!(general, user)
+    create_server_settings!()
   end
 
   defp ensure_system_user! do
@@ -137,27 +139,13 @@ defmodule Tavern.Bootstrap do
     )
   end
 
-  defp ensure_channel!(attrs) do
-    now = DateTime.utc_now()
-
+  defp create_channel!(attrs) do
     %Channel{}
     |> Channel.changeset(attrs)
-    |> Repo.insert!(
-      on_conflict: [
-        set: [
-          name: attrs.name,
-          position: attrs.position,
-          topic: attrs.topic,
-          updated_at: now
-        ]
-      ],
-      # Only a live channel holds its slug (the partial index `channels_live_slug_index`).
-      conflict_target: {:unsafe_fragment, "(slug) WHERE deleted_at IS NULL"},
-      returning: true
-    )
+    |> Repo.insert!()
   end
 
-  defp ensure_welcome_message!(channel, user) do
+  defp create_welcome_message!(channel, user) do
     %Message{
       channel_id: channel.id,
       author_id: user.id,
@@ -167,29 +155,15 @@ defmodule Tavern.Bootstrap do
     |> Message.changeset(%{
       body: "Welcome to Tavern. Register the first account to become this server's owner."
     })
-    |> Repo.insert!(
-      on_conflict: :nothing,
-      conflict_target: {:unsafe_fragment, "(channel_id, nonce) WHERE nonce IS NOT NULL"}
-    )
+    |> Repo.insert!()
   end
 
-  defp ensure_server_settings! do
-    now = DateTime.utc_now()
-
+  defp create_server_settings! do
     %ServerSettings{}
     |> ServerSettings.changeset(%{
       singleton: true,
       name: Application.get_env(:tavern, :server_name, "Tavern")
     })
-    |> Repo.insert!(
-      on_conflict: [
-        set: [
-          name: Application.get_env(:tavern, :server_name, "Tavern"),
-          updated_at: now
-        ]
-      ],
-      conflict_target: :singleton,
-      returning: true
-    )
+    |> Repo.insert!()
   end
 end

@@ -3,10 +3,13 @@ defmodule Tavern.ChatTest do
 
   alias Tavern.Bootstrap
   alias Tavern.Chat
+  alias Tavern.Chat.Channel
   alias Tavern.Chat.Message
   alias Tavern.Chat.MessageRoleMention
   alias Tavern.Chat.MessageUserMention
   alias Tavern.Chat.PermissionBits
+  alias Tavern.Chat.Role
+  alias Tavern.Chat.ServerSettings
   alias Tavern.Chat.User
   alias Tavern.Chat.UserNotificationSetting
   alias Tavern.Repo
@@ -1047,7 +1050,8 @@ defmodule Tavern.ChatTest do
       second = Bootstrap.ensure_seed_data!()
 
       assert first.system_user.id == second.system_user.id
-      assert Enum.map(first.channels, & &1.slug) == ["general", "engineering", "random"]
+      assert live_channel_slugs() == ["general", "engineering", "random"]
+      assert Repo.aggregate(ServerSettings, :count) == 1
       assert first.default_role.is_default
 
       assert first.default_role.permissions ==
@@ -1063,14 +1067,41 @@ defmodule Tavern.ChatTest do
 
       reader = user_fixture()
 
-      assert Chat.message_count(
-               scope_for(reader),
-               Enum.find(first.channels, &(&1.slug == "general")).id
-             ) == 1
+      assert Chat.message_count(scope_for(reader), channel_by_slug!("general").id) == 1
+    end
+
+    test "a later deploy leaves deleted and renamed channels and the server name alone" do
+      Bootstrap.ensure_seed_data!()
+
+      channel_by_slug!("engineering")
+      |> Ecto.Changeset.change(deleted_at: DateTime.utc_now())
+      |> Repo.update!()
+
+      general =
+        channel_by_slug!("general")
+        |> Ecto.Changeset.change(name: "Lobby", topic: "Say hi")
+        |> Repo.update!()
+
+      Repo.one!(ServerSettings) |> Ecto.Changeset.change(name: "The Pub") |> Repo.update!()
+
+      Bootstrap.ensure_seed_data!()
+
+      assert live_channel_slugs() == ["general", "random"]
+      assert %{name: "Lobby", topic: "Say hi"} = Repo.get!(Channel, general.id)
+      assert Repo.one!(ServerSettings).name == "The Pub"
+      assert Chat.message_count(scope_for(user_fixture()), general.id) == 1
+    end
+
+    test "every deploy restores a missing system role" do
+      Bootstrap.ensure_seed_data!()
+      Repo.delete_all(from(role in Role, where: role.is_unverified))
+
+      assert %{unverified_role: %{is_unverified: true}} = Bootstrap.ensure_seed_data!()
     end
 
     test "default role governs channel visibility and posting" do
-      %{channels: [general | _rest]} = Bootstrap.ensure_seed_data!()
+      Bootstrap.ensure_seed_data!()
+      general = channel_by_slug!("general")
       hidden_channel = channel_fixture(%{name: "Staff", slug: unique_slug(), position: 99})
 
       _owner =
@@ -1099,5 +1130,15 @@ defmodule Tavern.ChatTest do
       assert Chat.channel_abilities(scope_for(user), hidden_channel.id) ==
                Chat.no_channel_abilities()
     end
+  end
+
+  defp live_channel_slugs do
+    Repo.all(
+      from(channel in Channel,
+        where: is_nil(channel.deleted_at),
+        select: channel.slug,
+        order_by: channel.position
+      )
+    )
   end
 end
