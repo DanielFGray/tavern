@@ -45,7 +45,7 @@ export function renderMarkdownIn(root) {
 const LINK_ATTRIBUTES = [
   ["target", "_blank"],
   ["rel", "noopener noreferrer nofollow"],
-  ["class", "text-blue-300 underline decoration-[rgba(147,197,253,0.4)] underline-offset-2"],
+  ["class", "text-blue-700 underline decoration-blue-700/40 underline-offset-2 hover:decoration-blue-700 dark:text-blue-300 dark:decoration-blue-300/40 dark:hover:decoration-blue-300"],
 ]
 
 const defaultLinkRenderer = md.renderer.rules.link_open || ((tokens, idx, options, env, self) => self.renderToken(tokens, idx, options))
@@ -157,8 +157,8 @@ const ComposerEntity = Mention.extend({
         ...HTMLAttributes,
         "data-entity-type": node.attrs.entityType || (isSlashCommand ? "slash_command" : "mention"),
         class: isSlashCommand
-          ? "inline-flex items-center rounded-full bg-violet-500/18 px-2 py-0.5 text-[0.85em] font-bold text-violet-200"
-          : "inline-flex items-center rounded-full bg-blue-500/18 px-2 py-0.5 text-[0.85em] font-bold text-blue-200",
+          ? "inline-flex items-center rounded-full bg-violet-500/18 px-2 py-0.5 text-[0.85em] font-bold text-violet-800 dark:text-violet-200"
+          : "inline-flex items-center rounded-full bg-blue-500/18 px-2 py-0.5 text-[0.85em] font-bold text-blue-800 dark:text-blue-200",
       },
       `${isSlashCommand ? "/" : "@"}${node.attrs.label ?? node.attrs.id}`,
     ]
