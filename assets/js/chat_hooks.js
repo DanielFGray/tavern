@@ -336,12 +336,12 @@ const RichComposerHook = {
       editorProps: {
         attributes: {
           class: [
-            "ProseMirror min-h-6 whitespace-pre-wrap break-words text-[15px] leading-6 text-zinc-100 outline-none",
+            "ProseMirror min-h-6 whitespace-pre-wrap break-words text-[15px] leading-6 text-base-content outline-none",
             "[&>p]:m-0",
             "[&_p.is-editor-empty:first-child::before]:pointer-events-none",
             "[&_p.is-editor-empty:first-child::before]:float-left",
             "[&_p.is-editor-empty:first-child::before]:h-0",
-            "[&_p.is-editor-empty:first-child::before]:text-zinc-500",
+            "[&_p.is-editor-empty:first-child::before]:text-base-content/40",
             "[&_p.is-editor-empty:first-child::before]:content-[attr(data-placeholder)]",
             "[&_code]:rounded-md [&_code]:bg-[rgba(17,18,20,0.75)] [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[0.88em] [&_code]:text-zinc-100",
             "[&_pre]:mt-2 [&_pre]:overflow-x-auto [&_pre]:rounded-xl [&_pre]:bg-[rgb(17_18_20)] [&_pre]:px-4 [&_pre]:py-3.5",
