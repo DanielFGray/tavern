@@ -104,7 +104,7 @@ defmodule Tavern.VoiceTest do
       {:ok, record, _} = Voice.join(channel, user)
 
       assert :ok = Voice.heartbeat(channel_id, user.id, record.token)
-      {:ok, [_]} = Voice.leave(channel_id, user.id)
+      {:ok, []} = Voice.leave(channel_id, user.id)
 
       assert {:error, :gone} = Voice.heartbeat(channel_id, user.id, record.token)
     end
@@ -162,7 +162,7 @@ defmodule Tavern.VoiceTest do
       assert {:ok, record} = Voice.publish_track(channel_id, user.id, record.token, :camera, nil, nil)
 
       assert record.tracks[:camera] == nil
-      assert_receive {:room_event, {:voice_published, ^channel_id, _}, 500
+      assert_receive {:room_event, {:voice_published, ^channel_id, _}}, 500
     end
 
     test "set_muted flips the flag and broadcasts", %{channel_id: channel_id} do
@@ -173,7 +173,7 @@ defmodule Tavern.VoiceTest do
       assert {:ok, record} = Voice.set_muted(channel_id, user.id, record.token, true)
       assert record.muted == true
 
-      assert_receive {:room_event, {:voice_updated, ^channel_id, updated}, 500
+      assert_receive {:room_event, {:voice_updated, ^channel_id, updated}}, 500
       assert updated.muted == true
 
       assert [listed] = Voice.participants(channel_id)
@@ -189,6 +189,7 @@ defmodule Tavern.VoiceTest do
       channel = ChatFixtures.channel_fixture(%{name: "Voice", kind: :voice, voice_member_limit: 6})
 
       listen("chat:channel:" <> channel.id)
+      listen("chat:server")
 
       %{
         channel: channel,
@@ -205,7 +206,7 @@ defmodule Tavern.VoiceTest do
       assert {:ok, %{muted: true}} =
                Voice.mute_member(ChatFixtures.scope_for(owner), channel.id, member.id)
 
-      assert_receive {:room_event, {:voice_moderated, _channel_id, subject_id, :mute}, 500
+      assert_receive {:room_event, {:voice_moderated, _channel_id, subject_id, :mute}}, 500
       assert subject_id == member.id
     end
 
@@ -229,7 +230,7 @@ defmodule Tavern.VoiceTest do
       assert {:ok, []} = Voice.disconnect_member(ChatFixtures.scope_for(owner), channel.id, member.id)
 
       assert_receive {:room_event, {:voice_left, _channel_id, []}}, 500
-      assert_receive {:room_event, {:voice_moderated, _channel_id, subject_id, :disconnect}, 500
+      assert_receive {:room_event, {:voice_moderated, _channel_id, subject_id, :disconnect}}, 500
       assert subject_id == member.id
       assert [] = Voice.participants(channel.id)
     end

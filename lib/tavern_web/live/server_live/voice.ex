@@ -58,9 +58,10 @@ defmodule TavernWeb.ServerLive.Voice do
       socket.assigns.channels
       |> Enum.filter(&(&1.kind == :voice))
       |> Map.new(fn channel ->
+        # `participants/1` answers the bare list, or an error when Valkey is down.
         {channel.id,
          case Voice.participants(channel.id) do
-           {:ok, participants} -> participants
+           list when is_list(list) -> list
            _ -> []
          end}
       end)
@@ -83,18 +84,12 @@ defmodule TavernWeb.ServerLive.Voice do
 
   # --- Client events ---------------------------------------------------------------------------
 
-  def handle_event("voice_join", %{"channel_id" => channel_id}, socket) do
-    cond do
-      # Already in this room; a second click just navigates.
-      socket.assigns.voice_channel && socket.assigns.voice_channel.id == channel_id ->
-        {:noreply, socket}
-
-      # In another room: leave it (its seat and its SFU tracks) before taking the new one.
-      socket.assigns.voice_channel ->
-        {:noreply, join_channel(channel_id, socket)}
-
-      true ->
-        {:noreply, join_channel(channel_id, socket)}
+  def handle_event("voice_join", %{"channel-id" => channel_id}, socket) do
+    # Already in this room; a second click just navigates.
+    if socket.assigns.voice_channel && socket.assigns.voice_channel.id == channel_id do
+      {:noreply, socket}
+    else
+      {:noreply, join_channel(channel_id, socket)}
     end
   end
 
@@ -127,12 +122,20 @@ defmodule TavernWeb.ServerLive.Voice do
      |> teardown()}
   end
 
+  # Muting yourself is always allowed; speaking again needs `:speak_voice` (the design's gate
+  # table puts "publish mic / unmute" under it), so a revoked speaker cannot come back.
   def handle_event("voice_mute_toggle", %{"muted" => muted}, socket) do
     with %{user_id: user_id, token: token} = record when is_map(record) <-
            socket.assigns.voice_record,
-         {:ok, _record} <-           Voice.set_muted(room_channel_id(socket), user_id, token, truthy?(muted)) do
+         true <-
+           (truthy?(muted) or
+              Visibility.can?(socket.assigns.current_scope, :speak_voice, socket.assigns.voice_channel)) ||
+             {:error, :forbidden},
+         {:ok, _record} <-
+           Voice.set_muted(room_channel_id(socket), user_id, token, truthy?(muted)) do
       {:noreply, push_event(socket, "voice_mic_state", %{muted: truthy?(muted)})}
     else
+      {:error, :forbidden} -> {:noreply, put_flash(socket, :error, "You cannot speak here.")}
       _ -> {:noreply, socket}
     end
   end
@@ -225,7 +228,8 @@ defmodule TavernWeb.ServerLive.Voice do
 
   def handle_event("voice_speaking", %{"speaking" => speaking}, socket) do
     case socket.assigns.voice_record do
-      %{user_id: user_id} = record when is_map(record) ->
+      # A muted member's analyser can still see their mic; the flag is the source of truth.
+      %{muted: false, user_id: user_id} = record when is_map(record) ->
         Topics.broadcast_channel(
           room_channel_id(socket),
           {:voice_speaking, room_channel_id(socket), user_id, truthy?(speaking)}
@@ -242,6 +246,7 @@ defmodule TavernWeb.ServerLive.Voice do
   defp join_channel(channel_id, %{assigns: %{voice_channel: %{}}} = socket),
     do: join_channel(channel_id, teardown(socket))
 
+  # Answers the socket: the callers wrap it in {:noreply, ...}.
   defp join_channel(channel_id, socket) do
     with %Scope{} = scope <- socket.assigns.current_scope,
          %{} = channel <- Visibility.visible_channel(scope, channel_id),
@@ -251,26 +256,21 @@ defmodule TavernWeb.ServerLive.Voice do
         socket
         |> assign(:voice_channel, channel)
         |> assign(:voice_record, record)
-        |> assign(:voice_participants, participants)
-        |> assign(:voice_subscriptions, MapSet.new())
-        |> assign(:voice_recv_session_id, nil)
-        |> assign(:voice_negotiating?, false)
-        |> assign(:voice_speaking, MapSet.new())
+        |> reset_room_state(participants)
         |> refresh_occupants()
 
       Process.send_after(self(), :voice_heartbeat, @heartbeat_interval_ms)
 
-      {:noreply,
-       push_event(socket, "voice_ready", %{
-         turn_servers: Cloudflare.turn_servers(),
-         user_id: socket.assigns.current_user.id
-       })}
+      push_event(socket, "voice_ready", %{
+        turn_servers: Cloudflare.turn_servers(),
+        user_id: socket.assigns.current_user.id
+      })
     else
-      {:error, :room_full} -> {:noreply, put_flash(socket, :error, "This voice channel is full.")}
-      {:error, :unconfigured} -> {:noreply, put_flash(socket, :error, "Voice is not configured.")}
-      {:error, :unavailable} -> {:noreply, put_flash(socket, :error, "Voice is unavailable right now.")}
-      {:error, :forbidden} -> {:noreply, put_flash(socket, :error, "You cannot join this channel.")}
-      _ -> {:noreply, put_flash(socket, :error, "That channel does not exist.")}
+      {:error, :room_full} -> put_flash(socket, :error, "This voice channel is full.")
+      {:error, :unconfigured} -> put_flash(socket, :error, "Voice is not configured.")
+      {:error, :unavailable} -> put_flash(socket, :error, "Voice is unavailable right now.")
+      {:error, :forbidden} -> put_flash(socket, :error, "You cannot join this channel.")
+      _ -> put_flash(socket, :error, "That channel does not exist.")
     end
   end
 
@@ -371,6 +371,8 @@ defmodule TavernWeb.ServerLive.Voice do
   defp subscribe_pass(socket) do
     case socket.assigns.voice_record do
       %{} = record when socket.assigns.voice_channel != nil ->
+        socket = forget_stale_subscriptions(socket)
+
         cond do
           missing_publications(socket, record) == [] -> socket
           socket.assigns.voice_negotiating? -> socket
@@ -380,6 +382,20 @@ defmodule TavernWeb.ServerLive.Voice do
       _ ->
         socket
     end
+  end
+
+  # A publication the publisher stopped or replaced keeps no seat: forget its key, so a camera
+  # restarted on the same session and track name is requested again.
+  defp forget_stale_subscriptions(socket) do
+    live_keys =
+      MapSet.new(
+        for participant <- socket.assigns.voice_participants,
+            {_kind, track} <- participant.tracks,
+            track != nil,
+            do: publication_key(track)
+      )
+
+    update(socket, :voice_subscriptions, &MapSet.intersection(&1, live_keys))
   end
 
   defp missing_publications(socket, record) do
@@ -447,7 +463,6 @@ defmodule TavernWeb.ServerLive.Voice do
   # an errorCode. Only successful entries go to the browser; failed ones retry on the next pass.
   defp subscription_mapping(wanted, result) do
     results = result["tracks"] || []
-    wanted = Enum.map(wanted, fn {participant, track} -> {participant, track} end)
 
     for {result, {participant, track}} <- Enum.zip(results, wanted),
         is_nil(result["errorCode"]),
@@ -475,16 +490,25 @@ defmodule TavernWeb.ServerLive.Voice do
     end
     |> assign(:voice_channel, nil)
     |> assign(:voice_record, nil)
-    |> assign(:voice_participants, [])
+    |> reset_room_state([])
+    |> refresh_occupants()
+  end
+
+  # The assigns every room state change resets: the participants list is the only part that
+  # differs between a fresh join and a cleared tab.
+  defp reset_room_state(socket, participants) do
+    socket
+    |> assign(:voice_participants, participants)
     |> assign(:voice_subscriptions, MapSet.new())
     |> assign(:voice_recv_session_id, nil)
     |> assign(:voice_negotiating?, false)
     |> assign(:voice_speaking, MapSet.new())
-    |> refresh_occupants()
   end
 
   defp leave_and_close(socket, record) do
-    case Voice.leave(room_channel_id(socket), record.user_id) do
+    # The leave is token-guarded in Valkey: a replaced tab's terminate answers
+    # `:not_connected` and deletes nothing that belongs to its replacement.
+    case Voice.leave(room_channel_id(socket), record.user_id, record.token) do
       {:ok, _participants} -> :ok
       {:error, reason} -> log_failed("leave", reason)
     end
@@ -529,11 +553,7 @@ defmodule TavernWeb.ServerLive.Voice do
         |> push_event("voice_replaced", %{})
         |> assign(:voice_channel, nil)
         |> assign(:voice_record, nil)
-        |> assign(:voice_participants, [])
-        |> assign(:voice_subscriptions, MapSet.new())
-        |> assign(:voice_recv_session_id, nil)
-        |> assign(:voice_negotiating?, false)
-        |> assign(:voice_speaking, MapSet.new())
+        |> reset_room_state([])
 
       true ->
         socket
@@ -599,7 +619,8 @@ defmodule TavernWeb.ServerLive.Voice do
                  room_channel_id(socket),
                  socket.assigns.voice_record.user_id,
                  :publish_session_id,
-                 session_id
+                 session_id,
+                 socket.assigns.voice_record.token
                ) do
           {:ok, session_id}
         end
@@ -617,7 +638,8 @@ defmodule TavernWeb.ServerLive.Voice do
             room_channel_id(socket),
             record.user_id,
             :recv_session_id,
-            session_id
+            session_id,
+            record.token
           )
 
           {:ok, session_id}
@@ -656,9 +678,6 @@ defmodule TavernWeb.ServerLive.Voice do
   end
 
   defp room_channel_id(socket), do: socket.assigns.voice_channel.id
-
-  defp publication_key(%{"sessionId" => session_id, "trackName" => track_name}),
-    do: session_id <> ":" <> track_name
 
   defp publication_key(track), do: "#{track["sessionId"]}:#{track["trackName"]}"
 

@@ -42,6 +42,7 @@
           mounted() {
             this.room = null
             this.midToPublisher = new Map()
+            this.videoStreams = new Map()
             this.speaking = false
             this.published = { mic: false, camera: false, screen: false }
 
@@ -51,6 +52,7 @@
             this.handleEvent("voice_mic_state", (data) => this.setMicEnabled(!data.muted))
             this.handleEvent("voice_moderated_mute", () => this.setMicEnabled(false))
             this.handleEvent("voice_video_request", (data) => this.toggleVideo(data.kind, data.active))
+            this.handleEvent("voice_video_reattach", () => this.reattachVideos())
             this.handleEvent("voice_ended", () => this.stop())
             this.handleEvent("voice_replaced", () => this.stop())
           },
@@ -72,7 +74,7 @@
             }
 
             this.pcPublish = this.newPeerConnection()
-            const micTrack = stream.getAudioTracks()[0]
+            const micTrack = this.micStream.getAudioTracks()[0]
             const transceiver = this.pcPublish.addTransceiver(micTrack, { direction: "sendonly" })
             micTrack.enabled = true
 
@@ -175,31 +177,47 @@
           attachRemoteTrack(event) {
             const publisher = this.midToPublisher.get(event.transceiver.mid)
             const track = event.track
+            const userId = publisher ? publisher.userId : "unknown"
 
             if (track.kind === "audio") {
               // Audio lives in this hook's own `phx-update="ignore"` div: a LiveView patch may
               // re-render the tiles, and a lost element would drop the member's voice.
               const audio = document.createElement("audio")
               audio.autoplay = true
-              audio.dataset.publisher = publisher ? publisher.userId : "unknown"
+              audio.dataset.publisher = userId
               audio.srcObject = new MediaStream([track])
               this.el.appendChild(audio)
             } else {
-              // Video tiles arrive with camera and screen share; the tile waits for the stream.
-              const tile = document.querySelector(
-                `[data-voice-tile][data-user-id="${publisher ? publisher.userId : ""}"]`
-              )
-              if (tile) {
-                let video = tile.querySelector("video")
-                if (!video) {
-                  video = document.createElement("video")
-                  video.autoplay = true
-                  video.playsInline = true
-                  video.className = "w-full rounded-lg"
-                  tile.prepend(video)
-                }
-                video.srcObject = new MediaStream([track])
-              }
+              // Video waits in a buffer keyed by publisher and kind, so a tile that appears
+              // later (the reader returns to the voice channel) can pick it up again.
+              const kind = publisher ? publisher.kind : "video"
+              this.videoStreams.set(`${userId}:${kind}`, track)
+              this.attachVideo(userId, kind)
+            }
+          },
+
+          attachVideo(userId, kind) {
+            const track = this.videoStreams.get(`${userId}:${kind}`)
+            const tile = document.querySelector(`[data-voice-tile][data-user-id="${userId}"]`)
+            if (!track || !tile) return
+
+            let video = tile.querySelector(`video[data-voice-kind="${kind}"]`)
+            if (!video) {
+              video = document.createElement("video")
+              video.autoplay = true
+              video.playsInline = true
+              video.dataset.voiceKind = kind
+              video.className = "h-full w-full object-cover"
+              const area = tile.querySelector("[data-voice-video]") || tile
+              area.appendChild(video)
+            }
+            video.srcObject = new MediaStream([track])
+          },
+
+          reattachVideos() {
+            for (const key of this.videoStreams.keys()) {
+              const [userId, kind] = [key.slice(0, key.lastIndexOf(":")), key.slice(key.lastIndexOf(":") + 1)]
+              this.attachVideo(userId, kind)
             }
           },
 
@@ -266,7 +284,6 @@
             this.published = { mic: false, camera: false, screen: false }
             this.audioContext && this.audioContext.close()
             this.audioContext = null
-
             for (const pc of [this.pcPublish, this.pcRecv]) {
               pc && pc.close()
             }
@@ -282,6 +299,7 @@
             }
 
             this.midToPublisher = new Map()
+            this.videoStreams = new Map()
             for (const child of [...this.el.children]) child.remove()
           },
 

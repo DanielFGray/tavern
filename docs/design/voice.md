@@ -10,7 +10,7 @@ A voice channel is a channel of kind `:voice`. The sidebar lists who is in each.
 | --- | --- |
 | Room membership, published tracks, muted flags | `Tavern.Voice`, state in Valkey |
 | SFU sessions and negotiation for one browser tab | that tab's ServerLive process |
-| Media capture, PeerConnections, playback | `assets/js/voice.js` hook |
+| Media capture, PeerConnections, playback | the `.VoiceSession` colocated hook |
 | Calls to `rtc.live.cloudflare.com` | `Tavern.Voice.Cloudflare` (Req) |
 | Who may connect, speak, stream, moderate | `Visibility` abilities from `PermissionBits` |
 
@@ -21,15 +21,16 @@ One Valkey hash per channel, key `voice:room:{channel_id}` (the deploy prefix ap
 ```json
 {
   "user_id": "...",
+  "token": "...",                   // fresh per join; a LiveView tells its own record from a replacement's
   "joined_at": 1737...,
   "heartbeat_at": 1737...,
   "muted": false,
   "publish_session_id": "...",      // Cloudflare session id, null until publishing
   "recv_session_id": "...",         // Cloudflare session id for receiving, null until connected
   "tracks": {                       // publications other rooms may subscribe to
-    "mic":    { "trackName": "mic" },
-    "camera": { "trackName": "camera", "rids": ["f", "h", "q"] },
-    "screen": { "trackName": "screen", "rids": ["f", "h", "q"] }
+    "mic":    { "trackName": "mic", "sessionId": "...", "mids": ["0"] },
+    "camera": { "trackName": "camera", "sessionId": "...", "mids": ["1"], "rids": ["f", "h", "q"] },
+    "screen": { "trackName": "screen", "sessionId": "...", "mids": ["2"], "rids": ["f", "h", "q"] }
   }
 }
 ```
@@ -63,7 +64,7 @@ ServerLive already syncs channel-topic subscriptions for every channel the user 
 
 Each browser tab has at most two SFU sessions, both created by its own ServerLive process: a publish session for its outgoing tracks and a receive session for everyone else's. Separate sessions keep the per-session mutation ordering (serialize every SDP exchange) trivial: each session's exchanges originate from one browser and are handled in one process, in arrival order.
 
-Join (`TavernWeb.ServerLive.Events.Voice`, event `voice_join`):
+Join (`TavernWeb.ServerLive.Voice`, event `voice_join`):
 
 1. `Visibility.authorize_write(scope, :connect_voice, channel)`.
 2. `Tavern.Voice.join(channel, user, limit)` — the Lua join above.
@@ -83,7 +84,9 @@ clears the record entry. The screen's own "Stop sharing" bar kills the capture t
 hook listens for `track.onended` and takes the same unpublish path, so the room record
 cannot claim a screen that is gone. A later publish adds fresh transceivers to the same
 publish session; the SDP sections accumulate, which is accepted until real behavior shows
-otherwise (then: a fresh publish session per video cycle).3. The LiveView calls `POST /sessions/new`, then `POST /sessions/{id}/tracks/new` with the offer and the local track entries, and records the returned session id.
+otherwise (then: a fresh publish session per video cycle).
+
+3. The LiveView calls `POST /sessions/new`, then `POST /sessions/{id}/tracks/new` with the offer and the local track entries, and records the returned session id.
 4. It pushes the SFU answer to the browser; the hook applies `setRemoteDescription` and reports `connected`.
 5. The LiveView writes the track into the room record and broadcasts `{:voice_published, ...}`.
 

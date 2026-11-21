@@ -30,7 +30,6 @@ defmodule Tavern.Voice.Cloudflare do
         [%{urls: "stun:stun.cloudflare.com:3478"}]
     end
   end
-
   @doc """
   Opens a session: `POST /sessions/new` with no body. Answers `{:ok, session_id}` or an error.
   """

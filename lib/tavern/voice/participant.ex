@@ -30,6 +30,7 @@ defmodule Tavern.Voice.Participant do
     :tracks
   ]
 
+
   def new(user_id) do
     now = DateTime.utc_now() |> DateTime.to_unix(:second)
 
@@ -60,10 +61,6 @@ defmodule Tavern.Voice.Participant do
     }
   end
 
-  @doc "The published kinds that carry video: camera and screen."
-  def video_tracks(%__MODULE__{} = record) do
-    for(kind <- [:camera, :screen], record.tracks[kind] != nil, do: kind)
-  end
-
+  @doc "Whether `kind` is published: its track entry exists."
   def published?(%__MODULE__{} = record, kind) when kind in @kinds, do: record.tracks[kind] != nil
 end

@@ -87,7 +87,7 @@ config :opentelemetry,
 config :tavern, Tavern.Voice.Cloudflare,
   app_id: nil,
   app_secret: nil,
-  turn_urls: ["stun:stun.cloudflare.com:3478"],
+  turn_urls: nil,
   turn_username: nil,
   turn_credential: nil
 

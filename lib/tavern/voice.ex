@@ -60,9 +60,14 @@ defmodule Tavern.Voice do
 
   def join(%Channel{}, _user), do: {:error, :not_found}
 
-  @doc "Removes the member's record and broadcasts the leave. A member not in the room is `{:error, :not_connected}`."
-  def leave(channel_id, user_id) do
-    with {:ok, "ok"} <- leave_script(channel_id, user_id) do
+  @doc """
+  Removes the member's record and broadcasts the leave. `token` (optional) must match the
+  record's, so a replaced tab cannot delete the tab that took its seat; a mismatch answers
+  `{:error, :replaced}` and broadcasts nothing. A member not in the room is
+  `{:error, :not_connected}`.
+  """
+  def leave(channel_id, user_id, token \\ "") do
+    with {:ok, "ok"} <- leave_script(channel_id, user_id, token) do
       participants = read_participants(channel_id)
       Topics.broadcast_server({:voice_left, channel_id, participants})
       {:ok, participants}
@@ -84,7 +89,7 @@ defmodule Tavern.Voice do
     end
   end
 
-  @doc "The room's participants, stale records pruned, joined order kept. [] when Valkey is down."
+  @doc "The room's participants, stale records pruned, joined order kept. A failed read is an error tuple."
   def participants(channel_id) do
     case read_script(channel_id) do
       {:ok, records} when is_list(records) ->
@@ -108,10 +113,10 @@ defmodule Tavern.Voice do
   def publish_track(channel_id, user_id, token, kind, track, rids)
       when kind in [:mic, :camera, :screen] do
     value =
-      if is_nil(track) do
-        "__delete__"
-      else
-        Jason.encode!(Map.put(track, "rids", rids))
+      cond do
+        is_nil(track) -> "__delete__"
+        is_nil(rids) -> Jason.encode!(track)
+        true -> Jason.encode!(Map.put(track, "rids", rids))
       end
 
     with {:ok, record} <- update_own(channel_id, user_id, "tracks.#{kind}", value, token) do
@@ -135,10 +140,10 @@ defmodule Tavern.Voice do
   end
 
   @doc "Stores one SFU session id of the member's own record, or nil to clear it."
-  def set_session(channel_id, user_id, which, session_id)
+  def set_session(channel_id, user_id, which, session_id, token \\ "")
       when which in [:publish_session_id, :recv_session_id] do
     value = if is_nil(session_id), do: "__delete__", else: Jason.encode!(session_id)
-    set_field(channel_id, user_id, Atom.to_string(which), value)
+    set_field(channel_id, user_id, Atom.to_string(which), value, token)
   end
 
   # --- Moderation -----------------------------------------------------------------------------
@@ -150,10 +155,10 @@ defmodule Tavern.Voice do
   """
   def mute_member(%Scope{} = scope, channel_id, subject_id) do
     moderate(scope, channel_id, subject_id, :mute_voice_members, fn _record ->
-      with {:ok, "ok"} <- set_field(channel_id, subject_id, "muted", "true"),
+      with {:ok, "ok"} <- set_field(channel_id, subject_id, "muted", "true", ""),
            {:ok, updated} <- own_participant(channel_id, subject_id) do
         Topics.broadcast_channel(channel_id, {:voice_updated, channel_id, updated})
-        Topics.broadcast_channel(channel_id, {:voice_moderated, channel_id, updated, :mute})
+        Topics.broadcast_channel(channel_id, {:voice_moderated, channel_id, subject_id, :mute})
         {:ok, updated}
       else
         {:error, :gone} -> {:error, :not_connected}
@@ -169,10 +174,11 @@ defmodule Tavern.Voice do
   """
   def disconnect_member(%Scope{} = scope, channel_id, subject_id) do
     moderate(scope, channel_id, subject_id, :disconnect_voice_members, fn _record ->
-      with {:ok, "ok"} <- leave_script(channel_id, subject_id) do
+      # The moderator path skips the token check: the record was verified just above.
+      with {:ok, "ok"} <- leave_script(channel_id, subject_id, "") do
         participants = read_participants(channel_id)
         Topics.broadcast_server({:voice_left, channel_id, participants})
-        Topics.broadcast_channel(channel_id, {:voice_moderated, channel_id, %{}, :disconnect})
+        Topics.broadcast_channel(channel_id, {:voice_moderated, channel_id, subject_id, :disconnect})
         {:ok, participants}
       end
     end)
@@ -232,6 +238,7 @@ defmodule Tavern.Voice do
     local value = redis.call('HGET', KEYS[1], ARGV[1])
     if not value then return 'gone' end
     local rec = cjson.decode(value)
+    if ARGV[4] ~= '' and rec.token ~= ARGV[4] then return 'stale' end
     local path = {}
     for part in string.gmatch(ARGV[2], '[^.]+') do path[#path + 1] = part end
     local t = rec
@@ -250,7 +257,11 @@ defmodule Tavern.Voice do
   """
 
   @leave_script ~s"""
-    if redis.call('HDEL', KEYS[1], ARGV[1]) == 0 then return 'gone' end
+    local value = redis.call('HGET', KEYS[1], ARGV[1])
+    if not value then return 'gone' end
+    local rec = cjson.decode(value)
+    if ARGV[2] ~= '' and rec.token ~= ARGV[2] then return 'replaced' end
+    redis.call('HDEL', KEYS[1], ARGV[1])
     redis.call('EXPIRE', KEYS[1], #{@room_ttl_seconds})
     return 'ok'
   """
@@ -268,24 +279,22 @@ defmodule Tavern.Voice do
     eval(@read_script, channel_id, [unix_now()])
   end
 
-  defp leave_script(channel_id, user_id) do
-    eval(@leave_script, channel_id, [user_id])
+  defp leave_script(channel_id, user_id, token) do
+    eval(@leave_script, channel_id, [user_id, token])
   end
 
-  # Sets one dotted field of the record, `__delete__` removing it. No token check: the record's
-  # own LiveView and the moderators are the only writers, and both may set what they pass.
-  defp set_field(channel_id, user_id, path, value) do
-    eval(@update_script, channel_id, [user_id, path, value])
+  # Sets one dotted field of the record, `__delete__` removing it. `token` guards the write:
+  # empty skips the check (the moderator path writes another member's record), a token must
+  # match or the script refuses, so a replaced tab's write cannot land on its replacement.
+  defp set_field(channel_id, user_id, path, value, token) do
+    eval(@update_script, channel_id, [user_id, path, value, token])
   end
 
-  # The own-record write: after the set, the record must still be the caller's own token, not one
-  # a second tab replaced.
+  # The own-record write: the script refuses when the token no longer matches.
   defp update_own(channel_id, user_id, path, value, token) do
-    with {:ok, "ok"} <- set_field(channel_id, user_id, path, value),
-         {:ok, %{token: ^token} = record} <- own_participant(channel_id, user_id) do
-      {:ok, record}
-    else
-      {:ok, _replaced} -> {:error, :gone}
+    case set_field(channel_id, user_id, path, value, token) do
+      {:ok, "ok"} -> own_participant(channel_id, user_id)
+      {:ok, _other} -> {:error, :gone}
       error -> error
     end
   end

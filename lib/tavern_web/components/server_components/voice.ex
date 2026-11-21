@@ -64,10 +64,6 @@ defmodule TavernWeb.ServerComponents.Voice do
           #{@channel.name} chat
         </p>
         <TavernWeb.ServerComponents.Messages.message_stream server={@server} />
-        <TavernWeb.ServerComponents.Messages.typing_indicator
-          users={@server.channel_pane.typing_users}
-          id="voice-typing-indicator"
-        />
         <TavernWeb.ServerComponents.Composer.composer_dock server={@server} />
       </aside>
     </div>
@@ -84,7 +80,7 @@ defmodule TavernWeb.ServerComponents.Voice do
       <div class="flex flex-wrap justify-center gap-2">
         <span
           :for={participant <- @participants}
-          id={"voice-occupant-#{participant.user_id}"}
+          id={"voice-join-occupant-#{participant.user_id}"}
           class="flex items-center gap-1.5 rounded-full bg-base-100 px-2 py-1 text-xs"
         >
           <.avatar user={member(@server, participant.user_id)} class="size-5 text-[9px]" />
@@ -249,13 +245,11 @@ defmodule TavernWeb.ServerComponents.Voice do
   # in a voice room and is reading another channel.
   def call_bar(assigns) do
     server = assigns.server
-    in_room? = server.voice_channel && voice_channel_id(server) != nil
-    reading_elsewhere? = server.voice_channel && channel_active?(server.active_channel, server.voice_channel)
 
     assigns =
       assigns
       |> assign(:call_channel, server.voice_channel)
-      |> assign(:show?, in_room? && not reading_elsewhere?)
+      |> assign(:show?, server.voice_channel != nil)
       |> assign(:muted, server.voice_record && server.voice_record.muted)
       |> assign(:sharing_screen?, server.voice_record && server.voice_record.tracks[:screen] != nil)
 

@@ -15,7 +15,7 @@ defmodule TavernWeb.ServerLiveVoiceTest do
       Req.Test.json(conn, %{"sessionId" => "stub-session"})
     end)
 
-    Bootstrap.ensure_seed_data!()
+    Tavern.Bootstrap.ensure_seed_data!()
 
     owner = owner_fixture()
     voice = channel_fixture(%{name: "Lounge Voice", kind: :voice, voice_member_limit: 2})
@@ -23,18 +23,20 @@ defmodule TavernWeb.ServerLiveVoiceTest do
     %{owner: owner, voice: voice}
   end
 
-  test "a voice channel renders its join card, not the composer", %{conn: conn, voice: voice} do
+  test "a voice channel renders its join card, not the text-channel composer", %{conn: conn, voice: voice} do
     {:ok, view, _html} = live_hydrated(log_in_member_user(conn), "/?channel=#{voice.slug}")
 
     assert has_element?(view, "#voice-room")
     assert has_element?(view, "#voice-join-button")
-    refute has_element?(view, "#channel-typing-indicator")
+    # The voice channel's composer lives in its chat column, not pinned to the pane bottom.
+    assert has_element?(view, "#voice-chat")
   end
 
   test "joining puts the member in the room and the sidebar lists them", %{conn: conn, voice: voice} do
-    listen_for(voice.id)
+    conn = log_in_member_user(conn)
+    user = current_user_from_conn(conn)
 
-    {:ok, view, _html} = live_hydrated(log_in_member_user(conn), "/?channel=#{voice.slug}")
+    {:ok, view, _html} = live_hydrated(conn, "/?channel=#{voice.slug}")
 
     view
     |> element("#voice-join-button")
@@ -44,7 +46,6 @@ defmodule TavernWeb.ServerLiveVoiceTest do
     assert has_element?(view, "#voice-leave-button")
 
     assert [%Voice.Participant{} = participant] = Voice.participants(voice.id)
-    user = current_user_from_conn(conn)
     assert participant.user_id == user.id
 
     # The server-topic broadcast reaches the same view's sidebar.
@@ -52,20 +53,25 @@ defmodule TavernWeb.ServerLiveVoiceTest do
   end
 
   test "the join is refused with a flash past the member limit", %{conn: conn, voice: voice} do
+    conn = log_in_member_user(conn)
+    user = current_user_from_conn(conn)
+
     {:ok, _first, _} = Voice.join(voice, %{id: Ecto.UUID.generate()})
     {:ok, _second, _} = Voice.join(voice, %{id: Ecto.UUID.generate()})
 
-    {:ok, view, _html} = live_hydrated(log_in_member_user(conn), "/?channel=#{voice.slug}")
+    {:ok, view, _html} = live_hydrated(conn, "/?channel=#{voice.slug}")
 
-    assert view
-           |> element("#voice-join-button")
-           |> render_click() =~ "This voice channel is full."
+    view
+    |> element("#voice-join-button")
+    |> render_click()
 
-    assert [] == Enum.filter(Voice.participants(voice.id), &(&1.user_id == current_user_from_conn(conn).id))
+    # The refusal is a flash on the view, asserted as an element, not raw HTML.
+    assert has_element?(view, "p", "This voice channel is full.")
+
+    assert [] == Enum.filter(Voice.participants(voice.id), &(&1.user_id == user.id))
   end
 
   test "leaving ends the call and clears the bar", %{conn: conn, voice: voice} do
-    listen_for(voice.id)
 
     {:ok, view, _html} = live_hydrated(log_in_member_user(conn), "/?channel=#{voice.slug}")
 
