@@ -51,6 +51,8 @@ test('desktop user can switch channels and send a chat message', async ({ page, 
   await composer.click()
   await expect(page.locator('#rich-composer-shell')).toHaveClass(/is-focused/)
   await composer.pressSequentially(message)
+  // The @mention suggestion list floats over the toolbar until it is dismissed.
+  await composer.press('Escape')
   await page.getByRole('button', { name: 'Code block' }).click()
   await composer.pressSequentially(code)
   await page.getByRole('button', { name: 'Code block' }).click()
@@ -167,6 +169,7 @@ const tinyPng = Buffer.from(
 test('owner uploads a custom emoji from the browser and deletes it', async ({ page }) => {
   await login(page)
   await page.goto('/settings?tab=emoji')
+  await expect(page.locator('[data-phx-main]')).toHaveClass(/phx-connected/)
   await expect(page.locator('#settings-view-emoji')).toBeVisible()
 
   await page.locator('#emoji-form').getByLabel('Name', { exact: true }).fill('e2e wave')
