@@ -115,6 +115,8 @@
             const track = event.track
 
             if (track.kind === "audio") {
+              // Audio lives in this hook's own `phx-update="ignore"` div: a LiveView patch may
+              // re-render the tiles, and a lost element would drop the member's voice.
               const audio = document.createElement("audio")
               audio.autoplay = true
               audio.dataset.publisher = publisher ? publisher.userId : "unknown"

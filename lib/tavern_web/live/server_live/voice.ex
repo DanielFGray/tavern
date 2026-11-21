@@ -31,6 +31,8 @@ defmodule TavernWeb.ServerLive.Voice do
   @video_kinds ~w(camera screen)
   @rids ~w(f h q)
 
+  @kind_atoms %{"mic" => :mic, "camera" => :camera, "screen" => :screen}
+
   @events ~w(voice_join voice_leave voice_mute_toggle voice_publish voice_unpublish voice_sf_offer_answer voice_speaking voice_permission_denied)
 
   def events, do: @events
@@ -120,7 +122,7 @@ defmodule TavernWeb.ServerLive.Voice do
   def handle_event("voice_publish", %{"kind" => kind} = params, socket) when kind in @publish_kinds do
     with %Scope{} = scope <- socket.assigns.current_scope,
          %{} = channel <- socket.assigns.voice_channel,
-         true <- publish_allowed?(scope, channel, String.to_existing_atom(kind)) || {:error, :forbidden},
+         true <- publish_allowed?(scope, channel, Map.fetch!(@kind_atoms, kind)) || {:error, :forbidden},
          {:ok, session_id} <- ensure_publish_session(socket),
          {:ok, mids, answer} <- publish_tracks(session_id, params) do
       socket = update(socket, :voice_record, &%{&1 | publish_session_id: session_id})
@@ -132,7 +134,7 @@ defmodule TavernWeb.ServerLive.Voice do
                room_channel_id(socket),
                socket.assigns.voice_record.user_id,
                socket.assigns.voice_record.token,
-               String.to_existing_atom(kind),
+               Map.fetch!(@kind_atoms, kind),
                track,
                rids
              ) do
@@ -156,7 +158,7 @@ defmodule TavernWeb.ServerLive.Voice do
 
   def handle_event("voice_unpublish", %{"kind" => kind}, socket) when kind in @video_kinds do
     with %{tracks: tracks} = record when is_map(record) <- socket.assigns.voice_record,
-         track when track != nil <- tracks[String.to_existing_atom(kind)] do
+         track when track != nil <- tracks[Map.fetch!(@kind_atoms, kind)] do
       close_tracks(track["sessionId"], track["mids"])
 
       socket =
@@ -164,7 +166,7 @@ defmodule TavernWeb.ServerLive.Voice do
                room_channel_id(socket),
                record.user_id,
                record.token,
-               String.to_existing_atom(kind),
+               Map.fetch!(@kind_atoms, kind),
                nil,
                nil
              ) do
