@@ -30,7 +30,7 @@ defmodule TavernWeb.ServerComponents.Messages do
 
   def channel_header(assigns) do
     ~H"""
-    <header class="flex h-16 shrink-0 items-center justify-between border-b border-base-300 bg-base-200/95 px-4 shadow-sm backdrop-blur">
+    <header class="flex h-[4.5rem] shrink-0 items-center justify-between border-b border-base-300 bg-base-200/95 px-4 shadow-sm backdrop-blur">
       <div class="flex min-w-0 items-center gap-3">
         <button
           type="button"
