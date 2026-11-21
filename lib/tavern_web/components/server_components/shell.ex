@@ -44,7 +44,7 @@ defmodule TavernWeb.ServerComponents.Shell do
         mobile_sidebar_class(@server.mobile_sidebar_open?)
       ]}
     >
-      <div class="flex items-center justify-between border-b border-base-300 px-4 py-3 shadow-sm">
+      <div class="flex h-[4.5rem] shrink-0 items-center justify-between border-b border-base-300 px-4 shadow-sm">
         <Layouts.server_identity server={@server.server_settings} />
 
         <div class="flex items-center gap-2">
@@ -157,8 +157,8 @@ defmodule TavernWeb.ServerComponents.Shell do
         @server.members_collapsed? && "xl:hidden"
       ]}
     >
-      <div class="border-b border-base-300 px-4 py-3">
-        <div class="flex items-center justify-between gap-3">
+      <div class="flex h-[4.5rem] shrink-0 items-center border-b border-base-300 px-4">
+        <div class="flex w-full items-center justify-between gap-3">
           <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-base-content/50">
             Members
           </p>
@@ -171,19 +171,19 @@ defmodule TavernWeb.ServerComponents.Shell do
             Close
           </button>
         </div>
-        <div class="mt-2 flex items-center justify-between text-xs text-base-content/65">
-          <%= if @server.members_ready? do %>
-            <span>{length(@server.member_presence)} visible</span>
-            <span class="rounded bg-base-300 px-1.5 py-0.5 text-[10px] font-semibold text-base-content/80">
-              {Enum.count(@server.member_presence, &(&1.status == :online))} online
-            </span>
-          <% else %>
-            <span>Loading members...</span>
-            <span class="rounded bg-base-300 px-1.5 py-0.5 text-[10px] font-semibold text-base-content/80">
-              ...
-            </span>
-          <% end %>
-        </div>
+      </div>
+      <div class="flex items-center justify-between border-b border-base-300 px-4 py-2 text-xs text-base-content/65">
+        <%= if @server.members_ready? do %>
+          <span>{length(@server.member_presence)} visible</span>
+          <span class="rounded bg-base-300 px-1.5 py-0.5 text-[10px] font-semibold text-base-content/80">
+            {Enum.count(@server.member_presence, &(&1.status == :online))} online
+          </span>
+        <% else %>
+          <span>Loading members...</span>
+          <span class="rounded bg-base-300 px-1.5 py-0.5 text-[10px] font-semibold text-base-content/80">
+            ...
+          </span>
+        <% end %>
       </div>
 
       <div

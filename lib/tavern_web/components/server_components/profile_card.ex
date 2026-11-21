@@ -68,7 +68,7 @@ defmodule TavernWeb.ServerComponents.ProfileCard do
           :if={@card.user.bio not in [nil, ""]}
           id="profile-card-bio"
           data-markdown-source={@card.user.bio}
-          class="border-t border-base-300 px-4 py-3 text-sm leading-5 text-base-content/85 break-words [&>p]:m-0 [&>p+p]:mt-2 [&>ul]:m-0 [&>ul]:pl-5 [&>ol]:m-0 [&>ol]:pl-5"
+          class="border-t border-base-300 px-4 py-3 text-sm leading-5 text-base-content/85 break-words [&>p]:m-0 [&>p+p]:mt-2 [&>ul]:m-0 [&>ul]:pl-5 [&>ol]:m-0 [&>ol]:pl-5 [&_code]:rounded [&_code]:bg-base-300 [&_code]:px-1 [&_code]:text-[0.9em]"
         >
           {@card.user.bio}
         </div>

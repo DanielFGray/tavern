@@ -34,7 +34,7 @@ defmodule TavernWeb.ServerComponents.Messages do
 
   def channel_header(assigns) do
     ~H"""
-    <header class="flex items-center justify-between border-b border-base-300 bg-base-200/95 px-4 py-3 shadow-sm backdrop-blur">
+    <header class="flex h-[4.5rem] shrink-0 items-center justify-between border-b border-base-300 bg-base-200/95 px-4 shadow-sm backdrop-blur">
       <div class="flex min-w-0 items-center gap-3">
         <button
           type="button"
@@ -44,24 +44,24 @@ defmodule TavernWeb.ServerComponents.Messages do
         >
           ☰
         </button>
-        <div class="flex items-center gap-2">
-          <span
-            :if={@server.active_channel.kind != :voice}
-            class="text-lg font-bold text-base-content/50"
-          >
-            #
-          </span>
-          <.icon
-            :if={@server.active_channel.kind == :voice}
-            name="hero-speaker-wave"
-            class="size-5 text-base-content/50"
-          />
-          <div class="min-w-0">
-            <h1 class="truncate text-[15px] font-semibold text-base-content">
+        <div class="min-w-0">
+          <div class="flex items-center gap-1.5">
+            <span
+              :if={@server.active_channel.kind != :voice}
+              class="text-lg leading-none font-bold text-base-content/50"
+            >
+              #
+            </span>
+            <.icon
+              :if={@server.active_channel.kind == :voice}
+              name="hero-speaker-wave"
+              class="size-5 text-base-content/50"
+            />
+            <h1 class="truncate text-[15px] leading-6 font-semibold text-base-content">
               {@server.active_channel.name}
             </h1>
-            <TavernWeb.ServerComponents.ChannelEditor.channel_topic server={@server} />
           </div>
+          <TavernWeb.ServerComponents.ChannelEditor.channel_topic server={@server} />
         </div>
       </div>
 
@@ -293,7 +293,8 @@ defmodule TavernWeb.ServerComponents.Messages do
                 disabled={!@rights.react?}
                 class={[
                   "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition",
-                  reaction.reacted? && "border-violet-400/60 bg-violet-500/20 text-violet-100",
+                  reaction.reacted? &&
+                    "border-violet-400/60 bg-violet-500/20 text-violet-800 dark:text-violet-100",
                   !reaction.reacted? &&
                     "border-base-300 bg-base-100 text-base-content/70 hover:border-base-content/20 hover:text-base-content",
                   !@rights.react? &&
