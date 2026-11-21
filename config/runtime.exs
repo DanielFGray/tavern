@@ -132,9 +132,12 @@ end
 # Voice media (docs/design/voice.md). One Realtime app and secret pair serves local, staged
 # and production. With CLOUDFLARE_REALTIME_APP_SECRET unset voice stays off. The TURN key is
 # a server-side secret of its own — never the Realtime app secret; browsers receive only the
-# short-lived credentials the backend mints from it.
-config :tavern, Tavern.Voice.Cloudflare,
-  app_id: System.get_env("CLOUDFLARE_REALTIME_APP_ID"),
-  app_secret: System.get_env("CLOUDFLARE_REALTIME_APP_SECRET"),
-  turn_key_id: System.get_env("CLOUDFLARE_TURN_KEY_ID"),
-  turn_key_token: System.get_env("CLOUDFLARE_TURN_KEY_TOKEN")
+# short-lived credentials the backend mints from it. The test environment pins its own values
+# (test.exs), so this block leaves test alone.
+if config_env() != :test do
+  config :tavern, Tavern.Voice.Cloudflare,
+    app_id: System.get_env("CLOUDFLARE_REALTIME_APP_ID"),
+    app_secret: System.get_env("CLOUDFLARE_REALTIME_APP_SECRET"),
+    turn_key_id: System.get_env("CLOUDFLARE_TURN_KEY_ID"),
+    turn_key_token: System.get_env("CLOUDFLARE_TURN_KEY_TOKEN")
+end
