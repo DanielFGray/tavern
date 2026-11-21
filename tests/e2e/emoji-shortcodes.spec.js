@@ -70,9 +70,11 @@ test('a custom emoji is suggested and drawn as its image', async ({ page }, test
   await composer.pressSequentially(`${unique} :e2eb`)
   await expect(page.locator('body > div.fixed button img[src*="/uploads/"]')).toBeVisible()
   await composer.press('Enter')
+  await expect(composer.locator('img[data-custom-emoji-id][alt=":e2eblob:"]')).toBeVisible()
   await composer.press('Enter')
 
   const sent = page.locator(`#message-list [data-markdown-source*="${unique}"]`)
+  await expect(sent).toHaveAttribute('data-markdown-source', /<:e2eblob:[0-9a-f-]{36}>/)
   await expect(sent.locator('img.emoji[alt=":e2eblob:"]')).toHaveAttribute('src', /\/uploads\//)
 
   page.once('dialog', dialog => dialog.accept())

@@ -1,9 +1,11 @@
 import emojiMartData from "@emoji-mart/data"
 
-// :shortcode: emoji. A message stores the text `:name:`; the browser draws it. Unicode names come
-// from emoji-mart's catalog and custom names from the server's emoji list, which wins on a clash.
+// :shortcode: emoji. Unicode emoji are stored as the character itself, or typed as `:name:` text
+// that the browser draws. A custom server emoji is stored as `<:name:id>`: the id keeps old
+// messages intact when the emoji is renamed. Unicode names come from emoji-mart's catalog.
 
 const SHORTCODE = /^:([a-z0-9_+-]+):/
+const CUSTOM_EMOJI_TOKEN = /^<:([a-z0-9_+-]+):([0-9a-f-]{36})>/
 const MAX_SUGGESTIONS = 8
 const MIN_QUERY_LENGTH = 2
 
@@ -19,17 +21,30 @@ for(const [alias, id] of Object.entries(emojiMartData.aliases || {})) {
 // inside code, stay text. Custom emoji come from `env.customEmojis` on each render call.
 function emojiShortcodePlugin(md) {
   md.inline.ruler.before("emphasis", "emoji_shortcode", (state, silent) => {
-    if(state.src.charCodeAt(state.pos) !== 0x3a) return false
+    const code = state.src.charCodeAt(state.pos)
+    if(code !== 0x3a && code !== 0x3c) return false
 
-    const match = SHORTCODE.exec(state.src.slice(state.pos))
+    const rest = state.src.slice(state.pos)
+    const tokenMatch = code === 0x3c ? CUSTOM_EMOJI_TOKEN.exec(rest) : null
+    const match = tokenMatch || (code === 0x3a ? SHORTCODE.exec(rest) : null)
     if(!match) return false
 
-    const emoji = resolveShortcode(match[1], state.env?.customEmojis)
+    // A `<:name:id>` whose emoji was deleted falls back to its `:name:` text.
+    const custom = tokenMatch && state.env?.customEmojis?.find(emoji => emoji.id === tokenMatch[2])
+    const emoji = tokenMatch
+      ? (custom ? { url: custom.url, name: bareName(custom.shortcode) } : null)
+      : resolveShortcode(match[1], state.env?.customEmojis)
+
+    if(tokenMatch && !emoji) {
+      if(!silent) state.push("text", "", 0).content = `:${match[1]}:`
+      state.pos += match[0].length
+      return true
+    }
     if(!emoji) return false
 
     if(!silent) {
       const token = state.push("emoji_shortcode", "", 0)
-      token.content = match[1]
+      token.content = emoji.name || match[1]
       token.meta = emoji
     }
 
@@ -56,6 +71,7 @@ function searchEmojiShortcodes(query, customEmojis = []) {
     name: bareName(emoji.shortcode),
     keywords: [emoji.name || ""],
     url: emoji.url,
+    id: emoji.id,
   }))
 
   const ranked = [...custom, ...unicodeEntries]

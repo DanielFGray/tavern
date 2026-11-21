@@ -1,4 +1,4 @@
-import { Editor, Extension } from "@tiptap/core"
+import { Editor, Extension, Node } from "@tiptap/core"
 import StarterKit from "@tiptap/starter-kit"
 import Placeholder from "@tiptap/extension-placeholder"
 import Mention from "@tiptap/extension-mention"
@@ -99,8 +99,41 @@ const ComposerEntity = Mention.extend({
   },
 })
 
+// A custom server emoji in the composer: one atomic inline image, so Backspace removes the whole
+// emoji. It serializes to `<:name:id>`; the id survives a rename of the emoji.
+const CustomEmoji = Node.create({
+  name: "customEmoji",
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: false,
+
+  addAttributes() {
+    return { id: { default: null }, name: { default: "" }, url: { default: "" } }
+  },
+
+  parseHTML() {
+    return [{ tag: "img[data-custom-emoji-id]", getAttrs: el => ({ id: el.getAttribute("data-custom-emoji-id"), name: el.getAttribute("alt")?.replace(/^:|:$/g, ""), url: el.getAttribute("src") }) }]
+  },
+
+  renderHTML({ node }) {
+    return ["img", {
+      "data-custom-emoji-id": node.attrs.id,
+      src: node.attrs.url,
+      alt: `:${node.attrs.name}:`,
+      title: `:${node.attrs.name}:`,
+      draggable: "false",
+      class: "inline-block h-[1.375em] w-[1.375em] align-[-0.3em] object-contain",
+    }]
+  },
+
+  renderText({ node }) {
+    return `<:${node.attrs.name}:${node.attrs.id}>`
+  },
+})
+
 // Typing `:` and two letters opens a list of emoji. A unicode pick is inserted as the emoji
-// itself; a custom pick as its `:shortcode:` text, which messages draw as the server's image.
+// itself; a custom pick as a customEmoji node.
 const EmojiShortcode = Extension.create({
   name: "emojiShortcode",
   priority: SUGGESTION_PRIORITY,
@@ -124,8 +157,10 @@ const EmojiShortcode = Extension.create({
           renderOption: emojiOption,
         }),
         command: ({ editor, range, props }) => {
-          const text = props.native || `:${props.name}:`
-          editor.chain().focus().insertContentAt(range, `${text} `).run()
+          const content = props.native
+            ? { type: "text", text: props.native }
+            : { type: "customEmoji", attrs: { id: props.id, name: props.name, url: props.url } }
+          editor.chain().focus().insertContentAt(range, [content, { type: "text", text: " " }]).run()
         },
       }),
     ]
@@ -250,6 +285,7 @@ const RichComposerHook = {
           openOnClick: false,
           protocols: ["http", "https"],
         }),
+        CustomEmoji,
         EmojiShortcode.configure({
           customEmojis: () => parseDatasetJson(this.el.dataset.customEmojis).custom || [],
         }),
@@ -856,6 +892,9 @@ function serializeMarkdown(node, depth = 0) {
 
     case "hardBreak":
       return "\n"
+
+    case "customEmoji":
+      return `<:${node.attrs?.name}:${node.attrs?.id}>`
 
     case "mention": {
       const prefix = node.attrs?.mentionSuggestionChar === "/" ? "/" : "@"
