@@ -15,12 +15,15 @@ defmodule TavernWeb.ServerComponents.Messages do
     <%= cond do %>
       <% @server.forum -> %>
         <TavernWeb.ServerComponents.Forums.forum_view server={@server} />
+      <% @server.active_channel.kind == :voice -> %>
+        <TavernWeb.ServerComponents.Voice.active_voice_view server={@server} />
       <% true -> %>
         <.message_stream server={@server} />
     <% end %>
     <%!-- One composer, pinned below the transcript: it writes to the open thread, else the channel.
          A forum takes no top-level messages, so it has none until a post is open. --%>
-    <%= unless Chat.Channel.forum?(@server.active_channel) and is_nil(@server.active_thread) do %>
+    <%= unless (Chat.Channel.forum?(@server.active_channel) and is_nil(@server.active_thread)) or
+          @server.active_channel.kind == :voice do %>
       <TavernWeb.ServerComponents.Composer.composer_dock server={@server} />
     <% end %>
     """
@@ -41,7 +44,17 @@ defmodule TavernWeb.ServerComponents.Messages do
           ☰
         </button>
         <div class="flex items-center gap-2">
-          <span class="text-lg font-bold text-base-content/50">#</span>
+          <span
+            :if={@server.active_channel.kind != :voice}
+            class="text-lg font-bold text-base-content/50"
+          >
+            #
+          </span>
+          <.icon
+            :if={@server.active_channel.kind == :voice}
+            name="hero-speaker-wave"
+            class="size-5 text-base-content/50"
+          />
           <div class="min-w-0">
             <h1 class="truncate text-[15px] font-semibold text-base-content">
               {@server.active_channel.name}

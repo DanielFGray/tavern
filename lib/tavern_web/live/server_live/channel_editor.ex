@@ -37,7 +37,12 @@ defmodule TavernWeb.ServerLive.ChannelEditor do
   )
 
   # The kinds "+ add channel" offers. Voice and stage are not built.
-  @new_channel_kinds [{"Text", "text"}, {"Announcement", "announcement"}, {"Forum", "forum"}]
+  @new_channel_kinds [
+    {"Text", "text"},
+    {"Announcement", "announcement"},
+    {"Forum", "forum"},
+    {"Voice", "voice"}
+  ]
 
   def events, do: @events ++ ChannelPermissions.events()
   def new_channel_kinds, do: @new_channel_kinds

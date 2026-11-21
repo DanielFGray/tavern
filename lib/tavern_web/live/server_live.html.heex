@@ -35,6 +35,195 @@
       <TavernWeb.ServerComponents.active_channel_view :if={@active_channel} server={assigns} />
     </section>
 
+    <%!-- The voice session hook owns the browser's WebRTC media; the div itself stays empty. --%>
+    <div id="voice-session" phx-hook=".VoiceSession" phx-update="ignore" class="hidden" aria-hidden="true">
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".VoiceSession">
+        export default {
+          mounted() {
+            this.room = null
+            this.midToPublisher = new Map()
+            this.speaking = false
+
+            this.handleEvent("voice_ready", (data) => this.start(data))
+            this.handleEvent("voice_sf_answer", (data) => this.applyAnswer(data))
+            this.handleEvent("voice_sf_offer", (data) => this.applyRemoteOffer(data))
+            this.handleEvent("voice_mic_state", (data) => this.setMicEnabled(!data.muted))
+            this.handleEvent("voice_moderated_mute", () => this.setMicEnabled(false))
+            this.handleEvent("voice_ended", () => this.stop())
+            this.handleEvent("voice_replaced", () => this.stop())
+          },
+
+          async start(data) {
+            this.stop()
+            this.turnServers = data.turn_servers || []
+            this.userId = data.user_id
+
+            try {
+              const stream = await navigator.mediaDevices.getUserMedia({
+                audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+              })
+              this.micStream = stream
+            } catch (err) {
+              this.pushEvent("voice_permission_denied", {})
+              return
+            }
+
+            this.pcPublish = this.newPeerConnection()
+            const micTrack = stream.getAudioTracks()[0]
+            const transceiver = this.pcPublish.addTransceiver(micTrack, { direction: "sendonly" })
+            micTrack.enabled = true
+
+            const offer = await this.pcPublish.createOffer()
+            await this.pcPublish.setLocalDescription(offer)
+            await this.waitIce(this.pcPublish)
+
+            this.pushEvent("voice_publish", {
+              kind: "mic",
+              sdp: this.pcPublish.localDescription.sdp,
+              mids: [{ mid: transceiver.mid }],
+            })
+
+            this.startSpeakingDetection(micTrack)
+          },
+
+          async applyAnswer(data) {
+            if (!this.pcPublish) return
+            await this.pcPublish.setRemoteDescription(data.session_description)
+          },
+
+          async applyRemoteOffer(data) {
+            this.midToPublisher = new Map()
+            for (const entry of data.mapping || []) {
+              this.midToPublisher.set(entry.mid, entry)
+            }
+
+            if (!this.pcRecv) {
+              this.pcRecv = this.newPeerConnection()
+              this.pcRecv.ontrack = (event) => this.attachRemoteTrack(event)
+            }
+
+            await this.pcRecv.setRemoteDescription(data.session_description)
+            const answer = await this.pcRecv.createAnswer()
+            await this.pcRecv.setLocalDescription(answer)
+            await this.waitIce(this.pcRecv)
+
+            this.pushEvent("voice_sf_offer_answer", { sdp: this.pcRecv.localDescription.sdp })
+          },
+
+          attachRemoteTrack(event) {
+            const publisher = this.midToPublisher.get(event.transceiver.mid)
+            const track = event.track
+
+            if (track.kind === "audio") {
+              const audio = document.createElement("audio")
+              audio.autoplay = true
+              audio.dataset.publisher = publisher ? publisher.userId : "unknown"
+              audio.srcObject = new MediaStream([track])
+              this.el.appendChild(audio)
+            } else {
+              // Video tiles arrive with camera and screen share; the tile waits for the stream.
+              const tile = document.querySelector(
+                `[data-voice-tile][data-user-id="${publisher ? publisher.userId : ""}"]`
+              )
+              if (tile) {
+                let video = tile.querySelector("video")
+                if (!video) {
+                  video = document.createElement("video")
+                  video.autoplay = true
+                  video.playsInline = true
+                  video.className = "w-full rounded-lg"
+                  tile.prepend(video)
+                }
+                video.srcObject = new MediaStream([track])
+              }
+            }
+          },
+
+          setMicEnabled(enabled) {
+            if (this.micStream) {
+              const track = this.micStream.getAudioTracks()[0]
+              if (track) track.enabled = enabled
+            }
+          },
+
+          startSpeakingDetection(track) {
+            const ctx = new AudioContext()
+            this.audioContext = ctx
+            const source = ctx.createMediaStreamSource(new MediaStream([track]))
+            const analyser = ctx.createAnalyser()
+            analyser.fftSize = 512
+            source.connect(analyser)
+            const buffer = new Uint8Array(analyser.frequencyBinCount)
+
+            const tick = () => {
+              if (!this.audioContext) return
+              analyser.getByteFrequencyData(buffer)
+              let sum = 0
+              for (const v of buffer) sum += v * v
+              const level = Math.sqrt(sum / buffer.length) / 255
+              const speaking = level > 0.08
+              if (speaking !== this.speaking) {
+                this.speaking = speaking
+                this.pushEvent("voice_speaking", { speaking: String(speaking) })
+              }
+              requestAnimationFrame(tick)
+            }
+            requestAnimationFrame(tick)
+          },
+
+          newPeerConnection() {
+            const pc = new RTCPeerConnection({ iceServers: this.turnServers })
+            pc.onconnectionstatechange = () => {
+              if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+                // Cloudflare will answer a fresh exchange on the next publish; nothing to do here.
+              }
+            }
+            return pc
+          },
+
+          waitIce(pc) {
+            if (pc.iceGatheringState === "complete") return Promise.resolve()
+            return new Promise((resolve) => {
+              const done = () => {
+                pc.removeEventListener("icegatheringstatechange", onChange)
+                resolve()
+              }
+              const onChange = () => {
+                if (pc.iceGatheringState === "complete") done()
+              }
+              pc.addEventListener("icegatheringstatechange", onChange)
+              // Some networks never report complete; gathered-so-far candidates still connect.
+              setTimeout(done, 1500)
+            })
+          },
+
+          stop() {
+            this.speaking = false
+            this.audioContext && this.audioContext.close()
+            this.audioContext = null
+
+            for (const pc of [this.pcPublish, this.pcRecv]) {
+              pc && pc.close()
+            }
+            this.pcPublish = null
+            this.pcRecv = null
+
+            if (this.micStream) {
+              for (const track of this.micStream.getTracks()) track.stop()
+              this.micStream = null
+            }
+
+            this.midToPublisher = new Map()
+            for (const child of [...this.el.children]) child.remove()
+          },
+
+          destroyed() {
+            this.stop()
+          },
+        }
+      </script>
+    </div>
+
     <%!-- Outside every drawer and panel: a transformed ancestor would become the card's fixed frame. --%>
     <TavernWeb.ServerComponents.ProfileCard.profile_card card={@profile_card} />
 

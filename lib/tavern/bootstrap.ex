@@ -21,7 +21,10 @@ defmodule Tavern.Bootstrap do
     :send_messages_in_threads,
     :embed_links,
     :attach_files,
-    :add_reactions
+    :add_reactions,
+    :connect_voice,
+    :speak_voice,
+    :stream_voice
   ]
 
   # The Unverified role starts read only: it denies every bit that lets a member write something
@@ -35,7 +38,9 @@ defmodule Tavern.Bootstrap do
     :create_private_threads,
     :attach_files,
     :add_reactions,
-    :mention_everyone
+    :mention_everyone,
+    :speak_voice,
+    :stream_voice
   ]
   @unverified_description "Held by every member who has not confirmed their email."
 

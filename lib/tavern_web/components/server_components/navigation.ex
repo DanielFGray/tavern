@@ -26,6 +26,8 @@ defmodule TavernWeb.ServerComponents.Navigation do
           <.link
             id={"channel-link-#{channel.slug}"}
             patch={channel_path(channel)}
+            phx-click={channel.kind == :voice && "voice_join"}
+            phx-value-channel-id={channel.kind == :voice && channel.id}
             class={[
               "group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition",
               channel_active?(@server.active_channel, channel) &&
@@ -35,9 +37,16 @@ defmodule TavernWeb.ServerComponents.Navigation do
             ]}
           >
             <span class="text-base font-semibold text-base-content/50 transition group-hover:text-base-content/80">
-              #
+              {channel_icon(channel)}
             </span>
             <span class="min-w-0 flex-1 truncate">{channel.name}</span>
+            <span
+              :if={channel.kind == :voice and occupants_for(@server, channel) != []}
+              id={"channel-voice-count-#{channel.slug}"}
+              class="rounded bg-base-300 px-1.5 py-0.5 text-[10px] font-semibold text-base-content/60"
+            >
+              {length(occupants_for(@server, channel))}
+            </span>
             <span
               :if={unread_count_for(channel, @server.unread_counts) > 0}
               id={"channel-unread-#{channel.slug}"}
@@ -54,6 +63,7 @@ defmodule TavernWeb.ServerComponents.Navigation do
               @
             </span>
           </.link>
+          <.voice_occupants :if={channel.kind == :voice} channel={channel} server={@server} />
           <.followed_threads channel={channel} server={@server} />
         </div>
       </div>
@@ -129,6 +139,56 @@ defmodule TavernWeb.ServerComponents.Navigation do
 
   defp thread_active?(%{id: id}, %{id: id}), do: true
   defp thread_active?(_active, _thread), do: false
+
+  defp channel_icon(%{kind: :voice}), do: ""
+  defp channel_icon(_channel), do: "#"
+
+  defp occupants_for(server, channel), do: Map.get(server.voice_occupants, channel.id, [])
+
+  attr :channel, :map, required: true
+  attr :server, :map, required: true
+
+  # Who sits in a voice channel: one small row per participant under the channel row. Names come
+  # from the member presence list; a participant missing from it shows as "Member".
+  def voice_occupants(assigns) do
+    participants = occupants_for(assigns.server, assigns.channel)
+    assigns = assign(assigns, :participants, participants)
+
+    ~H"""
+    <ul
+      :if={@participants != []}
+      id={"voice-occupants-#{@channel.slug}"}
+      class="ml-6 mt-0.5 space-y-0.5 border-l border-base-300 pl-2"
+    >
+      <li
+        :for={participant <- @participants}
+        id={"voice-occupant-#{participant.user_id}"}
+        class="flex items-center gap-1.5 rounded px-1 py-0.5 text-[12px] text-base-content/70"
+      >
+        <.avatar user={member_user(@server, participant.user_id)} class="size-4 text-[8px]" />
+        <span class="min-w-0 truncate">{participant_name(@server, participant.user_id)}</span>
+        <.icon
+          :if={participant.muted}
+          name="hero-signal-slash"
+          class="size-3 shrink-0 text-rose-400"
+        />
+      </li>
+    </ul>
+    """
+  end
+
+  defp member_user(server, user_id) do
+    Enum.find_value(server.member_presence, fn entry ->
+      entry.user.id == user_id && entry.user
+    end) || %{display_name: "Member", username: "member", id: user_id}
+  end
+
+  defp participant_name(server, user_id) do
+    case member_user(server, user_id) do
+      %{display_name: name} -> name
+      _ -> "Member"
+    end
+  end
 
   attr :entry, :map, required: true
 

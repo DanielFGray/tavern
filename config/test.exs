@@ -58,6 +58,13 @@ config :tavern, Tavern.Embeds.SafeHTTP,
   resolver: Tavern.TestDNS,
   req_options: [plug: {Req.Test, Tavern.Embeds.SafeHTTP}]
 
+# Voice reaches no network: the Realtime API goes to `Req.Test` stubs, and the app id and
+# secret exist so `configured?/0` is true (docs/design/voice.md).
+config :tavern, Tavern.Voice.Cloudflare,
+  app_id: "test-realtime-app",
+  app_secret: "test-realtime-secret",
+  req_options: [plug: {Req.Test, Tavern.Voice.Cloudflare}]
+
 # Mail goes to the capture provider: a test process that subscribes (the case templates do)
 # receives `{:mail_captured, email}` for the mail it and the processes it drives send.
 config :tavern, Tavern.Mailer, provider: :capture, from: "tavern@example.test"

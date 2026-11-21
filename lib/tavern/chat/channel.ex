@@ -29,6 +29,8 @@ defmodule Tavern.Chat.Channel do
 
     field(:nsfw, :boolean, default: false)
     field(:slowmode_seconds, :integer, default: 0)
+    # How many members may sit in one voice channel at once. Only a `:voice` channel reads it.
+    field(:voice_member_limit, :integer, default: 6)
     field(:default_auto_archive_minutes, :integer, default: 1440)
     field(:archived_at, :utc_datetime_usec)
     field(:locked_at, :utc_datetime_usec)
@@ -63,8 +65,8 @@ defmodule Tavern.Chat.Channel do
 
   def forum?(%__MODULE__{kind: kind}), do: kind == :forum
 
-  # The kinds a manager may create. Voice and stage are not built.
-  @managed_kinds [:text, :announcement, :forum, :category]
+  # The kinds a manager may create. Voice channels carry the voice room rules (docs/design/voice.md).
+  @managed_kinds [:text, :announcement, :forum, :category, :voice]
 
   def managed_kinds, do: @managed_kinds
 
@@ -85,7 +87,8 @@ defmodule Tavern.Chat.Channel do
       :parent_channel_id,
       :nsfw,
       :slowmode_seconds,
-      :default_auto_archive_minutes
+      :default_auto_archive_minutes,
+      :voice_member_limit
     ])
     |> validate_not_thread()
     |> validate_inclusion(:kind, @managed_kinds)
@@ -99,7 +102,14 @@ defmodule Tavern.Chat.Channel do
   """
   def settings_changeset(channel, attrs) do
     channel
-    |> cast(attrs, [:name, :topic, :nsfw, :slowmode_seconds, :default_auto_archive_minutes])
+    |> cast(attrs, [
+      :name,
+      :topic,
+      :nsfw,
+      :slowmode_seconds,
+      :default_auto_archive_minutes,
+      :voice_member_limit
+    ])
     |> validate_not_thread()
     |> validate_settings()
   end
@@ -183,6 +193,10 @@ defmodule Tavern.Chat.Channel do
     |> validate_number(:default_auto_archive_minutes,
       greater_than_or_equal_to: 60,
       less_than_or_equal_to: 10_080
+    )
+    |> validate_number(:voice_member_limit,
+      greater_than_or_equal_to: 1,
+      less_than_or_equal_to: 25
     )
     |> validate_format(:slug, ~r/^[a-z0-9-]+$/,
       message: "must contain only lowercase letters, numbers, and hyphens"

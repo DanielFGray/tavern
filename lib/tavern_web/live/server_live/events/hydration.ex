@@ -32,6 +32,7 @@ defmodule TavernWeb.ServerLive.Events.Hydration do
         :composer_commands_json,
         Jason.encode!(Tavern.Chat.composer_slash_commands())
       )
+      |> TavernWeb.ServerLive.Voice.refresh_occupants()
 
     send(self(), :hydrate_unread_state)
 
