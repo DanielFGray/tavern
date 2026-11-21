@@ -52,10 +52,9 @@ test('code keeps a shortcode as text and an unknown shortcode is left alone', as
 test('a custom emoji is suggested and drawn as its image', async ({ page }, testInfo) => {
   const unique = runSuffix(testInfo)
   await login(page)
-  await page.goto('/settings?tab=server')
+  await page.goto('/settings?tab=emoji')
   await expect(page.locator('[data-phx-main]')).toHaveClass(/phx-connected/)
-  await page.locator('#open-emoji-manager').click()
-  await expect(page.locator('#emoji-manager-panel')).toHaveAttribute('aria-hidden', 'false')
+  await expect(page.locator('#settings-view-emoji')).toBeVisible()
 
   await page.locator('#emoji-form').getByLabel('Name', { exact: true }).fill('e2e shortcode')
   await page.locator('#emoji-form').getByLabel('Shortcode').fill('e2eblob')
@@ -76,10 +75,9 @@ test('a custom emoji is suggested and drawn as its image', async ({ page }, test
   await expect(sent.locator('img.emoji[alt=":e2eblob:"]')).toHaveAttribute('src', /\/uploads\//)
 
   page.once('dialog', dialog => dialog.accept())
-  await page.goto('/settings?tab=server')
+  await page.goto('/settings?tab=emoji')
   await expect(page.locator('[data-phx-main]')).toHaveClass(/phx-connected/)
-  await page.locator('#open-emoji-manager').click()
-  await expect(page.locator('#emoji-manager-panel')).toHaveAttribute('aria-hidden', 'false')
+  await expect(page.locator('#settings-view-emoji')).toBeVisible()
   await page.locator('[id^="delete-emoji-"]').click()
   await expect(page.locator('[id^="manage-emoji-"]')).toHaveCount(0)
 })

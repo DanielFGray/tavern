@@ -18,10 +18,10 @@ defmodule TavernWeb.ServerComponents.Messages do
       <% true -> %>
         <.message_stream server={@server} />
     <% end %>
-    <%!-- An open thread holds the one composer on screen; a forum takes no top-level messages. --%>
-    <%= unless Chat.Channel.forum?(@server.active_channel) or @server.active_thread do %>
-      <.typing_indicator users={@server.channel_pane.typing_users} id="channel-typing-indicator" />
-      <TavernWeb.ServerComponents.Composer.channel_composer server={@server} />
+    <%!-- One composer, pinned below the transcript: it writes to the open thread, else the channel.
+         A forum takes no top-level messages, so it has none until a post is open. --%>
+    <%= unless Chat.Channel.forum?(@server.active_channel) and is_nil(@server.active_thread) do %>
+      <TavernWeb.ServerComponents.Composer.composer_dock server={@server} />
     <% end %>
     """
   end

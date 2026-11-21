@@ -142,7 +142,7 @@ test('server branding updates settings and shell surfaces', async ({ page }) => 
   await page.locator('#user-menu-settings').click()
   await expect(page).toHaveURL(/\/settings$/)
 
-  await page.getByRole('button', { name: 'Server management' }).click()
+  await page.locator('#settings-tab-server').click()
   // A long checkbox label must wrap: a nowrap one made this tab wider than a phone screen.
   await expect(page.locator('#accept-invite-requests')).toBeVisible()
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)

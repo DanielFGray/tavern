@@ -125,9 +125,17 @@ test('opening and closing a thread at the bottom keeps the starter in place', as
   await expect(panel).toBeVisible()
   await page.waitForTimeout(300)
   await shot('after-open')
-  expect(Math.abs((await starterRow.boundingBox()).y - top)).toBeLessThan(40)
+  // The pinned composer gains a "Replying in thread" strip, so the transcript above it shrinks by
+  // that strip's height. The starter must stay within that shift of where it was.
+  expect(Math.abs((await starterRow.boundingBox()).y - top)).toBeLessThan(80)
   await expect(page.locator(`#messages-${previous.id}`)).toBeInViewport()
   await expect(starterRow).toBeInViewport()
+
+  // One composer: the thread has none of its own, and the pinned one says where it sends.
+  await expect(page.locator('#message-form')).toHaveCount(0)
+  await expect(page.locator('#thread-message-form')).toHaveCount(1)
+  await expect(page.locator('#thread-target-indicator')).toContainText('Replying in thread')
+  await expect(panel.locator('#thread-message-form')).toHaveCount(0)
 
   // The pill stays and toggles the thread.
   await expect(pill).toHaveAttribute('aria-expanded', 'true')

@@ -5,7 +5,66 @@ defmodule TavernWeb.ServerComponents.Composer do
 
   import TavernWeb.ServerComponents.Helpers
 
+  alias TavernWeb.ServerComponents.Messages
   alias TavernWeb.ServerLive.Pane
+
+  attr :server, :map, required: true
+
+  @doc """
+  The composer pinned under the transcript. It writes to the open thread when one is open, else to
+  the channel, and a thread shows a strip naming that target. The thread keeps no composer of its
+  own, so the editor never moves.
+  """
+  def composer_dock(assigns) do
+    thread = assigns.server.active_thread
+    assigns = assign(assigns, thread: thread, pane: assigns.server.thread_pane)
+
+    ~H"""
+    <%= if @thread do %>
+      <Messages.typing_indicator
+        users={@pane.typing_users}
+        id={"thread-typing-indicator-#{@thread.starter_message_id}"}
+      />
+      <div class="border-t border-base-300 bg-base-200 px-4 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+        <%= if Pane.can_send?(@pane) do %>
+          <div
+            id="thread-target-indicator"
+            class="mb-2 flex items-center justify-between gap-2 text-xs text-base-content/70"
+          >
+            <span class="min-w-0 truncate">
+              <.icon name="hero-chat-bubble-left-right" class="mr-1 size-3.5 align-text-bottom" />
+              Replying in thread
+              <span class="font-semibold text-base-content">{thread_title(@thread)}</span>
+            </span>
+            <button
+              type="button"
+              id="thread-target-close"
+              phx-click="close_thread"
+              class="shrink-0 rounded px-1.5 py-0.5 font-semibold transition hover:bg-base-300"
+            >
+              Close thread
+            </button>
+          </div>
+          <.composer server={@server} target={:thread} />
+        <% else %>
+          <p id="thread-reply-notice" class="py-2 text-sm text-base-content/55">
+            {cond do
+              @thread.locked_at -> "This thread is locked."
+              Tavern.Accounts.unverified?(@server.current_user) -> "Verify your email to reply."
+              true -> "You can view this thread, but you do not have permission to reply in it."
+            end}
+          </p>
+        <% end %>
+      </div>
+    <% else %>
+      <Messages.typing_indicator
+        users={@server.channel_pane.typing_users}
+        id="channel-typing-indicator"
+      />
+      <.channel_composer server={@server} />
+    <% end %>
+    """
+  end
 
   attr :server, :map, required: true
 

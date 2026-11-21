@@ -5,9 +5,7 @@ defmodule TavernWeb.ServerComponents.Threads do
 
   import TavernWeb.ServerComponents.Helpers
 
-  alias TavernWeb.ServerComponents.Composer
   alias TavernWeb.ServerComponents.Messages
-  alias TavernWeb.ServerLive.Pane
 
   attr :server, :map, required: true
   attr :message, :map, required: true
@@ -15,8 +13,8 @@ defmodule TavernWeb.ServerComponents.Threads do
 
   @doc """
   The open thread, under its starter: a flat region marked by a left rule, with a header, all the
-  thread's messages as channel message rows, and the thread composer, which is the only composer
-  on screen while the thread is open. `message` is the starter.
+  thread's messages as channel message rows. The composer is not here: it stays pinned below the
+  transcript (`Composer.composer_dock/1`). `message` is the starter.
   """
   def thread_panel(assigns) do
     assigns =
@@ -260,24 +258,6 @@ defmodule TavernWeb.ServerComponents.Threads do
             server={@server}
           />
         </div>
-      </div>
-
-      <div class="pl-3 pr-1 pb-1">
-        <%= if Pane.can_send?(@server.thread_pane) do %>
-          <Messages.typing_indicator
-            users={@server.thread_pane.typing_users}
-            id={"thread-typing-indicator-#{@message.id}"}
-          />
-          <Composer.composer server={@server} target={:thread} />
-        <% else %>
-          <p id={"thread-reply-notice-#{@message.id}"} class="py-2 text-sm text-base-content/55">
-            {cond do
-              @thread.locked_at -> "This thread is locked."
-              Tavern.Accounts.unverified?(@server.current_user) -> "Verify your email to reply."
-              true -> "You can view this thread, but you do not have permission to reply in it."
-            end}
-          </p>
-        <% end %>
       </div>
     </section>
     """
