@@ -76,6 +76,7 @@ defmodule Tavern.Chat.Role do
     ])
     |> validate_required([:name])
     |> validate_length(:name, min: 1, max: 100)
+    |> Tavern.Chat.Mentions.validate_role_name_free()
     |> validate_number(:color, greater_than_or_equal_to: 0, less_than_or_equal_to: 0xFFFFFF)
     |> validate_bits()
   end

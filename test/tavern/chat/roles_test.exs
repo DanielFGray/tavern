@@ -91,6 +91,28 @@ defmodule Tavern.Chat.RolesTest do
       assert actor_id == ctx.manager.id
     end
 
+    test "a role cannot take a member's username, with or without a leading @", ctx do
+      for name <- [ctx.member.username, "@" <> ctx.member.username] do
+        assert {:error, changeset} =
+                 Chat.create_role(scope_for(ctx.manager), %{"name" => name, "permissions" => 0})
+
+        assert [message] = errors_on(changeset).name
+        assert message =~ "is a member's username"
+      end
+    end
+
+    test "a member cannot take a role's name, or the names that mean @everyone", ctx do
+      {:ok, _} = Chat.update_role(scope_for(ctx.owner), ctx.low_role.id, %{"name" => "low_role"})
+
+      for username <- ["low_role", "everyone", "here"] do
+        assert {:error, changeset} =
+                 Tavern.Accounts.update_profile_user(ctx.member, %{"username" => username})
+
+        assert [message] = errors_on(changeset).username
+        assert message =~ "is a role's name"
+      end
+    end
+
     test "a member without manage_roles is refused", ctx do
       assert {:error, :forbidden} = Chat.create_role(scope_for(ctx.member), %{"name" => "X"})
     end

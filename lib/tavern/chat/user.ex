@@ -136,6 +136,7 @@ defmodule Tavern.Chat.User do
     |> validate_format(:username, ~r/^[a-z0-9_]+$/,
       message: "must contain only lowercase letters, numbers, and underscores"
     )
+    |> Tavern.Chat.Mentions.validate_username_free()
     |> unique_constraint(:username)
   end
 

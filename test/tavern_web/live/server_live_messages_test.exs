@@ -143,6 +143,23 @@ defmodule TavernWeb.ServerLiveMessagesTest do
     refute Enum.any?(messages_in(channel_by_slug!("general").id), &(&1.body == body))
   end
 
+  test "a composer send that mentions a role the sender may not mention is flashed", %{
+    conn: conn
+  } do
+    Bootstrap.ensure_seed_data!()
+    role_fixture(%{name: "staff", position: 5, mentionable: false})
+    conn = log_in_member_user(conn)
+    {:ok, view, _html} = live_hydrated(conn, ~p"/")
+
+    html =
+      view
+      |> form("#message-form", %{message: %{body: "hey @staff"}})
+      |> render_submit()
+
+    assert html =~ "Message mentions a role you do not have permission to mention."
+    refute Enum.any?(messages_in(channel_by_slug!("general").id), &(&1.body == "hey @staff"))
+  end
+
   test "stores the mention and slash command entities from composer metadata", %{conn: conn} do
     Bootstrap.ensure_seed_data!()
     conn = log_in_member_user(conn)

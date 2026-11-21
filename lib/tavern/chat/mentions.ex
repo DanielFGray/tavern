@@ -84,10 +84,36 @@ defmodule Tavern.Chat.Mentions do
         changeset =
           %Message{}
           |> Message.changeset(attrs)
-          |> Ecto.Changeset.add_error(:body, "You do not have permission to mention that role.")
+          |> Ecto.Changeset.add_error(
+            :body,
+            "mentions a role you do not have permission to mention"
+          )
 
         {:error, changeset}
     end
+  end
+
+  @doc """
+  Usernames and role names share one namespace, because a mention is resolved from its `@name`
+  alone (`sync/1`, `authorize/3`): a name both a member and a role held would mention both. These
+  two validations refuse the second holder of a name. Each runs only when the field changes.
+  """
+  def validate_username_free(changeset) do
+    Ecto.Changeset.validate_change(changeset, :username, fn :username, username ->
+      if existing_role_ids([username]) == [],
+        do: [],
+        else: [username: "is a role's name, so @#{username} would mention the role as well"]
+    end)
+  end
+
+  def validate_role_name_free(changeset) do
+    Ecto.Changeset.validate_change(changeset, :name, fn :name, name ->
+      username = String.trim_leading(name, "@")
+
+      if existing_user_ids([username]) == [],
+        do: [],
+        else: [name: "is a member's username, so @#{username} would mention them as well"]
+    end)
   end
 
   defp candidates do

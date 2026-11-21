@@ -358,7 +358,7 @@ defmodule Tavern.ChatTest do
         assert {:error, changeset} =
                  Chat.create_message(scope_for(author), channel.id, %{body: token})
 
-        assert "You do not have permission to mention that role." in errors_on(changeset).body
+        assert "mentions a role you do not have permission to mention" in errors_on(changeset).body
       end
 
       allowed_author = owner_fixture()
@@ -862,7 +862,7 @@ defmodule Tavern.ChatTest do
                  }
                })
 
-      assert "You do not have permission to mention that role." in errors_on(changeset).body
+      assert "mentions a role you do not have permission to mention" in errors_on(changeset).body
     end
 
     test "toggle_reaction/3 rejects users without add_reactions permission" do

@@ -246,7 +246,7 @@ defmodule TavernWeb.ServerLiveNavigationTest do
 
     assert Enum.any?(changeset.errors, fn
              {:body, {message, _opts}} ->
-               message == "You do not have permission to mention that role."
+               message == "mentions a role you do not have permission to mention"
 
              _error ->
                false

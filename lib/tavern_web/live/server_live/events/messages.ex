@@ -425,19 +425,10 @@ defmodule TavernWeb.ServerLive.Events.Messages do
             {:error, :not_found} ->
               refuse_send(socket, kind, "That #{noun} is no longer available.")
 
-            # The composer shows no field errors, so a metadata error is flashed instead. The
-            # browser always sends JSON it built, so the only metadata error it can cause is the
-            # size bound. The draft stays in the composer either way.
+            # The composer shows no field errors, so the reason is flashed. The draft stays in
+            # the composer.
             {:error, changeset} ->
-              if Keyword.has_key?(changeset.errors, :metadata) do
-                put_flash(
-                  socket,
-                  :error,
-                  "This message has too many mentions to send. Remove some and send it again."
-                )
-              else
-                State.update_pane(socket, kind, &%{&1 | form: to_form(changeset, as: :message)})
-              end
+              put_flash(socket, :error, refusal_text(changeset))
           end
         else
           refuse_send(socket, kind, no_send_permission(noun))
@@ -450,6 +441,20 @@ defmodule TavernWeb.ServerLive.Events.Messages do
 
   defp refuse_send(socket, kind, text),
     do: socket |> put_flash(:error, text) |> State.reset_form(kind)
+
+  # Metadata errors are worded for the bot API, and the browser always sends JSON it built, so
+  # the only one it can cause is the size bound, which a person reaches with many mentions.
+  # Body errors read after "Message".
+  defp refusal_text(changeset) do
+    if Keyword.has_key?(changeset.errors, :metadata) do
+      "This message has too many mentions to send. Remove some and send it again."
+    else
+      changeset
+      |> Ecto.Changeset.traverse_errors(&TavernWeb.CoreComponents.translate_error/1)
+      |> Enum.flat_map(fn {_field, texts} -> texts end)
+      |> Enum.map_join(" ", &"Message #{&1}.")
+    end
+  end
 
   defp update_typing(socket, kind, :typing_started, user_id) do
     # The typer is decided by `Chat.start_typing`, and this socket subscribes only to channels it
