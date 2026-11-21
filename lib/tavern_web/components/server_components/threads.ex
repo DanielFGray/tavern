@@ -245,6 +245,7 @@ defmodule TavernWeb.ServerComponents.Threads do
       <div
         id={"thread-messages-#{@message.id}"}
         data-enable-notifications="false"
+        data-custom-emojis={@server.custom_emojis_json}
         phx-hook="MessageListHook"
       >
         <p :if={@server.thread_pane.empty?} class="px-3 py-2 text-sm text-base-content/55">

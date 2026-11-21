@@ -54,6 +54,7 @@ defmodule TavernWeb.ServerComponents.Composer do
       data-placeholder={@placeholder}
       data-mentions={@server.composer_mentions_json}
       data-commands={@server.composer_commands_json}
+      data-custom-emojis={@server.custom_emojis_json}
     >
       <div class="rounded-lg border border-base-300 bg-base-100 shadow-sm">
         <div

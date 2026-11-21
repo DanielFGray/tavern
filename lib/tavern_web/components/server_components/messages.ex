@@ -109,6 +109,7 @@ defmodule TavernWeb.ServerComponents.Messages do
       id="message-scroll-region"
       class={["flex-1 overflow-y-auto", scrollbar_classes()]}
       phx-hook="MessageListHook"
+      data-custom-emojis={@server.custom_emojis_json}
     >
       <div
         :if={@server.channel_pane.empty?}
