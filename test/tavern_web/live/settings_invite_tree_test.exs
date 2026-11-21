@@ -52,9 +52,9 @@ defmodule TavernWeb.SettingsInviteTreeTest do
   end
 
   test "the tab shows for a plain member and lists their own branch", %{conn: conn} = ctx do
-    {:ok, view, _html} = live(log_in_as(conn, ctx.carol), ~p"/settings?tab=invites_tree")
+    {:ok, view, _html} = live(log_in_as(conn, ctx.carol), ~p"/settings?tab=invites")
 
-    assert has_element?(view, "#settings-tab-invites-tree")
+    assert has_element?(view, "#settings-tab-invites")
     assert has_element?(view, "#invite-node-#{ctx.alice.id}")
     refute has_element?(view, "#invite-node-#{ctx.root.id}")
     refute has_element?(view, "#invite-node-#{ctx.bob.id}")
@@ -66,7 +66,7 @@ defmodule TavernWeb.SettingsInviteTreeTest do
   end
 
   test "a member with nobody above them sees only their own subtree", %{conn: conn} = ctx do
-    {:ok, view, _html} = live(log_in_as(conn, ctx.alice), ~p"/settings?tab=invites_tree")
+    {:ok, view, _html} = live(log_in_as(conn, ctx.alice), ~p"/settings?tab=invites")
 
     assert has_element?(view, "#invite-node-#{ctx.root.id}")
     assert has_element?(view, "#invite-node-#{ctx.alice.id}") == false
@@ -81,7 +81,7 @@ defmodule TavernWeb.SettingsInviteTreeTest do
   end
 
   test "a moderator expands the whole tree and collapses a branch", %{conn: conn} = ctx do
-    {:ok, view, _html} = live(log_in_as(conn, ctx.mod), ~p"/settings?tab=invites_tree")
+    {:ok, view, _html} = live(log_in_as(conn, ctx.mod), ~p"/settings?tab=invites")
 
     assert has_element?(view, "#invite-node-#{ctx.root.id}")
     refute has_element?(view, "#invite-node-#{ctx.alice.id}")
@@ -96,7 +96,7 @@ defmodule TavernWeb.SettingsInviteTreeTest do
   end
 
   test "search jumps to a member, opening the branches above them", %{conn: conn} = ctx do
-    {:ok, view, _html} = live(log_in_as(conn, ctx.mod), ~p"/settings?tab=invites_tree")
+    {:ok, view, _html} = live(log_in_as(conn, ctx.mod), ~p"/settings?tab=invites")
 
     view |> form("#invite-tree-search-form", tree: %{q: "carol"}) |> render_change()
     assert has_element?(view, "#invite-tree-result-#{ctx.carol.id}")
@@ -110,7 +110,7 @@ defmodule TavernWeb.SettingsInviteTreeTest do
 
   test "search says when nothing matches and never leaves a member's branch",
        %{conn: conn} = ctx do
-    {:ok, view, _html} = live(log_in_as(conn, ctx.carol), ~p"/settings?tab=invites_tree")
+    {:ok, view, _html} = live(log_in_as(conn, ctx.carol), ~p"/settings?tab=invites")
 
     view |> form("#invite-tree-search-form", tree: %{q: "bobby"}) |> render_change()
     assert has_element?(view, "#invite-tree-no-results")

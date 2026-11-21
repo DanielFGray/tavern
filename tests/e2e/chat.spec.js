@@ -166,11 +166,8 @@ const tinyPng = Buffer.from(
 
 test('owner uploads a custom emoji from the browser and deletes it', async ({ page }) => {
   await login(page)
-  await page.goto('/settings?tab=server')
-  // A click before the LiveView connects is lost, and the closed panel stays aria-hidden.
-  await expect(page.locator('[data-phx-main]')).toHaveClass(/phx-connected/)
-  await page.locator('#open-emoji-manager').click()
-  await expect(page.locator('#emoji-manager-panel')).toHaveAttribute('aria-hidden', 'false')
+  await page.goto('/settings?tab=emoji')
+  await expect(page.locator('#settings-view-emoji')).toBeVisible()
 
   await page.locator('#emoji-form').getByLabel('Name', { exact: true }).fill('e2e wave')
   await page.locator('#emoji-form').getByLabel('Shortcode').fill('e2ewave')

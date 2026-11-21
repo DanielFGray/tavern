@@ -38,7 +38,7 @@ test('an owner kicks with deletion scheduled, the member sees the date, and the 
 
   await loginAs(page, owner)
   await expect(page.locator('#server-shell[data-hydrated="true"]')).toBeVisible()
-  await page.goto('/settings?tab=server')
+  await page.goto('/settings?tab=members')
   await connected(page)
 
   await page.locator(`#open-member-actions-${member.id}`).click()

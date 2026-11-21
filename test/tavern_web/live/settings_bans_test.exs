@@ -34,7 +34,7 @@ defmodule TavernWeb.SettingsBansTest do
 
     {:ok, _banned, _case} = Chat.ban_member(scope_for(owner), member.id, "spam")
 
-    {:ok, view, _html} = live(log_in_as(conn, owner), ~p"/settings?tab=server")
+    {:ok, view, _html} = live(log_in_as(conn, owner), ~p"/settings?tab=members")
 
     assert has_element?(view, "#ban-#{member.id}", "bans_member")
     assert has_element?(view, "#ban-#{member.id}", "spam")
@@ -68,7 +68,7 @@ defmodule TavernWeb.SettingsBansTest do
   test "a member without ban_members sees no Bans section", %{conn: conn} do
     member = user_fixture(%{email: "bans-plain@example.com", username: "bans_plain"})
 
-    {:ok, view, _html} = live(log_in_as(conn, member), ~p"/settings?tab=server")
+    {:ok, view, _html} = live(log_in_as(conn, member), ~p"/settings?tab=members")
 
     refute has_element?(view, "#bans-panel")
   end

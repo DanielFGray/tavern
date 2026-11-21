@@ -12,13 +12,9 @@ defmodule TavernWeb.SettingsComponents.Server do
   def server_tab(assigns) do
     ~H"""
     <div id="settings-view-server">
-      <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-base-content/50">
-        Server management
-      </p>
-      <h2 class="mt-1 text-xl font-semibold text-base-content">Channels, emoji, moderation</h2>
+      <.tab_heading eyebrow="Server" title="Server" />
 
       <div
-        :if={@can_manage_server?}
         id="server-branding"
         class="mt-5 rounded-xl border border-base-300 bg-base-200 p-4"
       >
@@ -97,26 +93,53 @@ defmodule TavernWeb.SettingsComponents.Server do
           </div>
         </.form>
       </div>
+    </div>
+    """
+  end
 
-      <div class="mt-5 flex flex-wrap gap-2">
-        <button
-          :if={@can_manage_emojis?}
-          type="button"
-          phx-click="toggle_manage_emojis"
-          id="open-emoji-manager"
-          class="rounded-md bg-violet-500 px-3 py-1.5 text-[11px] font-semibold text-white transition hover:bg-violet-400"
-        >
-          Manage emoji
-        </button>
-      </div>
-
-      <.bot_registry :if={@can_manage_bots?} {assigns} />
-      <.invites_panel :if={@can_manage_server?} {assigns} />
-      <InviteRequests.queue_panel :if={@can_manage_applications?} streams={@streams} />
+  @doc "The Members & moderation tab: the member list, scheduled deletions and bans."
+  def members_tab(assigns) do
+    ~H"""
+    <div id="settings-view-members">
+      <.tab_heading eyebrow="Server" title="Members & moderation" />
       <.members_panel {assigns} />
       <.scheduled_deletions_panel :if={@scheduled_deletions} {assigns} />
       <.bans_panel :if={@bans} {assigns} />
     </div>
+    """
+  end
+
+  @doc "The Invites tab: the viewer's invite tree, then the link and request panels for those who may manage them."
+  def invites_tab(assigns) do
+    ~H"""
+    <div id="settings-view-invites">
+      <.tab_heading eyebrow="Server" title="Invites" />
+      <TavernWeb.SettingsComponents.InviteTree.invite_tree_panel {assigns} />
+      <.invites_panel :if={@can_manage_server?} {assigns} />
+      <InviteRequests.queue_panel :if={@can_manage_applications?} streams={@streams} />
+    </div>
+    """
+  end
+
+  @doc "The Bots tab: the bot registry."
+  def bots_tab(assigns) do
+    ~H"""
+    <div id="settings-view-bots">
+      <.tab_heading eyebrow="Server" title="Bots" />
+      <.bot_registry {assigns} />
+    </div>
+    """
+  end
+
+  attr :eyebrow, :string, required: true
+  attr :title, :string, required: true
+
+  def tab_heading(assigns) do
+    ~H"""
+    <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-base-content/50">
+      {@eyebrow}
+    </p>
+    <h2 class="mt-1 text-xl font-semibold text-base-content">{@title}</h2>
     """
   end
 

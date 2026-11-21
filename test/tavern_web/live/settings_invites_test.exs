@@ -24,7 +24,7 @@ defmodule TavernWeb.SettingsInvitesTest do
     owner = owner_fixture(%{email: "invites-owner@example.com", username: "invites_owner"})
     channel_fixture()
 
-    {:ok, view, _html} = live(log_in_as(conn, owner), ~p"/settings?tab=server")
+    {:ok, view, _html} = live(log_in_as(conn, owner), ~p"/settings?tab=invites")
 
     assert has_element?(view, "#invite-list")
 
@@ -51,7 +51,7 @@ defmodule TavernWeb.SettingsInvitesTest do
   test "a member without manage_server sees no invites panel", %{conn: conn} do
     member = user_fixture(%{email: "invites-member@example.com", username: "invites_member"})
 
-    {:ok, view, _html} = live(log_in_as(conn, member), ~p"/settings?tab=server")
+    {:ok, view, _html} = live(log_in_as(conn, member), ~p"/settings?tab=invites")
 
     refute has_element?(view, "#invite-list")
   end

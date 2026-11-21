@@ -25,7 +25,7 @@ defmodule TavernWeb.SettingsBotsTest do
 
   test "an owner creates a bot, mints a token and revokes it", %{conn: conn} do
     owner = owner_fixture()
-    {:ok, view, _html} = live(log_in_as(conn, owner), ~p"/settings?tab=server")
+    {:ok, view, _html} = live(log_in_as(conn, owner), ~p"/settings?tab=bots")
 
     view
     |> form("#bot-form", %{
@@ -58,7 +58,7 @@ defmodule TavernWeb.SettingsBotsTest do
     manager = user_fixture()
     member_role = member_role_fixture(manager, manager_role)
 
-    {:ok, view, _html} = live(log_in_as(conn, manager), ~p"/settings?tab=server")
+    {:ok, view, _html} = live(log_in_as(conn, manager), ~p"/settings?tab=bots")
     assert has_element?(view, "#bot-token-form-#{bot.id}")
 
     Repo.delete!(member_role)

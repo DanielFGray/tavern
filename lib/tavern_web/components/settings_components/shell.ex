@@ -28,16 +28,28 @@ defmodule TavernWeb.SettingsComponents.Shell do
             <TavernWeb.SettingsComponents.Tabs.theme_tab {assigns} />
           <% end %>
 
-          <%= if @active_tab == "server" do %>
+          <%= if @active_tab == "server" and @can_manage_server? do %>
             <TavernWeb.SettingsComponents.Server.server_tab {assigns} />
+          <% end %>
+
+          <%= if @active_tab == "emoji" and @can_manage_emojis? do %>
+            <TavernWeb.SettingsComponents.Emoji.emoji_tab {assigns} />
+          <% end %>
+
+          <%= if @active_tab == "members" and members_tab?(assigns) do %>
+            <TavernWeb.SettingsComponents.Server.members_tab {assigns} />
+          <% end %>
+
+          <%= if @active_tab == "invites" do %>
+            <TavernWeb.SettingsComponents.Server.invites_tab {assigns} />
+          <% end %>
+
+          <%= if @active_tab == "bots" and @can_manage_bots? do %>
+            <TavernWeb.SettingsComponents.Server.bots_tab {assigns} />
           <% end %>
 
           <%= if @active_tab == "roles" and @role_controls.manage_roles? do %>
             <TavernWeb.SettingsComponents.Roles.roles_tab {assigns} />
-          <% end %>
-
-          <%= if @active_tab == "invites_tree" do %>
-            <TavernWeb.SettingsComponents.InviteTree.invite_tree_tab {assigns} />
           <% end %>
 
           <%= if @active_tab == "audit" and @can_view_audit_log? do %>
@@ -45,8 +57,6 @@ defmodule TavernWeb.SettingsComponents.Shell do
           <% end %>
         </section>
       </div>
-
-      <TavernWeb.SettingsComponents.Managers.emoji_manager {assigns} />
     </div>
     """
   end
@@ -70,50 +80,82 @@ defmodule TavernWeb.SettingsComponents.Shell do
         class={[
           "-mx-1 flex gap-2 overflow-x-auto px-1 pb-1",
           scrollbar_classes(),
-          "lg:mx-0 lg:block lg:space-y-1 lg:overflow-visible lg:px-0 lg:pb-0"
+          "lg:mx-0 lg:block lg:space-y-4 lg:overflow-visible lg:px-0 lg:pb-0"
         ]}
         aria-label="Settings tabs"
       >
-        <.tab_button active_tab={@active_tab} tab="profile" id="settings-tab-profile" label="Profile" />
-        <.tab_button
-          active_tab={@active_tab}
-          tab="notifications"
-          id="settings-tab-notifications"
-          label="Notifications"
-        />
-        <.tab_button
-          active_tab={@active_tab}
-          tab="channel_notifications"
-          id="settings-tab-channel-notifications"
-          label="Channel notifications"
-        />
-        <.tab_button active_tab={@active_tab} tab="theme" id="settings-tab-theme" label="Theme" />
-        <.tab_button
-          active_tab={@active_tab}
-          tab="server"
-          id="settings-tab-server"
-          label="Server management"
-        />
-        <.tab_button
-          :if={@role_controls.manage_roles?}
-          active_tab={@active_tab}
-          tab="roles"
-          id="settings-tab-roles"
-          label="Roles"
-        />
-        <.tab_button
-          :if={@can_view_audit_log?}
-          active_tab={@active_tab}
-          tab="audit"
-          id="settings-tab-audit"
-          label="Audit log"
-        />
-        <.tab_button
-          active_tab={@active_tab}
-          tab="invites_tree"
-          id="settings-tab-invites-tree"
-          label="Invite tree"
-        />
+        <.tab_group label="You" id="settings-group-you">
+          <.tab_button
+            active_tab={@active_tab}
+            tab="profile"
+            id="settings-tab-profile"
+            label="Profile"
+          />
+          <.tab_button
+            active_tab={@active_tab}
+            tab="notifications"
+            id="settings-tab-notifications"
+            label="Notifications"
+          />
+          <.tab_button
+            active_tab={@active_tab}
+            tab="channel_notifications"
+            id="settings-tab-channel-notifications"
+            label="Channel notifications"
+          />
+          <.tab_button active_tab={@active_tab} tab="theme" id="settings-tab-theme" label="Theme" />
+        </.tab_group>
+
+        <.tab_group label="Server" id="settings-group-server">
+          <.tab_button
+            :if={@can_manage_server?}
+            active_tab={@active_tab}
+            tab="server"
+            id="settings-tab-server"
+            label="Server"
+          />
+          <.tab_button
+            :if={@can_manage_emojis?}
+            active_tab={@active_tab}
+            tab="emoji"
+            id="settings-tab-emoji"
+            label="Emoji"
+          />
+          <.tab_button
+            :if={members_tab?(assigns)}
+            active_tab={@active_tab}
+            tab="members"
+            id="settings-tab-members"
+            label="Members & moderation"
+          />
+          <.tab_button
+            active_tab={@active_tab}
+            tab="invites"
+            id="settings-tab-invites"
+            label="Invites"
+          />
+          <.tab_button
+            :if={@can_manage_bots?}
+            active_tab={@active_tab}
+            tab="bots"
+            id="settings-tab-bots"
+            label="Bots"
+          />
+          <.tab_button
+            :if={@role_controls.manage_roles?}
+            active_tab={@active_tab}
+            tab="roles"
+            id="settings-tab-roles"
+            label="Roles"
+          />
+          <.tab_button
+            :if={@can_view_audit_log?}
+            active_tab={@active_tab}
+            tab="audit"
+            id="settings-tab-audit"
+            label="Audit log"
+          />
+        </.tab_group>
       </nav>
 
       <.link
@@ -124,6 +166,27 @@ defmodule TavernWeb.SettingsComponents.Shell do
         Back to chat
       </.link>
     </aside>
+    """
+  end
+
+  # The Members & moderation tab shows to a member who moderates or manages roles.
+  defp members_tab?(assigns),
+    do: assigns.can_moderate_members? or assigns.role_controls.manage_roles?
+
+  attr :label, :string, required: true
+  attr :id, :string, required: true
+  slot :inner_block, required: true
+
+  # A heading over a run of tabs. On a phone the groups sit in one scrolling row, so the heading
+  # is hidden there and the tabs keep their order.
+  def tab_group(assigns) do
+    ~H"""
+    <div id={@id} class="flex gap-2 lg:block lg:space-y-1">
+      <p class="hidden px-3.5 pb-1 text-[10px] font-bold uppercase tracking-[0.22em] text-base-content/45 lg:block">
+        {@label}
+      </p>
+      {render_slot(@inner_block)}
+    </div>
     """
   end
 

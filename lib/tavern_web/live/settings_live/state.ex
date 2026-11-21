@@ -38,7 +38,6 @@ defmodule TavernWeb.SettingsLive.State do
     |> assign(:invites, [])
     |> assign(:invite_form, to_form(Chat.change_invite(), as: :invite))
     |> maybe_load_invites()
-    |> assign(:manage_emojis_open?, false)
     |> refresh_member_presence()
     |> assign(:member_action_user_id, nil)
     |> assign(:member_action_form, to_form(Chat.change_moderation_action(%{}), as: :moderation))

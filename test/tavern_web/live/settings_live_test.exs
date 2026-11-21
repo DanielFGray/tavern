@@ -138,7 +138,7 @@ defmodule TavernWeb.SettingsLiveTest do
       Bootstrap.ensure_seed_data!()
       {conn, _owner, member} = log_in_owner_with_member(conn)
 
-      {:ok, view, _html} = live(conn, ~p"/settings?tab=server")
+      {:ok, view, _html} = live(conn, ~p"/settings?tab=members")
 
       # Owner badge on the owner's row
       assert has_element?(view, "#member-presence-#{current_user_from_conn(conn).id}")
@@ -154,7 +154,7 @@ defmodule TavernWeb.SettingsLiveTest do
       Bootstrap.ensure_seed_data!()
       {conn, owner, _member} = log_in_member_with_owner(conn)
 
-      {:ok, view, _html} = live(conn, ~p"/settings?tab=server")
+      {:ok, view, _html} = live(conn, ~p"/settings?tab=members")
 
       refute has_element?(view, "#promote-owner-#{owner.id}")
       refute has_element?(view, "#demote-owner-#{owner.id}")
@@ -164,7 +164,7 @@ defmodule TavernWeb.SettingsLiveTest do
       Bootstrap.ensure_seed_data!()
       {conn, _owner, member} = log_in_owner_with_member(conn)
 
-      {:ok, view, _html} = live(conn, ~p"/settings?tab=server")
+      {:ok, view, _html} = live(conn, ~p"/settings?tab=members")
 
       view |> element("#promote-owner-#{member.id}") |> render_click()
 
@@ -188,7 +188,7 @@ defmodule TavernWeb.SettingsLiveTest do
       owner_user = current_user_from_conn(conn)
       {:ok, _} = Accounts.promote_to_owner(scope_for(owner_user), member_with_membership.id)
 
-      {:ok, view, _html} = live(conn, ~p"/settings?tab=server")
+      {:ok, view, _html} = live(conn, ~p"/settings?tab=members")
 
       assert has_element?(view, "#demote-owner-#{member.id}")
 
@@ -208,7 +208,7 @@ defmodule TavernWeb.SettingsLiveTest do
       Bootstrap.ensure_seed_data!()
       {conn, _owner, _member} = log_in_owner_with_member(conn)
 
-      {:ok, view, _html} = live(conn, ~p"/settings?tab=server")
+      {:ok, view, _html} = live(conn, ~p"/settings?tab=members")
 
       owner_id = current_user_from_conn(conn).id
 
@@ -228,7 +228,7 @@ defmodule TavernWeb.SettingsLiveTest do
 
     test "a moderator without view_audit_log sees no case list", %{conn: conn, target: target} do
       moderator = moderator_with([:kick_members], "case_kick")
-      {:ok, view, _html} = live(log_in_as(conn, moderator), ~p"/settings?tab=server")
+      {:ok, view, _html} = live(log_in_as(conn, moderator), ~p"/settings?tab=members")
 
       render_click(element(view, "#open-member-actions-#{target.id}"))
 
@@ -238,7 +238,7 @@ defmodule TavernWeb.SettingsLiveTest do
 
     test "a moderator with view_audit_log sees the case list", %{conn: conn, target: target} do
       auditor = moderator_with([:kick_members, :view_audit_log], "case_audit")
-      {:ok, view, _html} = live(log_in_as(conn, auditor), ~p"/settings?tab=server")
+      {:ok, view, _html} = live(log_in_as(conn, auditor), ~p"/settings?tab=members")
 
       render_click(element(view, "#open-member-actions-#{target.id}"))
 
@@ -277,7 +277,7 @@ defmodule TavernWeb.SettingsLiveTest do
         |> Plug.Conn.put_session(:user_token, Accounts.generate_user_session_token(manager))
         |> Plug.Conn.put_session(:live_socket_id, "users_sessions:bot-reg-manager")
 
-      {:ok, view, _html} = live(conn, ~p"/settings?tab=server")
+      {:ok, view, _html} = live(conn, ~p"/settings?tab=bots")
 
       assert has_element?(view, "#bot-card-#{low_bot.id}")
       refute has_element?(view, "#bot-card-#{high_bot.id}")

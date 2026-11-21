@@ -80,7 +80,7 @@ defmodule TavernWeb.InviteRequestsLiveTest do
       moderator: moderator
     } do
       request = request!("queue@example.com")
-      {:ok, view, _html} = live(log_in_as(conn, moderator), ~p"/settings?tab=server")
+      {:ok, view, _html} = live(log_in_as(conn, moderator), ~p"/settings?tab=invites")
 
       assert has_element?(view, "#invite-requests-panel")
       assert has_element?(view, "#invite_requests-#{request.id}", "queue@example.com")
@@ -95,7 +95,7 @@ defmodule TavernWeb.InviteRequestsLiveTest do
 
     test "Resend over the per-address limit shows the reason", %{conn: conn, moderator: moderator} do
       request = request!("again@example.com")
-      {:ok, view, _html} = live(log_in_as(conn, moderator), ~p"/settings?tab=server")
+      {:ok, view, _html} = live(log_in_as(conn, moderator), ~p"/settings?tab=invites")
 
       view |> element("#approve-invite-request-#{request.id}") |> render_click()
       view |> element("#resend-invite-request-#{request.id}") |> render_click()
@@ -106,7 +106,7 @@ defmodule TavernWeb.InviteRequestsLiveTest do
     test "deny, and deny all from one IP", %{conn: conn, moderator: moderator} do
       single = request!("single@example.com", "10.1.1.1")
       flood = for n <- 1..3, do: request!("flood#{n}@example.com", "10.2.2.2")
-      {:ok, view, _html} = live(log_in_as(conn, moderator), ~p"/settings?tab=server")
+      {:ok, view, _html} = live(log_in_as(conn, moderator), ~p"/settings?tab=invites")
 
       refute has_element?(view, "#deny-invite-requests-from-ip-#{single.id}")
       assert has_element?(view, "#invite_requests-#{hd(flood).id}", "3 requests from this IP")
@@ -121,7 +121,7 @@ defmodule TavernWeb.InviteRequestsLiveTest do
 
     test "a member without the bit sees no queue", %{conn: conn, member: member} do
       request!("hidden@example.com")
-      {:ok, view, _html} = live(log_in_as(conn, member), ~p"/settings?tab=server")
+      {:ok, view, _html} = live(log_in_as(conn, member), ~p"/settings?tab=invites")
       refute has_element?(view, "#invite-requests-panel")
     end
   end

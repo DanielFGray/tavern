@@ -126,7 +126,7 @@ defmodule TavernWeb.SettingsRolesTest do
 
   test "a manager gives and takes a member role", %{conn: conn} = ctx do
     member = ctx.member
-    {:ok, view, _html} = live(log_in_as(conn, ctx.manager), ~p"/settings?tab=server")
+    {:ok, view, _html} = live(log_in_as(conn, ctx.manager), ~p"/settings?tab=members")
 
     view |> element("#open-member-roles-#{member.id}") |> render_click()
 

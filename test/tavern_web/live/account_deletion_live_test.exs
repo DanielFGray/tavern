@@ -27,7 +27,7 @@ defmodule TavernWeb.AccountDeletionLiveTest do
 
   describe "Settings > Server" do
     test "kicks a member with deletion scheduled, lists it, and cancels it", ctx do
-      {:ok, view, _html} = live(log_in_as(build_conn(), ctx.owner), ~p"/settings?tab=server")
+      {:ok, view, _html} = live(log_in_as(build_conn(), ctx.owner), ~p"/settings?tab=members")
 
       render_click(element(view, "#open-member-actions-#{ctx.member.id}"))
       assert has_element?(view, "#kick-schedule-deletion-#{ctx.member.id}")
@@ -56,7 +56,7 @@ defmodule TavernWeb.AccountDeletionLiveTest do
         role_fixture(%{permissions: PermissionBits.combine([:ban_members]), position: 30})
       )
 
-      {:ok, view, _html} = live(log_in_as(build_conn(), viewer), ~p"/settings?tab=server")
+      {:ok, view, _html} = live(log_in_as(build_conn(), viewer), ~p"/settings?tab=members")
 
       refute has_element?(view, "#scheduled-deletions-panel")
     end

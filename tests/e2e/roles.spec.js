@@ -75,7 +75,7 @@ test('an owner creates, edits, moves, gives and deletes a role', async ({ page, 
     .toBe(true)
   await page.screenshot({ path: testInfo.outputPath('roles-tab.png') })
 
-  await page.locator('#settings-tab-server').click()
+  await page.locator('#settings-tab-members').click()
   await page.locator(`#open-member-roles-${member.id}`).click()
   await page.locator(`#member-role-select-${member.id}`).selectOption(beta)
   await page.locator(`#add-member-role-${member.id}`).click()

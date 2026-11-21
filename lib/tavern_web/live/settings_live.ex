@@ -20,9 +20,12 @@ defmodule TavernWeb.SettingsLive do
     "channel_notifications",
     "theme",
     "server",
+    "emoji",
+    "members",
+    "invites",
+    "bots",
     "roles",
-    "audit",
-    "invites_tree"
+    "audit"
   ]
   @role_events Roles.events()
   @audit_events Audit.events()
@@ -315,15 +318,6 @@ defmodule TavernWeb.SettingsLive do
   end
 
   @impl true
-  def handle_event("toggle_manage_emojis", _params, socket) do
-    if socket.assigns.can_manage_emojis? do
-      {:noreply, assign(socket, :manage_emojis_open?, !socket.assigns.manage_emojis_open?)}
-    else
-      {:noreply, put_flash(socket, :error, "You do not have permission to manage emojis.")}
-    end
-  end
-
-  @impl true
   def handle_event("create_bot", %{"bot" => bot_params}, socket) do
     role_ids = List.wrap(Map.get(bot_params, "role_ids", []))
     bot_params = Map.put(bot_params, "role_ids", Enum.reject(role_ids, &(&1 == "")))
@@ -390,10 +384,6 @@ defmodule TavernWeb.SettingsLive do
   end
 
   @impl true
-  def handle_event("close_manage_emojis", _params, socket) do
-    {:noreply, assign(socket, :manage_emojis_open?, false)}
-  end
-
   def handle_event("change_emoji", %{"emoji" => emoji_params}, socket) do
     form = to_form(Chat.change_emoji(%Chat.Emoji{}, emoji_params), as: :emoji)
     {:noreply, assign(socket, :emoji_form, form)}
@@ -617,7 +607,15 @@ defmodule TavernWeb.SettingsLive do
 
   def handle_info(_event, socket), do: {:noreply, socket}
 
-  # The Roles tab is shown only to a member who holds `manage_roles`.
+  # A server tab shows only to a member who holds a permission it needs. The Invites tab shows to
+  # everyone: its tree is scoped by `Chat`, and its link and request panels check their own flags.
+  defp tab_allowed?(socket, "server"), do: socket.assigns.can_manage_server?
+  defp tab_allowed?(socket, "emoji"), do: socket.assigns.can_manage_emojis?
+  defp tab_allowed?(socket, "bots"), do: socket.assigns.can_manage_bots?
+
+  defp tab_allowed?(socket, "members"),
+    do: socket.assigns.can_moderate_members? or socket.assigns.role_controls.manage_roles?
+
   defp tab_allowed?(socket, "roles"), do: socket.assigns.role_controls.manage_roles?
 
   defp tab_allowed?(socket, "audit"),
@@ -626,7 +624,7 @@ defmodule TavernWeb.SettingsLive do
   defp tab_allowed?(_socket, tab), do: tab in @tabs
 
   defp load_tab(socket, "audit"), do: Audit.load(socket)
-  defp load_tab(socket, "invites_tree"), do: InviteTree.load(socket)
+  defp load_tab(socket, "invites"), do: InviteTree.load(socket)
   defp load_tab(socket, _tab), do: socket
 
   # A scope without `view_audit_log` reads no cases, and so does a malformed id.

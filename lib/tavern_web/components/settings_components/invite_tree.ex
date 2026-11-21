@@ -5,13 +5,13 @@ defmodule TavernWeb.SettingsComponents.InviteTree do
 
   alias Tavern.Chat
 
-  def invite_tree_tab(assigns) do
+  def invite_tree_panel(assigns) do
     ~H"""
-    <div id="settings-view-invites-tree">
+    <div id="settings-view-invites-tree" class="mt-5">
       <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-base-content/50">
         Invite tree
       </p>
-      <h2 class="mt-1 text-xl font-semibold text-base-content">Who invited whom</h2>
+      <h3 class="mt-1 text-base font-semibold text-base-content">Who invited whom</h3>
       <p class="mt-1 text-sm text-base-content/60">
         <%= if @can_view_audit_log? or @can_manage_server? do %>
           Everyone who joined, under the member whose invite brought them in.

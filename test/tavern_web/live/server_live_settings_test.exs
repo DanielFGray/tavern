@@ -50,7 +50,7 @@ defmodule TavernWeb.ServerLiveSettingsTest do
 
     {:ok, view, _html} = live(conn, ~p"/settings?tab=server")
 
-    assert has_element?(view, "#open-emoji-manager")
+    assert has_element?(view, "#settings-tab-emoji")
   end
 
   test "manage_bots permission surfaces bot registry in server settings", %{conn: conn} do
@@ -75,7 +75,7 @@ defmodule TavernWeb.ServerLiveSettingsTest do
       |> Plug.Conn.put_session(:user_token, token)
       |> Plug.Conn.put_session(:live_socket_id, "users_sessions:bot-manager")
 
-    {:ok, view, _html} = live(conn, ~p"/settings?tab=server")
+    {:ok, view, _html} = live(conn, ~p"/settings?tab=bots")
 
     assert has_element?(view, "#bot-form")
     assert has_element?(view, "#bot-registry-list")
@@ -106,9 +106,7 @@ defmodule TavernWeb.ServerLiveSettingsTest do
       |> Plug.Conn.put_session(:user_token, token)
       |> Plug.Conn.put_session(:live_socket_id, "users_sessions:emoji-manager")
 
-    {:ok, view, _html} = live(conn, ~p"/settings?tab=server")
-
-    view |> element("#open-emoji-manager") |> render_click()
+    {:ok, view, _html} = live(conn, ~p"/settings?tab=emoji")
 
     png = Tavern.UploadFixtures.unique_png()
 
@@ -167,8 +165,7 @@ defmodule TavernWeb.ServerLiveSettingsTest do
       |> Plug.Conn.put_session(:user_token, token)
       |> Plug.Conn.put_session(:live_socket_id, "users_sessions:stale-manager")
 
-    {:ok, view, _html} = live(conn, ~p"/settings?tab=server")
-    view |> element("#open-emoji-manager") |> render_click()
+    {:ok, view, _html} = live(conn, ~p"/settings?tab=emoji")
     assert has_element?(view, "#delete-emoji-#{emoji.id}")
 
     Tavern.Repo.delete!(member_role)
