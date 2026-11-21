@@ -67,7 +67,7 @@ defmodule Tavern.Voice.Cloudflare do
   Opens a session: `POST /sessions/new` with no body. Answers `{:ok, session_id}` or an error.
   """
   def new_session do
-    case request(:post, "/sessions/new", %{}) do
+    case request(:post, "/sessions/new") do
       {:ok, %{"sessionId" => session_id}} -> {:ok, session_id}
       other -> other
     end
@@ -78,15 +78,18 @@ defmodule Tavern.Voice.Cloudflare do
   `POST /sessions/{session_id}/tracks/new`. The body holds the browser's `sessionDescription`
   for a publish, or remote `tracks` entries for a subscribe; see the connection patterns.
   """
-  def new_tracks(session_id, body), do: request(:post, "/sessions/#{session_id}/tracks/new", body)
+  def new_tracks(session_id, body),
+    do: request(:post, "/sessions/#{session_id}/tracks/new", json: body)
 
   @doc """
   Answers an SFU offer with the browser's answer: `PUT /sessions/{session_id}/renegotiate`.
   """
   def renegotiate(session_id, answer_sdp) do
-    request(:put, "/sessions/#{session_id}/renegotiate", %{
-      "sessionDescription" => %{"type" => "answer", "sdp" => answer_sdp}
-    })
+    request(:put, "/sessions/#{session_id}/renegotiate",
+      json: %{
+        "sessionDescription" => %{"type" => "answer", "sdp" => answer_sdp}
+      }
+    )
   end
 
   @doc """
@@ -94,15 +97,18 @@ defmodule Tavern.Voice.Cloudflare do
   `force: true`. `entries` are `%{"mid" => mid}` maps.
   """
   def close_tracks(session_id, entries) do
-    request(:put, "/sessions/#{session_id}/tracks/close", %{
-      "tracks" => entries,
-      "force" => true
-    })
+    request(:put, "/sessions/#{session_id}/tracks/close",
+      json: %{
+        "tracks" => entries,
+        "force" => true
+      }
+    )
   end
 
-  def request(method, path, body) do
+  def request(method, path, options \\ []) do
     if configured?() do
-      [method: method, url: path, json: body]
+      [method: method, url: path]
+      |> Keyword.merge(options)
       |> Keyword.merge(Keyword.get(config(), :req_options, []))
       |> Req.new(
         base_url: base_url(),

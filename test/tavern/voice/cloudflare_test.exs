@@ -43,6 +43,21 @@ defmodule Tavern.Voice.CloudflareTest do
     assert {:ok, "session-1"} = Cloudflare.new_session()
   end
 
+  # Cloudflare refuses `POST /sessions/new` with any JSON body, `{}` included
+  # (400 "Body JSON validation error: sessionDescription").
+  test "new_session/0 sends no body" do
+    test_pid = self()
+
+    Req.Test.stub(Cloudflare, fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      send(test_pid, {:new_session_body, body, Plug.Conn.get_req_header(conn, "content-type")})
+      Req.Test.json(conn, %{"sessionId" => "session-1"})
+    end)
+
+    assert {:ok, "session-1"} = Cloudflare.new_session()
+    assert_received {:new_session_body, "", []}
+  end
+
   test "new_tracks/2 posts the browser's offer and answers the body" do
     body = %{
       "sessionDescription" => %{"type" => "offer", "sdp" => "offer-sdp"},
