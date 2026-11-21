@@ -1,0 +1,9 @@
+#!/bin/bash
+# What "checked" means for Tavern: `ops signoff` runs this on an exported tree, which has no
+# .git, no .env and no database. So it runs the checks that need none of them. The tests need
+# a database (config/runtime.exs reads TEST_DATABASE_URL), so they run in `mix precommit`.
+set -euo pipefail
+
+mix compile --warnings-as-errors
+mix format --check-formatted
+mix deps.unlock --check-unused

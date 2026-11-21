@@ -1,0 +1,5 @@
+#!/bin/bash
+# Fetches the Hex dependencies into a tree that has none, such as the one `ops signoff` exports.
+set -euo pipefail
+
+mix deps.get

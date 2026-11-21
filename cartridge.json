@@ -19,7 +19,7 @@
         { "name": "PHX_SERVER", "value": "true" },
         { "name": "PORT", "value": "4000" },
         { "name": "DATABASE_VISITOR", "database": "tavern", "role": "visitor" },
-        { "name": "PHX_URL", "route": "tavern" },
+        { "name": "PHX_URL", "value": "https://tavern.danielfgray.com" },
         { "name": "VALKEY_KEY_PREFIX", "valkey": "keyPrefix" },
         { "name": "TRUSTED_PROXY_HEADER", "value": "x-real-ip" },
         { "name": "EMAIL_FROM", "value": "tavern@dfg.rocks" },

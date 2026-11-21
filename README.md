@@ -57,7 +57,7 @@ In dev and test, Phoenix reads:
 - `S3_PORT`: the local S3 store (SeaweedFS) that holds uploads; `config/dev.exs` points at it
 - `PORT`, `POOL_SIZE`, `TAVERN_SERVER_NAME`
 
-A deploy gets its environment from `cartridge.json`: `DATABASE_URL`, `VALKEY_URL`, `SECRET_KEY_BASE`, `DATABASE_VISITOR` (the role each server connection switches to with `SET ROLE`), `PHX_URL` (the service's route URL), `VALKEY_KEY_PREFIX`, and the upload bucket: `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`. Tests keep the bucket in memory.
+A deploy gets its environment from `cartridge.json`: `DATABASE_URL`, `VALKEY_URL`, `SECRET_KEY_BASE`, `DATABASE_VISITOR` (the role each server connection switches to with `SET ROLE`), `PHX_URL` (the public URL; the staged copy gets its tailnet URL instead), `VALKEY_KEY_PREFIX`, and the upload bucket: `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`. Tests keep the bucket in memory.
 
 ## Deploy
 
