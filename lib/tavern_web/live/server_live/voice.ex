@@ -129,7 +129,11 @@ defmodule TavernWeb.ServerLive.Voice do
            socket.assigns.voice_record,
          true <-
            (truthy?(muted) or
-              Visibility.can?(socket.assigns.current_scope, :speak_voice, socket.assigns.voice_channel)) ||
+              Visibility.can?(
+                socket.assigns.current_scope,
+                :speak_voice,
+                socket.assigns.voice_channel
+              )) ||
              {:error, :forbidden},
          {:ok, _record} <-
            Voice.set_muted(room_channel_id(socket), user_id, token, truthy?(muted)) do
@@ -142,10 +146,12 @@ defmodule TavernWeb.ServerLive.Voice do
 
   # The browser captured a track and holds a gathered offer. One publish session carries every
   # kind: camera and screen add transceivers to it and send only their own entries.
-  def handle_event("voice_publish", %{"kind" => kind} = params, socket) when kind in @publish_kinds do
+  def handle_event("voice_publish", %{"kind" => kind} = params, socket)
+      when kind in @publish_kinds do
     with %Scope{} = scope <- socket.assigns.current_scope,
          %{} = channel <- socket.assigns.voice_channel,
-         true <- publish_allowed?(scope, channel, Map.fetch!(@kind_atoms, kind)) || {:error, :forbidden},
+         true <-
+           publish_allowed?(scope, channel, Map.fetch!(@kind_atoms, kind)) || {:error, :forbidden},
          {:ok, session_id} <- ensure_publish_session(socket),
          {:ok, mids, answer} <- publish_tracks(session_id, params) do
       socket = update(socket, :voice_record, &%{&1 | publish_session_id: session_id})
@@ -311,7 +317,12 @@ defmodule TavernWeb.ServerLive.Voice do
 
   def handle_info({:voice_left, channel_id, participants}, socket) do
     socket = update_occupants(socket, channel_id, participants)
-    socket = if own_room?(socket, channel_id), do: assign(socket, :voice_participants, participants), else: socket
+
+    socket =
+      if own_room?(socket, channel_id),
+        do: assign(socket, :voice_participants, participants),
+        else: socket
+
     {:noreply, socket}
   end
 
@@ -343,7 +354,8 @@ defmodule TavernWeb.ServerLive.Voice do
          |> assign(:voice_record, %{record | muted: true})
          |> push_event("voice_moderated_mute", %{})}
 
-      own_room?(socket, channel_id) && record && record.user_id == subject_id && action == :disconnect ->
+      own_room?(socket, channel_id) && record && record.user_id == subject_id &&
+          action == :disconnect ->
         {:noreply, teardown(socket)}
 
       true ->
@@ -566,6 +578,7 @@ defmodule TavernWeb.ServerLive.Voice do
 
   defp publish_allowed?(scope, channel, kind) when kind in [:camera, :screen],
     do: Visibility.can?(scope, :stream_voice, channel)
+
   # Every per-track result must have succeeded; a partial failure leaves the tab and the SFU
   # session disagreeing, so the whole publish is refused and the browser retries.
   defp publish_tracks(session_id, params) do

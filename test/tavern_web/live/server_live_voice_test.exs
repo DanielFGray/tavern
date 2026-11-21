@@ -23,7 +23,10 @@ defmodule TavernWeb.ServerLiveVoiceTest do
     %{owner: owner, voice: voice}
   end
 
-  test "a voice channel renders its join card, not the text-channel composer", %{conn: conn, voice: voice} do
+  test "a voice channel renders its join card, not the text-channel composer", %{
+    conn: conn,
+    voice: voice
+  } do
     {:ok, view, _html} = live_hydrated(log_in_member_user(conn), "/?channel=#{voice.slug}")
 
     assert has_element?(view, "#voice-room")
@@ -32,7 +35,10 @@ defmodule TavernWeb.ServerLiveVoiceTest do
     assert has_element?(view, "#voice-chat")
   end
 
-  test "joining puts the member in the room and the sidebar lists them", %{conn: conn, voice: voice} do
+  test "joining puts the member in the room and the sidebar lists them", %{
+    conn: conn,
+    voice: voice
+  } do
     conn = log_in_member_user(conn)
     user = current_user_from_conn(conn)
 
@@ -72,7 +78,6 @@ defmodule TavernWeb.ServerLiveVoiceTest do
   end
 
   test "leaving ends the call and clears the bar", %{conn: conn, voice: voice} do
-
     {:ok, view, _html} = live_hydrated(log_in_member_user(conn), "/?channel=#{voice.slug}")
 
     view |> element("#voice-join-button") |> render_click()

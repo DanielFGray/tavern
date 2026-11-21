@@ -684,7 +684,7 @@ defmodule Tavern.Chat.Visibility do
               :stream_voice,
               :mute_voice_members,
               :disconnect_voice_members
-             ],
+            ],
        do: view?(ctx, channel) and bit?(ctx, channel, action)
 
   defp channel_decision(:manage_permissions, ctx, channel),

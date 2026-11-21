@@ -63,7 +63,9 @@ defmodule Tavern.VoiceTest do
       assert listed.token == second.token
     end
 
-    test "refuses the join past the member limit and keeps the seat free", %{channel_id: channel_id} do
+    test "refuses the join past the member limit and keeps the seat free", %{
+      channel_id: channel_id
+    } do
       Voice.join(voice_channel(channel_id, 1), %{id: Ecto.UUID.generate()})
 
       assert {:error, :room_full} =
@@ -98,7 +100,9 @@ defmodule Tavern.VoiceTest do
       assert {:error, :not_connected} = Voice.leave(channel_id, user.id)
     end
 
-    test "heartbeat keeps the record and reports gone after the record vanishes", %{channel_id: channel_id} do
+    test "heartbeat keeps the record and reports gone after the record vanishes", %{
+      channel_id: channel_id
+    } do
       channel = voice_channel(channel_id, 6)
       user = %{id: Ecto.UUID.generate()}
       {:ok, record, _} = Voice.join(channel, user)
@@ -131,7 +135,9 @@ defmodule Tavern.VoiceTest do
       {:ok, record, _} = Voice.join(channel, user)
 
       track = %{"trackName" => "mic", "sessionId" => "s1", "mids" => ["0"]}
-      assert {:ok, _record} = Voice.publish_track(channel_id, user.id, record.token, :mic, track, nil)
+
+      assert {:ok, _record} =
+               Voice.publish_track(channel_id, user.id, record.token, :mic, track, nil)
 
       assert_receive {:room_event, {:voice_published, ^channel_id, published}}, 500
       assert published.tracks[:mic] == track
@@ -158,8 +164,12 @@ defmodule Tavern.VoiceTest do
       {:ok, record, _} = Voice.join(channel, user)
 
       track = %{"trackName" => "camera", "sessionId" => "s1", "mids" => ["1"]}
-      {:ok, _} = Voice.publish_track(channel_id, user.id, record.token, :camera, track, ["f", "h", "q"])
-      assert {:ok, record} = Voice.publish_track(channel_id, user.id, record.token, :camera, nil, nil)
+
+      {:ok, _} =
+        Voice.publish_track(channel_id, user.id, record.token, :camera, track, ["f", "h", "q"])
+
+      assert {:ok, record} =
+               Voice.publish_track(channel_id, user.id, record.token, :camera, nil, nil)
 
       assert record.tracks[:camera] == nil
       assert_receive {:room_event, {:voice_published, ^channel_id, _}}, 500
@@ -186,7 +196,9 @@ defmodule Tavern.VoiceTest do
       owner = ChatFixtures.owner_fixture()
       member = ChatFixtures.user_fixture()
       other_member = ChatFixtures.user_fixture()
-      channel = ChatFixtures.channel_fixture(%{name: "Voice", kind: :voice, voice_member_limit: 6})
+
+      channel =
+        ChatFixtures.channel_fixture(%{name: "Voice", kind: :voice, voice_member_limit: 6})
 
       listen("chat:channel:" <> channel.id)
       listen("chat:server")
@@ -210,7 +222,11 @@ defmodule Tavern.VoiceTest do
       assert subject_id == member.id
     end
 
-    test "mute_member is forbidden for a member without the bit", %{channel: channel, member: member, other_member: other_member} do
+    test "mute_member is forbidden for a member without the bit", %{
+      channel: channel,
+      member: member,
+      other_member: other_member
+    } do
       {:ok, _record, _} = Voice.join(channel, %{id: other_member.id})
 
       assert {:error, :forbidden} =
@@ -220,14 +236,16 @@ defmodule Tavern.VoiceTest do
     test "the owner cannot be muted", %{channel: channel, member: member} do
       owner = ChatFixtures.owner_fixture()
 
-      assert {:error, :forbidden} = Voice.mute_member(ChatFixtures.scope_for(member), channel.id, owner.id)
+      assert {:error, :forbidden} =
+               Voice.mute_member(ChatFixtures.scope_for(member), channel.id, owner.id)
     end
 
     test "disconnect_member removes the record and broadcasts the leave",
          %{channel: channel, owner: owner, member: member} do
       {:ok, _record, _} = Voice.join(channel, %{id: member.id})
 
-      assert {:ok, []} = Voice.disconnect_member(ChatFixtures.scope_for(owner), channel.id, member.id)
+      assert {:ok, []} =
+               Voice.disconnect_member(ChatFixtures.scope_for(owner), channel.id, member.id)
 
       assert_receive {:room_event, {:voice_left, _channel_id, []}}, 500
       assert_receive {:room_event, {:voice_moderated, _channel_id, subject_id, :disconnect}}, 500

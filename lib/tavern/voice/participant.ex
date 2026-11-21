@@ -8,16 +8,17 @@ defmodule Tavern.Voice.Participant do
 
   @kinds [:mic, :camera, :screen]
 
-  @derive {Jason.Encoder, only: [
-            :user_id,
-            :token,
-            :joined_at,
-            :heartbeat_at,
-            :muted,
-            :publish_session_id,
-            :recv_session_id,
-            :tracks
-          ]}
+  @derive {Jason.Encoder,
+           only: [
+             :user_id,
+             :token,
+             :joined_at,
+             :heartbeat_at,
+             :muted,
+             :publish_session_id,
+             :recv_session_id,
+             :tracks
+           ]}
 
   defstruct [
     :user_id,
@@ -29,7 +30,6 @@ defmodule Tavern.Voice.Participant do
     :recv_session_id,
     :tracks
   ]
-
 
   def new(user_id) do
     now = DateTime.utc_now() |> DateTime.to_unix(:second)
@@ -55,9 +55,10 @@ defmodule Tavern.Voice.Participant do
       muted: map["muted"],
       publish_session_id: map["publish_session_id"],
       recv_session_id: map["recv_session_id"],
-      tracks: Map.new(map["tracks"] || %{}, fn {kind, track} ->
-        {String.to_existing_atom(kind), track}
-      end)
+      tracks:
+        Map.new(map["tracks"] || %{}, fn {kind, track} ->
+          {String.to_existing_atom(kind), track}
+        end)
     }
   end
 

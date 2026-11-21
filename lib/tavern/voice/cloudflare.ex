@@ -39,12 +39,21 @@ defmodule Tavern.Voice.Cloudflare do
   end
 
   defp request_turn_credentials(key_id, token, ttl) do
-    [method: :post, url: @turn_base_url <> "/keys/#{key_id}/credentials/generate-ice-servers", json: %{"ttl" => ttl}]
+    [
+      method: :post,
+      url: @turn_base_url <> "/keys/#{key_id}/credentials/generate-ice-servers",
+      json: %{"ttl" => ttl}
+    ]
     |> Keyword.merge(Keyword.get(config(), :req_options, []))
-    |> Req.new(headers: [{"authorization", "Bearer " <> token}], retry: false, receive_timeout: 10_000)
+    |> Req.new(
+      headers: [{"authorization", "Bearer " <> token}],
+      retry: false,
+      receive_timeout: 10_000
+    )
     |> Req.request()
     |> case do
-      {:ok, %Req.Response{status: status, body: %{"iceServers" => servers}}} when status in 200..299 ->
+      {:ok, %Req.Response{status: status, body: %{"iceServers" => servers}}}
+      when status in 200..299 ->
         {:ok, servers}
 
       _ ->
@@ -53,6 +62,7 @@ defmodule Tavern.Voice.Cloudflare do
   end
 
   defp stun_only, do: [%{"urls" => "stun:stun.cloudflare.com:3478"}]
+
   @doc """
   Opens a session: `POST /sessions/new` with no body. Answers `{:ok, session_id}` or an error.
   """

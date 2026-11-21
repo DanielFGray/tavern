@@ -15,7 +15,11 @@ defmodule TavernWeb.ServerComponents.Voice do
   def active_voice_view(assigns) do
     channel = assigns.server.active_channel
     in_room? = voice_channel_id(assigns.server) == channel.id
-    participants = if in_room?, do: assigns.server.voice_participants, else: occupants(assigns.server, channel.id)
+
+    participants =
+      if in_room?,
+        do: assigns.server.voice_participants,
+        else: occupants(assigns.server, channel.id)
 
     assigns =
       assigns
@@ -132,7 +136,8 @@ defmodule TavernWeb.ServerComponents.Voice do
       data-voice-speaking={to_string(@speaking)}
       class={[
         "relative flex flex-col items-center gap-2 rounded-xl border bg-base-100 p-3 transition",
-        @speaking && "border-emerald-400/70 shadow-[0_0_0_2px_color-mix(in_oklab,var(--color-success)_30%,transparent)]",
+        @speaking &&
+          "border-emerald-400/70 shadow-[0_0_0_2px_color-mix(in_oklab,var(--color-success)_30%,transparent)]",
         !@speaking && "border-base-300"
       ]}
     >
@@ -206,7 +211,10 @@ defmodule TavernWeb.ServerComponents.Voice do
           !@camera_live? && "bg-base-100 text-base-content hover:bg-base-100/70"
         ]}
       >
-        <.icon name={if @camera_live?, do: "hero-video-camera-slash", else: "hero-video-camera"} class="size-5" />
+        <.icon
+          name={if @camera_live?, do: "hero-video-camera-slash", else: "hero-video-camera"}
+          class="size-5"
+        />
       </button>
 
       <button
@@ -249,7 +257,10 @@ defmodule TavernWeb.ServerComponents.Voice do
       |> assign(:call_channel, server.voice_channel)
       |> assign(:show?, server.voice_channel != nil)
       |> assign(:muted, server.voice_record && server.voice_record.muted)
-      |> assign(:sharing_screen?, server.voice_record && server.voice_record.tracks[:screen] != nil)
+      |> assign(
+        :sharing_screen?,
+        server.voice_record && server.voice_record.tracks[:screen] != nil
+      )
 
     ~H"""
     <div

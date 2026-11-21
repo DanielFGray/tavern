@@ -178,7 +178,12 @@ defmodule Tavern.Voice do
       with {:ok, "ok"} <- leave_script(channel_id, subject_id, "") do
         participants = read_participants(channel_id)
         Topics.broadcast_server({:voice_left, channel_id, participants})
-        Topics.broadcast_channel(channel_id, {:voice_moderated, channel_id, subject_id, :disconnect})
+
+        Topics.broadcast_channel(
+          channel_id,
+          {:voice_moderated, channel_id, subject_id, :disconnect}
+        )
+
         {:ok, participants}
       end
     end)
@@ -322,7 +327,9 @@ defmodule Tavern.Voice do
 
   defp eval(script, channel_id, args) do
     case Valkey.command(["EVAL", script, "1", namespaced(room_key(channel_id)) | args]) do
-      {:ok, result} -> {:ok, result}
+      {:ok, result} ->
+        {:ok, result}
+
       {:error, reason} = error ->
         Logger.warning("voice: valkey command failed: #{inspect(reason)}")
         error

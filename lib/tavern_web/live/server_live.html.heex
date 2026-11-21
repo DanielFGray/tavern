@@ -36,7 +36,13 @@
     </section>
 
     <%!-- The voice session hook owns the browser's WebRTC media; the div itself stays empty. --%>
-    <div id="voice-session" phx-hook=".VoiceSession" phx-update="ignore" class="hidden" aria-hidden="true">
+    <div
+      id="voice-session"
+      phx-hook=".VoiceSession"
+      phx-update="ignore"
+      class="hidden"
+      aria-hidden="true"
+    >
       <script :type={Phoenix.LiveView.ColocatedHook} name=".VoiceSession">
         export default {
           mounted() {

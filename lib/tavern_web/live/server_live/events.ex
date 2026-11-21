@@ -88,14 +88,15 @@ defmodule TavernWeb.ServerLive.Events do
     do: Verification.handle_info(message, socket)
 
   def handle_info(message, socket)
-      when is_tuple(message) and tuple_size(message) in [3, 4] and elem(message, 0) in [
-             :voice_joined,
-             :voice_left,
-             :voice_published,
-             :voice_updated,
-             :voice_moderated,
-             :voice_speaking
-           ],
+      when is_tuple(message) and tuple_size(message) in [3, 4] and
+             elem(message, 0) in [
+               :voice_joined,
+               :voice_left,
+               :voice_published,
+               :voice_updated,
+               :voice_moderated,
+               :voice_speaking
+             ],
       do: Voice.handle_info(message, socket)
 
   def handle_info(message, socket) when message in [:voice_heartbeat, :voice_subscribe_pass],
