@@ -258,6 +258,10 @@ defmodule TavernWeb.ServerLiveQuestionsTest do
     view |> element("#question-option-#{allow.id}") |> render_click()
 
     refute has_element?(view, "#question-#{message.id}")
+
+    # A read by id still finds the closed request, so a row re-render must not bring it back.
+    render_click(view, "toggle_message_controls", %{"id" => message.id})
+    refute has_element?(view, "#question-#{message.id}")
   end
 
   defp poll_fixture(ctx, attrs) do

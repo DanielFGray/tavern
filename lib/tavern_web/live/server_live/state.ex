@@ -368,7 +368,7 @@ defmodule TavernWeb.ServerLive.State do
     {thread_rows, other_rows} =
       scope
       |> Chat.get_messages(message_ids)
-      |> Enum.reject(&Message.deleted?/1)
+      |> Enum.filter(&Message.listed?/1)
       |> Enum.split_with(&(&1.channel_id == thread_id))
 
     starter_rows =
@@ -377,7 +377,7 @@ defmodule TavernWeb.ServerLive.State do
         else:
           scope
           |> Chat.get_messages([thread.starter_message_id])
-          |> Enum.reject(&Message.deleted?/1)
+          |> Enum.filter(&Message.listed?/1)
 
     channel_rows = Enum.filter(other_rows ++ starter_rows, &(&1.channel_id == channel_id))
 

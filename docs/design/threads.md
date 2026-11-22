@@ -37,7 +37,7 @@ Channels push only mention alerts today; `notify_on_all_messages` is stored but 
 
 ## Last activity
 
-There is no activity column. A thread's last activity is its newest live message's `inserted_at`, or the thread's own `inserted_at` when it has none. Its reply count is its live (not deleted) messages other than its starter. A forum post's starter is inside the post and is not a reply; a text-channel starter is in the parent and was never counted. `Threads.replies_query/1` holds this rule; the browser, the channel summaries and the open thread pane all count with it.
+There is no activity column. A thread's last activity is its newest listed message's `inserted_at`, or the thread's own `inserted_at` when it has none. Its reply count is its listed messages (`Message.listed?/1`: not deleted, and not a closed permission request, questions.md) other than its starter. A forum post's starter is inside the post and is not a reply; a text-channel starter is in the parent and was never counted. `Threads.replies_query/1` holds this rule; the browser, the channel summaries and the open thread pane all count with it.
 
 ## The thread browser
 
