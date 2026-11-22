@@ -30,7 +30,7 @@ defmodule Tavern.Chat.ChannelManagementTest do
     end
 
     test "refuses kinds that are not built", %{manager: manager} do
-      for kind <- ["voice", "stage"] do
+      for kind <- ["stage"] do
         assert {:error, changeset} =
                  Chat.create_channel(manager, %{"name" => "No", "kind" => kind})
 

@@ -35,6 +35,287 @@
       <TavernWeb.ServerComponents.active_channel_view :if={@active_channel} server={assigns} />
     </section>
 
+    <%!-- The voice session hook owns the browser's WebRTC media; the div itself stays empty. --%>
+    <div
+      id="voice-session"
+      phx-hook=".VoiceSession"
+      phx-update="ignore"
+      class="hidden"
+      aria-hidden="true"
+    >
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".VoiceSession">
+        export default {
+          mounted() {
+            this.room = null
+            this.midToPublisher = new Map()
+            this.videoStreams = new Map()
+            this.speaking = false
+            this.published = { mic: false, camera: false, screen: false }
+
+            this.handleEvent("voice_ready", (data) => this.start(data))
+            this.handleEvent("voice_sf_answer", (data) => this.applyAnswer(data))
+            this.handleEvent("voice_sf_offer", (data) => this.applyRemoteOffer(data))
+            this.handleEvent("voice_mic_state", (data) => this.setMicEnabled(!data.muted))
+            this.handleEvent("voice_moderated_mute", () => this.setMicEnabled(false))
+            this.handleEvent("voice_video_request", (data) => this.toggleVideo(data.kind, data.active))
+            this.handleEvent("voice_video_reattach", () => this.reattachVideos())
+            this.handleEvent("voice_ended", () => this.stop())
+            this.handleEvent("voice_replaced", () => this.stop())
+          },
+
+          async start(data) {
+            this.stop()
+            this.iceServers = data.ice_servers || []
+            this.userId = data.user_id
+            this.published = { mic: false, camera: false, screen: false }
+
+            try {
+              const stream = await navigator.mediaDevices.getUserMedia({
+                audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+              })
+              this.micStream = stream
+            } catch (err) {
+              this.pushEvent("voice_permission_denied", {})
+              return
+            }
+
+            this.pcPublish = this.newPeerConnection()
+            const micTrack = this.micStream.getAudioTracks()[0]
+            const transceiver = this.pcPublish.addTransceiver(micTrack, { direction: "sendonly" })
+            micTrack.enabled = true
+
+            const offer = await this.pcPublish.createOffer()
+            await this.pcPublish.setLocalDescription(offer)
+            await this.waitIce(this.pcPublish)
+
+            this.pushEvent("voice_publish", {
+              kind: "mic",
+              sdp: this.pcPublish.localDescription.sdp,
+              mids: [{ mid: transceiver.mid }],
+            })
+            this.published.mic = true
+
+            this.startSpeakingDetection(micTrack)
+          },
+
+          // The controls bar asks the server first (it authorizes), and the server answers
+          // with `voice_video_request`. `active` means the member is publishing that kind, so
+          // the click turns it off.
+          async toggleVideo(kind, active) {
+            if (!this.pcPublish) return
+            if (active) {
+              this.stopVideo(kind)
+              this.pushEvent("voice_unpublish", { kind })
+              return
+            }
+
+            const stream =
+              kind === "camera"
+                ? await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } })
+                : await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+
+            if (!stream) return
+            this[kind + "Stream"] = stream
+            const track = stream.getVideoTracks()[0]
+
+            // The browser's own Stop sharing bar kills the track; the room must hear about it.
+            track.onended = () => {
+              if (this.published[kind]) {
+                this.stopVideo(kind)
+                this.pushEvent("voice_unpublish", { kind })
+              }
+            }
+
+            const transceiver = this.pcPublish.addTransceiver(track, {
+              direction: "sendonly",
+              sendEncodings: [
+                { rid: "f", scaleResolutionDownBy: 1 },
+                { rid: "h", scaleResolutionDownBy: 2 },
+                { rid: "q", scaleResolutionDownBy: 4 },
+              ],
+            })
+
+            const offer = await this.pcPublish.createOffer()
+            await this.pcPublish.setLocalDescription(offer)
+            await this.waitIce(this.pcPublish)
+
+            this.pushEvent("voice_publish", {
+              kind,
+              sdp: this.pcPublish.localDescription.sdp,
+              mids: [{ mid: transceiver.mid }],
+            })
+            this.published[kind] = true
+          },
+
+          stopVideo(kind) {
+            const stream = this[kind + "Stream"]
+            if (stream) {
+              for (const track of stream.getTracks()) track.stop()
+              this[kind + "Stream"] = null
+            }
+            this.published[kind] = false
+          },
+
+          async applyAnswer(data) {
+            if (!this.pcPublish) return
+            await this.pcPublish.setRemoteDescription(data.session_description)
+          },
+
+          async applyRemoteOffer(data) {
+            this.midToPublisher = new Map()
+            for (const entry of data.mapping || []) {
+              this.midToPublisher.set(entry.mid, entry)
+            }
+
+            if (!this.pcRecv) {
+              this.pcRecv = this.newPeerConnection()
+              this.pcRecv.ontrack = (event) => this.attachRemoteTrack(event)
+            }
+
+            await this.pcRecv.setRemoteDescription(data.session_description)
+            const answer = await this.pcRecv.createAnswer()
+            await this.pcRecv.setLocalDescription(answer)
+            await this.waitIce(this.pcRecv)
+
+            this.pushEvent("voice_sf_offer_answer", { sdp: this.pcRecv.localDescription.sdp })
+          },
+
+          attachRemoteTrack(event) {
+            const publisher = this.midToPublisher.get(event.transceiver.mid)
+            const track = event.track
+            const userId = publisher ? publisher.userId : "unknown"
+
+            if (track.kind === "audio") {
+              // Audio lives in this hook's own `phx-update="ignore"` div: a LiveView patch may
+              // re-render the tiles, and a lost element would drop the member's voice.
+              const audio = document.createElement("audio")
+              audio.autoplay = true
+              audio.dataset.publisher = userId
+              audio.srcObject = new MediaStream([track])
+              this.el.appendChild(audio)
+            } else {
+              // Video waits in a buffer keyed by publisher and kind, so a tile that appears
+              // later (the reader returns to the voice channel) can pick it up again.
+              const kind = publisher ? publisher.kind : "video"
+              this.videoStreams.set(`${userId}:${kind}`, track)
+              this.attachVideo(userId, kind)
+            }
+          },
+
+          attachVideo(userId, kind) {
+            const track = this.videoStreams.get(`${userId}:${kind}`)
+            const tile = document.querySelector(`[data-voice-tile][data-user-id="${userId}"]`)
+            if (!track || !tile) return
+
+            let video = tile.querySelector(`video[data-voice-kind="${kind}"]`)
+            if (!video) {
+              video = document.createElement("video")
+              video.autoplay = true
+              video.playsInline = true
+              video.dataset.voiceKind = kind
+              video.className = "h-full w-full object-cover"
+              const area = tile.querySelector("[data-voice-video]") || tile
+              area.appendChild(video)
+            }
+            video.srcObject = new MediaStream([track])
+          },
+
+          reattachVideos() {
+            for (const key of this.videoStreams.keys()) {
+              const [userId, kind] = [key.slice(0, key.lastIndexOf(":")), key.slice(key.lastIndexOf(":") + 1)]
+              this.attachVideo(userId, kind)
+            }
+          },
+
+          setMicEnabled(enabled) {
+            if (this.micStream) {
+              const track = this.micStream.getAudioTracks()[0]
+              if (track) track.enabled = enabled
+            }
+          },
+
+          startSpeakingDetection(track) {
+            const ctx = new AudioContext()
+            this.audioContext = ctx
+            const source = ctx.createMediaStreamSource(new MediaStream([track]))
+            const analyser = ctx.createAnalyser()
+            analyser.fftSize = 512
+            source.connect(analyser)
+            const buffer = new Uint8Array(analyser.frequencyBinCount)
+
+            const tick = () => {
+              if (!this.audioContext) return
+              analyser.getByteFrequencyData(buffer)
+              let sum = 0
+              for (const v of buffer) sum += v * v
+              const level = Math.sqrt(sum / buffer.length) / 255
+              const speaking = level > 0.08
+              if (speaking !== this.speaking) {
+                this.speaking = speaking
+                this.pushEvent("voice_speaking", { speaking: String(speaking) })
+              }
+              requestAnimationFrame(tick)
+            }
+            requestAnimationFrame(tick)
+          },
+
+          newPeerConnection() {
+            const pc = new RTCPeerConnection({ iceServers: this.iceServers })
+            pc.onconnectionstatechange = () => {
+              if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+                // Cloudflare will answer a fresh exchange on the next publish; nothing to do here.
+              }
+            }
+            return pc
+          },
+
+          waitIce(pc) {
+            if (pc.iceGatheringState === "complete") return Promise.resolve()
+            return new Promise((resolve) => {
+              const done = () => {
+                pc.removeEventListener("icegatheringstatechange", onChange)
+                resolve()
+              }
+              const onChange = () => {
+                if (pc.iceGatheringState === "complete") done()
+              }
+              pc.addEventListener("icegatheringstatechange", onChange)
+              // Some networks never report complete; gathered-so-far candidates still connect.
+              setTimeout(done, 1500)
+            })
+          },
+
+          stop() {
+            this.speaking = false
+            this.published = { mic: false, camera: false, screen: false }
+            this.audioContext && this.audioContext.close()
+            this.audioContext = null
+            for (const pc of [this.pcPublish, this.pcRecv]) {
+              pc && pc.close()
+            }
+            this.pcPublish = null
+            this.pcRecv = null
+
+            for (const kind of ["mic", "camera", "screen"]) {
+              const stream = this[kind + "Stream"]
+              if (stream) {
+                for (const track of stream.getTracks()) track.stop()
+                this[kind + "Stream"] = null
+              }
+            }
+
+            this.midToPublisher = new Map()
+            this.videoStreams = new Map()
+            for (const child of [...this.el.children]) child.remove()
+          },
+
+          destroyed() {
+            this.stop()
+          },
+        }
+      </script>
+    </div>
+
     <%!-- Outside every drawer and panel: a transformed ancestor would become the card's fixed frame. --%>
     <TavernWeb.ServerComponents.ProfileCard.profile_card card={@profile_card} />
 

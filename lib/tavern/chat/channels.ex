@@ -44,7 +44,7 @@ defmodule Tavern.Chat.Channels do
     uncategorized =
       Enum.filter(
         channels,
-        &(visible_text_channel?(&1) and root_level_channel?(&1, category_ids))
+        &(sidebar_channel?(&1) and root_level_channel?(&1, category_ids))
       )
 
     categorized_sections =
@@ -53,7 +53,7 @@ defmodule Tavern.Chat.Channels do
           category: category,
           channels:
             channels
-            |> Enum.filter(&(&1.parent_channel_id == category.id and visible_text_channel?(&1)))
+            |> Enum.filter(&(&1.parent_channel_id == category.id and sidebar_channel?(&1)))
             |> sort_channels()
         }
       end)
@@ -510,7 +510,7 @@ defmodule Tavern.Chat.Channels do
       not MapSet.member?(category_ids, channel.parent_channel_id)
   end
 
-  defp visible_text_channel?(channel) do
+  defp sidebar_channel?(channel) do
     channel.kind != :category and not Channel.thread?(channel)
   end
 end

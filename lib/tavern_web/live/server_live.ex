@@ -10,6 +10,7 @@ defmodule TavernWeb.ServerLive do
   alias TavernWeb.ServerLive.Events
   alias TavernWeb.ServerLive.Pane
   alias TavernWeb.ServerLive.State
+  alias TavernWeb.ServerLive.Voice
   alias TavernWeb.Live.SharedHelpers
 
   @impl true
@@ -68,6 +69,7 @@ defmodule TavernWeb.ServerLive do
       |> assign(:thread_following?, false)
       |> assign(:followed_threads, [])
       |> assign(:thread_browser, nil)
+      |> Voice.init()
       |> ChannelEditor.init()
       |> stream(:messages, [], reset: true)
       |> stream(:thread_messages, [], reset: true)
@@ -83,6 +85,11 @@ defmodule TavernWeb.ServerLive do
 
   @impl true
   def handle_event(event, params, socket), do: Events.handle_event(event, params, socket)
+
+  @impl true
+  def terminate(reason, socket) do
+    Voice.terminate(reason, socket)
+  end
 
   defp emoji_entries_json_for_picker(entries) do
     Jason.encode!(%{

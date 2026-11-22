@@ -86,6 +86,7 @@ defmodule TavernWeb.ServerComponents.Shell do
       </div>
 
       <div class="border-t border-base-300 bg-base-100 px-3 py-2">
+        <TavernWeb.ServerComponents.Voice.call_bar server={@server} />
         <div class="relative" phx-click-away="close_user_menu">
           <div
             :if={@server.user_menu_open?}

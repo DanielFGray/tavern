@@ -13,6 +13,7 @@ defmodule TavernWeb.ServerLive.Events do
   alias TavernWeb.ServerLive.Events.Reactions
   alias TavernWeb.ServerLive.Events.Threads
   alias TavernWeb.ServerLive.Events.Verification
+  alias TavernWeb.ServerLive.Voice
 
   require Logger
 
@@ -26,7 +27,8 @@ defmodule TavernWeb.ServerLive.Events do
     Questions,
     Reactions,
     Threads,
-    Verification
+    Verification,
+    Voice
   ]
 
   # Each event module lists the client events it handles in `events/0`, and an event name routes
@@ -84,6 +86,21 @@ defmodule TavernWeb.ServerLive.Events do
 
   def handle_info({:email_confirmed, _user_id} = message, socket),
     do: Verification.handle_info(message, socket)
+
+  def handle_info(message, socket)
+      when is_tuple(message) and tuple_size(message) in [3, 4] and
+             elem(message, 0) in [
+               :voice_joined,
+               :voice_left,
+               :voice_published,
+               :voice_updated,
+               :voice_moderated,
+               :voice_speaking
+             ],
+      do: Voice.handle_info(message, socket)
+
+  def handle_info(message, socket) when message in [:voice_heartbeat, :voice_subscribe_pass],
+    do: Voice.handle_info(message, socket)
 
   # Only the bot stream reads these; views re-render from the `:message_updated` sent with them.
   def handle_info({event, _message, _reaction}, socket)

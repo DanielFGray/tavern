@@ -1062,7 +1062,10 @@ defmodule Tavern.ChatTest do
                  :send_messages_in_threads,
                  :embed_links,
                  :attach_files,
-                 :add_reactions
+                 :add_reactions,
+                 :connect_voice,
+                 :speak_voice,
+                 :stream_voice
                ])
 
       reader = user_fixture()

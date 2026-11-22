@@ -266,7 +266,12 @@ defmodule Tavern.Chat.Visibility do
     :archive_thread,
     :rename_thread,
     :lock_thread,
-    :delete_thread
+    :delete_thread,
+    :connect_voice,
+    :speak_voice,
+    :stream_voice,
+    :mute_voice_members,
+    :disconnect_voice_members
   ]
 
   @doc "The abilities of a scope that may do nothing: every key of `abilities/2`, false."
@@ -298,6 +303,18 @@ defmodule Tavern.Chat.Visibility do
   defp thread_toggle(:lock_thread, %Channel{locked_at: nil}), do: :lock_thread
   defp thread_toggle(:lock_thread, _channel), do: :unlock_thread
   defp thread_toggle(action, _channel), do: action
+
+  def voice_moderate?(%Scope{} = scope, bit, channel_id, subject_id)
+      when bit in [:mute_voice_members, :disconnect_voice_members] do
+    ctx = load(scope, [channel_id])
+
+    with {:ok, channel} <- Map.fetch(ctx.channels, channel_id),
+         true <- view?(ctx, channel) and bit?(ctx, channel, bit) do
+      moderate_subject?(ctx, subject_id)
+    else
+      _ -> false
+    end
+  end
 
   @doc """
   The message `message_id` with its `channel` set, when the scope may view its channel now, or nil.
@@ -533,6 +550,11 @@ defmodule Tavern.Chat.Visibility do
   end
 
   defp decide({:moderate, bit}, ctx, subject_id) when is_binary(subject_id) do
+    Authorization.has_permission?(server_bits(ctx), bit) and moderate_subject?(ctx, subject_id)
+  end
+
+  # The subject and rank checks `{:moderate, bit}` and `voice_moderate?/4` share.
+  defp moderate_subject?(ctx, subject_id) do
     subject = load(%Scope{user_id: subject_id}, [])
 
     cond do
@@ -543,9 +565,6 @@ defmodule Tavern.Chat.Visibility do
         false
 
       Accounts.owner?(subject.account) ->
-        false
-
-      not Authorization.has_permission?(server_bits(ctx), bit) ->
         false
 
       Accounts.owner?(ctx.member) ->
@@ -653,6 +672,20 @@ defmodule Tavern.Chat.Visibility do
 
   defp channel_decision(:mention_everyone, ctx, channel),
     do: view?(ctx, channel) and bit?(ctx, channel, :mention_everyone)
+
+  # Voice: connect, publish audio, publish video (camera or screen), and the two moderator
+  # actions on another member (docs/design/voice.md). A moderator action also needs the actor
+  # to rank over the subject, decided with the same subject checks as `{:moderate, bit}`
+  # (`voice_moderate?/4`).
+  defp channel_decision(action, ctx, channel)
+       when action in [
+              :connect_voice,
+              :speak_voice,
+              :stream_voice,
+              :mute_voice_members,
+              :disconnect_voice_members
+            ],
+       do: view?(ctx, channel) and bit?(ctx, channel, action)
 
   defp channel_decision(:manage_permissions, ctx, channel),
     do: view?(ctx, channel) and bit?(ctx, channel, :manage_roles)

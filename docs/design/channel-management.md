@@ -18,7 +18,7 @@ A member with server `manage_channels` edits the channel list in the sidebar. Ea
 - A pencil in the sidebar's "Channels" header switches the list into edit mode. Only a member with `manage_channels` sees it. Done leaves the mode and saves nothing, because every change was already saved.
 - Each row has a drag handle, an inline name field, ⚙ and 🗑. A category row has the same controls. Every category, empty ones too, ends with "+ add channel". A "No category" section holds the top-level channels and ends with "+ add channel". The list ends with "+ add category" and, when there are any, "Recently deleted".
 - The name field saves on Enter or blur and reverts on Esc. A refused save also reverts it.
-- "+ add channel" asks for a name and a kind: Text, Announcement or Forum. Voice and stage are not offered, and `create_channel/2` refuses them (`Channel.managed_kinds/0`).
+- "+ add channel" asks for a name and a kind: Text, Announcement, Forum or Voice. Stage is not offered, and `create_channel/2` refuses it (`Channel.managed_kinds/0`). Voice channels carry media over Cloudflare Realtime SFU instead of a message transcript by default (voice.md), but they also hold a message transcript beside the grid.
 - The ⚙ popover holds name, topic, age gate, delete, and the Permissions section. Permissions show only to a member who can also list overwrites (`manage_roles`). On a screen narrower than 640px the popover is a bottom sheet. It is rendered outside the channel drawer, because the drawer's CSS transform would otherwise be the frame for its fixed position.
 - A member with `manage_channels` edits the topic in place in the channel header.
 - The phone channel drawer is the same sidebar, so edit mode and touch drag work there.
