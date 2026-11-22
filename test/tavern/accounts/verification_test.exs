@@ -280,6 +280,17 @@ defmodule Tavern.Accounts.VerificationTest do
       deleted = unverified_user_fixture()
       {:ok, _} = Accounts.delete_account(deleted.id)
 
+      # Migrations are .exs files, so the module exists only after something loads its file.
+      # `mix ecto.migrate` does so only when the migration is pending.
+      path =
+        Application.app_dir(
+          :tavern,
+          "priv/repo/migrations/20261119181454_add_email_verification.exs"
+        )
+
+      unless Code.ensure_loaded?(Tavern.Repo.Migrations.AddEmailVerification),
+        do: Code.require_file(path)
+
       migration = {20_261_119_181_454, Tavern.Repo.Migrations.AddEmailVerification}
       Ecto.Migrator.run(Repo, [migration], :down, all: true, log: false, migration_lock: false)
       Ecto.Migrator.run(Repo, [migration], :up, all: true, log: false, migration_lock: false)
