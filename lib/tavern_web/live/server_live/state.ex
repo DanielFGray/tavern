@@ -284,11 +284,12 @@ defmodule TavernWeb.ServerLive.State do
     end
   end
 
-  # A deleted message has no row in any list: it leaves the stream instead of rendering again.
+  # A message no list shows (deleted, or a closed permission request) leaves the stream instead
+  # of rendering again.
   defp stream_message(socket, name, %Message{} = message) do
-    if Message.deleted?(message),
-      do: stream_delete(socket, name, message),
-      else: stream_insert(socket, name, message)
+    if Message.listed?(message),
+      do: stream_insert(socket, name, message),
+      else: stream_delete(socket, name, message)
   end
 
   def maybe_refresh_thread_summaries(socket, channel) do

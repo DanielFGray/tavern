@@ -1,8 +1,9 @@
-defmodule Tavern.Chat.PollsTest do
+defmodule Tavern.Chat.QuestionsTest do
   @moduledoc """
-  Polls: a message with a question and options. Members who may send in the channel vote, change
-  and withdraw their vote while it is open; a poll closes by hand, at its end time or after its
-  vote limit, and may narrow its voters to named members and roles.
+  Questions: a message with a question and options. In a poll, members who may send in the
+  channel vote, change and withdraw their vote while it is open; a poll closes by hand, at its end
+  time or after its vote limit, and may narrow its voters to named members and roles. A bot's
+  prompt (an ask or a permission request) closes on its first answer.
   """
   use Tavern.DataCase, async: false
 
@@ -13,8 +14,8 @@ defmodule Tavern.Chat.PollsTest do
   alias Tavern.Chat
   alias Tavern.Chat.Membership
   alias Tavern.Chat.PermissionBits
-  alias Tavern.Chat.Poll
-  alias Tavern.Chat.Polls
+  alias Tavern.Chat.Question
+  alias Tavern.Chat.Questions
   alias Tavern.Chat.Topics
   alias Tavern.Repo
 
@@ -27,7 +28,7 @@ defmodule Tavern.Chat.PollsTest do
   ]
 
   setup do
-    _owner = owner_fixture()
+    owner = owner_fixture()
     member_role = role_fixture(%{permissions: PermissionBits.combine(@member_bits)})
 
     moderator_role =
@@ -37,8 +38,14 @@ defmodule Tavern.Chat.PollsTest do
     Enum.each([author, voter, other_voter], &member_role_fixture(&1, member_role))
     member_role_fixture(moderator, moderator_role)
 
+    bot = bot_fixture(owner, %{"role_ids" => [member_role.id]})
+
+    {:ok, %{bot_token: bot_token}} =
+      Tavern.Bots.create_bot_token(scope_for(owner), bot.id, %{"label" => "agent"})
+
     %{
       channel: channel_fixture(%{}),
+      bot_scope: %Tavern.Accounts.Scope{user_id: bot.id, bot_token_id: bot_token.id},
       author: author,
       voter: voter,
       other_voter: other_voter,
@@ -47,13 +54,13 @@ defmodule Tavern.Chat.PollsTest do
     }
   end
 
-  describe "create_poll/3" do
+  describe "create_question/3 for a poll" do
     test "sends a message whose body is the question, with its options in order", ctx do
       {:ok, message} = new_poll(ctx, %{"options" => [" Red ", "Blue", "", "blue"]})
 
       assert message.body == "Which colour?"
-      assert message.poll.closes_at == nil
-      assert Enum.map(message.poll.options, & &1.label) == ["Red", "Blue"]
+      assert message.question.closes_at == nil
+      assert Enum.map(message.question.options, & &1.label) == ["Red", "Blue"]
       assert [%{id: id}] = Chat.list_messages(scope_for(ctx.voter), ctx.channel.id) |> elem(1)
       assert id == message.id
     end
@@ -76,7 +83,7 @@ defmodule Tavern.Chat.PollsTest do
     test "sets the end time from the duration", ctx do
       {:ok, message} = new_poll(ctx, %{"duration_minutes" => 60})
 
-      assert_in_delta DateTime.diff(message.poll.closes_at, DateTime.utc_now()), 3600, 5
+      assert_in_delta DateTime.diff(message.question.closes_at, DateTime.utc_now()), 3600, 5
     end
 
     test "follows the send rules: a member who may not send gets :forbidden", ctx do
@@ -96,7 +103,7 @@ defmodule Tavern.Chat.PollsTest do
     end
   end
 
-  describe "vote/3 on a single-choice poll" do
+  describe "answer/3 on a single-choice poll" do
     setup ctx do
       {:ok, message} = new_poll(ctx, %{})
       Map.put(ctx, :message, message)
@@ -106,12 +113,12 @@ defmodule Tavern.Chat.PollsTest do
       [red, blue] = option_ids(ctx.message)
 
       {:ok, message} = vote(ctx.voter, ctx.message, [red])
-      results = Polls.results(message.poll, ctx.voter.id)
+      results = Questions.results(message.question, ctx.voter.id)
 
-      assert [%{count: 1, voters: [voter]}, %{count: 0, voters: []}] = results.options
+      assert [%{count: 1, answerers: [voter]}, %{count: 0, answerers: []}] = results.options
       assert voter.id == ctx.voter.id
       assert results.mine.option_ids == [red]
-      assert results.voter_count == 1
+      assert results.answer_count == 1
       refute blue in results.mine.option_ids
     end
 
@@ -120,10 +127,10 @@ defmodule Tavern.Chat.PollsTest do
 
       {:ok, _} = vote(ctx.voter, ctx.message, [red])
       {:ok, changed} = vote(ctx.voter, ctx.message, [blue])
-      assert [%{count: 0}, %{count: 1}] = Polls.results(changed.poll, nil).options
+      assert [%{count: 0}, %{count: 1}] = Questions.results(changed.question, nil).options
 
       {:ok, withdrawn} = vote(ctx.voter, ctx.message, [])
-      assert %{voter_count: 0, mine: nil} = Polls.results(withdrawn.poll, ctx.voter.id)
+      assert %{answer_count: 0, mine: nil} = Questions.results(withdrawn.question, ctx.voter.id)
     end
 
     test "refuses two answers and an option of another poll", ctx do
@@ -168,17 +175,17 @@ defmodule Tavern.Chat.PollsTest do
       {:ok, _} = vote(ctx.voter, ctx.message, [red])
 
       voter_id = ctx.voter.id
-      assert_receive {:poll_voted, %{id: _}, %{user_id: ^voter_id, option_ids: [^red]}}
+      assert_receive {:question_answered, %{id: _}, %{user_id: ^voter_id, option_ids: [^red]}}
     end
   end
 
-  describe "vote/3 on a multi-select poll with Other" do
+  describe "answer/3 on a multi-select poll with Other" do
     test "takes several options and stores the Other text with the vote", ctx do
       {:ok, message} = new_poll(ctx, %{"multi_select" => true, "allow_other" => true})
       [red, blue] = option_ids(message)
 
       {:ok, message} = vote(ctx.voter, message, [red, blue], "  Green  ")
-      results = Polls.results(message.poll, ctx.voter.id)
+      results = Questions.results(message.question, ctx.voter.id)
 
       assert [%{count: 1}, %{count: 1}] = results.options
       assert %{count: 1, answers: [%{text: "Green", user: user}]} = results.other
@@ -199,9 +206,9 @@ defmodule Tavern.Chat.PollsTest do
 
       {:ok, _} = vote(ctx.voter, message, [red])
       {:ok, message} = vote(ctx.other_voter, message, [], "Green")
-      results = Polls.results(message.poll, ctx.author.id)
+      results = Questions.results(message.question, ctx.author.id)
 
-      assert [%{count: 1, voters: nil}, %{count: 0, voters: nil}] = results.options
+      assert [%{count: 1, answerers: nil}, %{count: 0, answerers: nil}] = results.options
       assert %{answers: [%{text: "Green", user: nil}]} = results.other
     end
   end
@@ -210,72 +217,74 @@ defmodule Tavern.Chat.PollsTest do
     test "by hand: the author or a moderator ends it, a voter may not", ctx do
       {:ok, message} = new_poll(ctx, %{})
 
-      assert {:error, :forbidden} = Polls.close_poll(scope_for(ctx.voter), message.id)
-      assert {:ok, closed} = Polls.close_poll(scope_for(ctx.moderator), message.id)
-      assert Poll.closed?(closed.poll)
-      assert {:error, :poll_closed} = Polls.close_poll(scope_for(ctx.author), message.id)
+      assert {:error, :forbidden} = Questions.close_question(scope_for(ctx.voter), message.id)
+      assert {:ok, closed} = Questions.close_question(scope_for(ctx.moderator), message.id)
+      assert Question.closed?(closed.question)
 
-      assert {:error, :poll_closed} = vote(ctx.voter, message, [hd(option_ids(message))])
-      assert Polls.results(closed.poll, nil).closed?
+      assert {:error, :question_closed} =
+               Questions.close_question(scope_for(ctx.author), message.id)
+
+      assert {:error, :question_closed} = vote(ctx.voter, message, [hd(option_ids(message))])
+      assert Questions.results(closed.question, nil).closed?
     end
 
     test "by time: a vote after the end is refused and close_due closes it once", ctx do
       forward_channel_events(ctx.channel)
       {:ok, message} = new_poll(ctx, %{"duration_minutes" => 60})
       past = DateTime.add(DateTime.utc_now(), -1, :second)
-      message.poll |> change(closes_at: past) |> Repo.update!()
+      message.question |> change(closes_at: past) |> Repo.update!()
 
-      assert {:error, :poll_closed} = vote(ctx.voter, message, [hd(option_ids(message))])
+      assert {:error, :question_closed} = vote(ctx.voter, message, [hd(option_ids(message))])
 
-      assert Polls.close_due(DateTime.utc_now()) == nil
+      assert Questions.close_due(DateTime.utc_now()) == nil
       message_id = message.id
-      assert_receive {:poll_closed, %{id: ^message_id}, :time}
+      assert_receive {:question_closed, %{id: ^message_id}, :time}
 
-      assert Polls.close_due(DateTime.utc_now()) == nil
-      refute_receive {:poll_closed, _, _}
-      assert Repo.get_by!(Poll, message_id: message.id).closed_at == past
+      assert Questions.close_due(DateTime.utc_now()) == nil
+      refute_receive {:question_closed, _, _}
+      assert Repo.get_by!(Question, message_id: message.id).closed_at == past
     end
 
     test "the closer wakes at a scheduled end time and closes the poll", ctx do
       forward_channel_events(ctx.channel)
-      closer = start_supervised!(Tavern.Chat.PollCloser)
+      closer = start_supervised!(Tavern.Chat.QuestionCloser)
       {:ok, message} = new_poll(ctx, %{"duration_minutes" => 60})
       past = DateTime.add(DateTime.utc_now(), -1, :second)
-      message.poll |> change(closes_at: past) |> Repo.update!()
+      message.question |> change(closes_at: past) |> Repo.update!()
 
-      Tavern.Chat.PollCloser.schedule(past)
+      Tavern.Chat.QuestionCloser.schedule(past)
       _ = :sys.get_state(closer)
 
       message_id = message.id
-      assert_receive {:poll_closed, %{id: ^message_id}, :time}
+      assert_receive {:question_closed, %{id: ^message_id}, :time}
     end
 
     test "close_due leaves polls that end later and names the next end time", ctx do
       {:ok, message} = new_poll(ctx, %{"duration_minutes" => 60})
 
-      assert Polls.close_due(DateTime.utc_now()) == message.poll.closes_at
-      refute Poll.closed?(Repo.get_by!(Poll, message_id: message.id))
+      assert Questions.close_due(DateTime.utc_now()) == message.question.closes_at
+      refute Question.closed?(Repo.get_by!(Question, message_id: message.id))
     end
 
-    test "after N voters: the vote that reaches the limit closes it", ctx do
+    test "after N answerers: the vote that reaches the limit closes it", ctx do
       forward_channel_events(ctx.channel)
-      {:ok, message} = new_poll(ctx, %{"max_voters" => 2})
+      {:ok, message} = new_poll(ctx, %{"max_answers" => 2})
       [red, _blue] = option_ids(message)
 
       {:ok, after_one} = vote(ctx.voter, message, [red])
-      refute Poll.closed?(after_one.poll)
+      refute Question.closed?(after_one.question)
 
       {:ok, after_two} = vote(ctx.other_voter, message, [red])
-      assert Poll.closed?(after_two.poll)
+      assert Question.closed?(after_two.question)
       message_id = message.id
-      assert_receive {:poll_closed, %{id: ^message_id}, :max_voters}
-      assert {:error, :poll_closed} = vote(ctx.voter, message, [])
+      assert_receive {:question_closed, %{id: ^message_id}, :answered}
+      assert {:error, :question_closed} = vote(ctx.voter, message, [])
     end
   end
 
   describe "narrowed voters" do
     test "a named member may vote and others may not", ctx do
-      {:ok, message} = new_poll(ctx, %{"voter_user_ids" => [ctx.voter.id]})
+      {:ok, message} = new_poll(ctx, %{"answerer_user_ids" => [ctx.voter.id]})
       [red, _blue] = option_ids(message)
 
       assert {:ok, _} = vote(ctx.voter, message, [red])
@@ -285,7 +294,7 @@ defmodule Tavern.Chat.PollsTest do
     test "a named role lets its members vote", ctx do
       named = role_fixture(%{permissions: 0})
       member_role_fixture(ctx.other_voter, named)
-      {:ok, message} = new_poll(ctx, %{"voter_role_ids" => [named.id]})
+      {:ok, message} = new_poll(ctx, %{"answerer_role_ids" => [named.id]})
       [red, _blue] = option_ids(message)
 
       assert {:ok, _} = vote(ctx.other_voter, message, [red])
@@ -298,25 +307,132 @@ defmodule Tavern.Chat.PollsTest do
         deny_permissions: PermissionBits.combine([:send_messages])
       })
 
-      {:ok, message} = new_poll(ctx, %{"voter_user_ids" => [ctx.voter.id]})
+      {:ok, message} = new_poll(ctx, %{"answerer_user_ids" => [ctx.voter.id]})
 
       assert {:error, :forbidden} = vote(ctx.voter, message, [hd(option_ids(message))])
     end
+  end
 
-    test "an agent question: one named voter, closed by the first vote, with Other text", ctx do
-      {:ok, message} =
-        new_poll(ctx, %{
-          "question" => "Run the migration?",
-          "options" => ["once", "always", "reject"],
-          "voter_user_ids" => [ctx.voter.id],
-          "max_voters" => 1,
-          "allow_other" => true
+  describe "prompts" do
+    test "only a bot sends one; a person's ask is forbidden", ctx do
+      assert {:error, :forbidden} =
+               Questions.create_question(scope_for(ctx.author), ctx.channel.id, %{
+                 "kind" => "ask",
+                 "question" => "Which?",
+                 "options" => labels(["A", "B"])
+               })
+
+      assert {:ok, message} = new_prompt(ctx, "ask")
+      assert %Question{kind: :ask, max_answers: 1, anonymous: false} = message.question
+    end
+
+    test "refuse the poll-only fields, and a permission request refuses several answers", ctx do
+      for {field, value} <- [
+            {"anonymous", true},
+            {"duration_minutes", 60},
+            {"max_answers", 3}
+          ] do
+        assert {:error, changeset} = new_prompt(ctx, "ask", %{field => value})
+        assert Map.has_key?(errors_on(changeset), String.to_existing_atom(field))
+      end
+
+      assert {:error, changeset} = new_prompt(ctx, "permission", %{"multi_select" => true})
+      assert %{multi_select: [_]} = errors_on(changeset)
+      assert {:ok, _} = new_prompt(ctx, "ask", %{"multi_select" => true})
+    end
+
+    test "a permission request's options need a kind, and only theirs may have one", ctx do
+      assert {:error, changeset} =
+               new_prompt(ctx, "permission", %{"options" => labels(["Allow", "No"])})
+
+      assert %{options: [_]} = errors_on(changeset)
+
+      assert {:error, changeset} =
+               new_poll(ctx, %{"options" => [%{"label" => "A", "kind" => "reject"}, "B"]})
+
+      assert %{options: [_]} = errors_on(changeset)
+
+      {:ok, message} = new_prompt(ctx, "permission")
+      assert Enum.map(message.question.options, & &1.kind) == [:allow_once, :reject]
+    end
+
+    test "take up to 4000 characters of text; a poll takes 300", ctx do
+      long = String.duplicate("x", 301)
+
+      assert {:error, changeset} = new_poll(ctx, %{"question" => long})
+      assert %{question: [_]} = errors_on(changeset)
+      assert {:ok, _} = new_prompt(ctx, "ask", %{"question" => long})
+    end
+
+    test "the first answer closes it, and nobody answers after", ctx do
+      forward_channel_events(ctx.channel)
+      {:ok, message} = new_prompt(ctx, "permission")
+      [allow, _no] = option_ids(message)
+
+      {:ok, answered} = vote(ctx.voter, message, [allow])
+      assert Question.closed?(answered.question)
+      message_id = message.id
+      assert_receive {:question_closed, %{id: ^message_id}, :answered}
+
+      assert {:error, :question_closed} = vote(ctx.other_voter, message, [allow])
+    end
+
+    test "refuse an empty answer, which would close them with no answer", ctx do
+      {:ok, message} = new_prompt(ctx, "ask", %{"multi_select" => true})
+
+      assert {:error, :invalid_choice} = vote(ctx.voter, message, [])
+      refute Question.closed?(Repo.reload!(message.question))
+    end
+
+    test "a closed permission request leaves every list; reading it by id still finds it", ctx do
+      {:ok, ask} = new_prompt(ctx, "ask")
+      {:ok, permission} = new_prompt(ctx, "permission")
+      reader = scope_for(ctx.other_voter)
+      assert Chat.message_count(reader, ctx.channel.id) == 2
+
+      {:ok, _} = vote(ctx.voter, permission, [hd(option_ids(permission))])
+
+      ask_id = ask.id
+      assert {:ok, [%{id: ^ask_id}]} = Chat.list_messages(reader, ctx.channel.id)
+      assert Chat.message_count(reader, ctx.channel.id) == 1
+      assert Chat.unread_counts(reader, [ctx.channel.id]) == %{ctx.channel.id => 1}
+
+      permission_id = permission.id
+      assert %{id: ^permission_id} = Chat.get_message(ctx.bot_scope, permission.id)
+    end
+
+    test "a permission request closed in a thread lowers its reply count and tells the parent",
+         ctx do
+      forward_channel_events(ctx.channel)
+      starter = message_fixture(ctx.channel, ctx.author, %{body: "starter"})
+      thread = thread_fixture(ctx.channel, starter, ctx.author)
+
+      {:ok, permission} =
+        Questions.create_question(ctx.bot_scope, thread.id, %{
+          "kind" => "permission",
+          "question" => "Read `mix.exs`?",
+          "options" => [
+            %{"label" => "Allow", "kind" => "allow_once"},
+            %{"label" => "No", "kind" => "reject"}
+          ]
         })
 
-      {:ok, answered} = vote(ctx.voter, message, [], "only on staging")
+      assert Chat.thread_reply_count(scope_for(ctx.voter), thread.id) == 1
+      {:ok, _} = Questions.close_question(ctx.bot_scope, permission.id)
 
-      assert Poll.closed?(answered.poll)
-      assert %{answers: [%{text: "only on staging"}]} = Polls.results(answered.poll, nil).other
+      assert Chat.thread_reply_count(scope_for(ctx.voter), thread.id) == 0
+      permission_id = permission.id
+      assert_receive {:thread_message_unlisted, %{id: ^permission_id}}
+    end
+
+    test "the bot or a moderator closes it by hand, an answerer may not", ctx do
+      {:ok, message} = new_prompt(ctx, "ask")
+
+      assert {:error, :forbidden} = Questions.close_question(scope_for(ctx.voter), message.id)
+      assert {:ok, _} = Questions.close_question(scope_for(ctx.moderator), message.id)
+
+      {:ok, message} = new_prompt(ctx, "ask")
+      assert {:ok, _} = Questions.close_question(ctx.bot_scope, message.id)
     end
   end
 
@@ -344,21 +460,50 @@ defmodule Tavern.Chat.PollsTest do
   end
 
   defp new_poll(ctx, attrs, channel_id \\ nil) do
-    Polls.create_poll(
+    Questions.create_question(
       scope_for(ctx.author),
       channel_id || ctx.channel.id,
-      Map.merge(%{"question" => "Which colour?", "options" => ["Red", "Blue"]}, attrs)
+      %{"question" => "Which colour?", "options" => ["Red", "Blue"]}
+      |> Map.merge(attrs)
+      |> Map.update!("options", &labels/1)
     )
   end
 
+  defp new_prompt(ctx, kind, attrs \\ %{}) do
+    options =
+      if kind == "permission",
+        do: [
+          %{"label" => "Allow", "kind" => "allow_once"},
+          %{"label" => "No", "kind" => "reject"}
+        ],
+        else: labels(["Staging", "Production"])
+
+    Questions.create_question(
+      ctx.bot_scope,
+      ctx.channel.id,
+      Map.merge(
+        %{
+          "kind" => kind,
+          "question" => "Run the migration?",
+          "options" => options,
+          "answerer_user_ids" => [ctx.voter.id, ctx.other_voter.id]
+        },
+        attrs
+      )
+    )
+  end
+
+  # The options as the form and the API send them: one object per label.
+  defp labels(options), do: Enum.map(options, &if(is_binary(&1), do: %{"label" => &1}, else: &1))
+
   defp vote(user, message, option_ids, other_text \\ nil) do
-    Polls.vote(scope_for(user), message.id, %{
+    Questions.answer(scope_for(user), message.id, %{
       "option_ids" => option_ids,
       "other_text" => other_text
     })
   end
 
-  defp option_ids(message), do: Enum.map(message.poll.options, & &1.id)
+  defp option_ids(message), do: Enum.map(message.question.options, & &1.id)
 
   # Broadcasts skip the writing process, so a separate subscriber forwards the channel's events.
   defp forward_channel_events(channel) do

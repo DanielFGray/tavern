@@ -21,7 +21,7 @@ defmodule Tavern.Chat do
   alias Tavern.Chat.Messages
   alias Tavern.Chat.Moderation
   alias Tavern.Chat.Notifications
-  alias Tavern.Chat.Polls
+  alias Tavern.Chat.Questions
   alias Tavern.Chat.Roles
   alias Tavern.Chat.ServerConfig
   alias Tavern.Chat.ThreadFollows
@@ -151,11 +151,11 @@ defmodule Tavern.Chat do
   defdelegate follow_thread(scope, thread_id), to: ThreadFollows, as: :follow
   defdelegate unfollow_thread(scope, thread_id), to: ThreadFollows, as: :unfollow
   defdelegate following_thread?(scope, thread_id), to: ThreadFollows, as: :following?
-  defdelegate change_poll(attrs \\ %{}), to: Polls
-  defdelegate create_poll(scope, channel_id, attrs), to: Polls
-  defdelegate vote_in_poll(scope, message_id, choice), to: Polls, as: :vote
-  defdelegate close_poll(scope, message_id), to: Polls
-  defdelegate poll_results(poll, viewer_id), to: Polls, as: :results
+  defdelegate change_question(attrs \\ %{}), to: Questions
+  defdelegate create_question(scope, channel_id, attrs), to: Questions
+  defdelegate answer_question(scope, message_id, choice), to: Questions, as: :answer
+  defdelegate close_question(scope, message_id), to: Questions
+  defdelegate question_results(question, viewer_id), to: Questions, as: :results
 
   defdelegate change_moderation_action(attrs \\ %{}), to: Moderation
   defdelegate list_moderation_cases(scope, subject_user_id), to: Moderation

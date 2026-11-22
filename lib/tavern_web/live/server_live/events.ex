@@ -8,8 +8,8 @@ defmodule TavernWeb.ServerLive.Events do
   alias TavernWeb.ServerLive.Events.Mobile
   alias TavernWeb.ServerLive.Events.Navigation
   alias TavernWeb.ServerLive.Events.Notifications
-  alias TavernWeb.ServerLive.Events.Polls
   alias TavernWeb.ServerLive.Events.Profile
+  alias TavernWeb.ServerLive.Events.Questions
   alias TavernWeb.ServerLive.Events.Reactions
   alias TavernWeb.ServerLive.Events.Threads
   alias TavernWeb.ServerLive.Events.Verification
@@ -22,8 +22,8 @@ defmodule TavernWeb.ServerLive.Events do
     Messages,
     Mobile,
     Notifications,
-    Polls,
     Profile,
+    Questions,
     Reactions,
     Threads,
     Verification
@@ -70,7 +70,7 @@ defmodule TavernWeb.ServerLive.Events do
 
   def handle_info(message, socket)
       when (is_tuple(message) and tuple_size(message) == 2 and
-              elem(message, 0) in [:thread_message_created, :thread_message_deleted]) or
+              elem(message, 0) in [:thread_message_created, :thread_message_unlisted]) or
              (is_tuple(message) and tuple_size(message) == 3 and
                 elem(message, 0) == :thread_followers_changed) do
     Threads.handle_info(message, socket)
@@ -78,8 +78,8 @@ defmodule TavernWeb.ServerLive.Events do
 
   def handle_info(message, socket)
       when is_tuple(message) and tuple_size(message) == 3 and
-             elem(message, 0) in [:poll_voted, :poll_closed] do
-    Polls.handle_info(message, socket)
+             elem(message, 0) in [:question_answered, :question_closed] do
+    Questions.handle_info(message, socket)
   end
 
   def handle_info({:email_confirmed, _user_id} = message, socket),

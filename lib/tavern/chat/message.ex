@@ -1,6 +1,7 @@
 defmodule Tavern.Chat.Message do
   use Ecto.Schema
   import Ecto.Changeset
+  import Ecto.Query, only: [where: 3]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -30,7 +31,7 @@ defmodule Tavern.Chat.Message do
     has_many(:user_mentions, Tavern.Chat.MessageUserMention)
     has_many(:role_mentions, Tavern.Chat.MessageRoleMention)
     has_many(:embeds, Tavern.Chat.MessageEmbed, preload_order: [asc: :position])
-    has_one(:poll, Tavern.Chat.Poll)
+    has_one(:question, Tavern.Chat.Question)
 
     timestamps(type: :utc_datetime_usec, updated_at: false)
   end
@@ -57,6 +58,34 @@ defmodule Tavern.Chat.Message do
   end
 
   def deleted?(%{deleted_at: deleted_at}), do: not is_nil(deleted_at)
+
+  @doc """
+  Whether a list shows the message: the transcript, reply counts, unread counts, channel previews
+  and bot history. A deleted message is not listed, nor is a closed permission request
+  (docs/design/questions.md): a bot asks many of them, and once answered they only hide the
+  conversation around them. Reading the message by its id still finds it. `where_listed/1` is
+  the same rule as a query; this one needs the question preloaded.
+  """
+  def listed?(%__MODULE__{} = message),
+    do: not deleted?(message) and not closed_permission?(message.question)
+
+  @doc "Narrows a query whose first binding is a message to the messages `listed?/1` accepts."
+  def where_listed(query) do
+    where(
+      query,
+      [message],
+      is_nil(message.deleted_at) and
+        fragment(
+          "NOT EXISTS (SELECT 1 FROM questions WHERE message_id = ? AND kind = 'permission' AND closed_at IS NOT NULL)",
+          message.id
+        )
+    )
+  end
+
+  defp closed_permission?(nil), do: false
+
+  defp closed_permission?(%Tavern.Chat.Question{kind: kind, closed_at: closed_at}),
+    do: kind == :permission and not is_nil(closed_at)
 
   # Metadata is stored as the client sent it (`Tavern.Chat.Messages` keeps only `entities`), so
   # these bounds are all that stops a client from filling a row. The numbers are argued in

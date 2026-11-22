@@ -103,7 +103,7 @@ defmodule TavernWeb.ServerComponents.Composer do
       |> assign(pane: pane, form: pane.form)
 
     ~H"""
-    <TavernWeb.ServerComponents.Polls.poll_composer :if={@server.poll_form} server={@server} />
+    <TavernWeb.ServerComponents.Questions.poll_composer :if={@server.poll_form} server={@server} />
     <.form
       for={@form}
       id={@ids.form}

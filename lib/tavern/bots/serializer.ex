@@ -8,8 +8,8 @@ defmodule Tavern.Bots.Serializer do
   alias Tavern.Chat.MediaAssets
   alias Tavern.Chat.Message
   alias Tavern.Chat.MessageEmbed
-  alias Tavern.Chat.Poll
-  alias Tavern.Chat.Polls
+  alias Tavern.Chat.Question
+  alias Tavern.Chat.Questions
   alias Tavern.Chat.Reaction
   alias Tavern.Chat.User
   alias Tavern.Repo
@@ -56,7 +56,7 @@ defmodule Tavern.Bots.Serializer do
       channel: serialize_channel_summary(message.channel),
       reply_to: serialize_message_reference(message.reply_to),
       embeds: serialize_embeds(message.embeds),
-      poll: serialize_poll(message.poll),
+      question: serialize_question(message.question),
       reactions: serialize_reactions(message.reactions),
       mentions: serialize_mentions(message)
     }
@@ -110,62 +110,70 @@ defmodule Tavern.Bots.Serializer do
   defp serialize_mentions(_message), do: nil
 
   @doc """
-  The `poll.voted` payload: the poll after the vote, and the vote itself (who, which options by id
-  and label, and the Other text). An anonymous poll's payload has `vote: nil`, so a reader learns
-  only the new counts.
+  The `question.answered` payload: the question after the answer, and the answer itself (who,
+  which options by id, label and kind, and the Other text). An anonymous poll's payload has
+  `answer: nil`, so a reader learns only the new counts.
   """
-  def serialize_poll_vote(%Message{poll: %Poll{} = poll} = message, vote) do
-    labels = Map.new(poll.options, &{&1.id, &1.label})
+  def serialize_question_answer(%Message{question: %Question{} = question} = message, answer) do
+    options = Map.new(question.options, &{&1.id, &1})
 
     %{
       message_id: message.id,
       channel_id: message.channel_id,
-      poll: serialize_poll(poll),
-      vote:
-        unless poll.anonymous do
+      question: serialize_question(question),
+      answer:
+        unless question.anonymous do
           %{
-            user_id: vote.user_id,
-            option_ids: vote.option_ids,
-            options: Enum.map(vote.option_ids, &%{id: &1, label: Map.fetch!(labels, &1)}),
-            other_text: vote.other_text
+            user_id: answer.user_id,
+            option_ids: answer.option_ids,
+            options: Enum.map(answer.option_ids, &serialize_option_ref(Map.fetch!(options, &1))),
+            other_text: answer.other_text
           }
         end
     }
   end
 
-  @doc "The `poll.closed` payload: the final results and why it closed (`time`, `max_voters` or `closed_by_hand`)."
-  def serialize_poll_closed(%Message{poll: %Poll{} = poll} = message, reason) do
+  @doc """
+  The `question.closed` payload: the final results and why it closed (`answered`, `time` or
+  `closed_by_hand`).
+  """
+  def serialize_question_closed(%Message{question: %Question{} = question} = message, reason) do
     %{
       message_id: message.id,
       channel_id: message.channel_id,
       reason: to_string(reason),
-      poll: serialize_poll(poll)
+      question: serialize_question(question)
     }
   end
 
-  # Results come from `Polls.results/2`, which leaves voters out of an anonymous poll.
-  defp serialize_poll(%Poll{} = poll) do
-    results = Polls.results(poll, nil)
+  defp serialize_option_ref(option),
+    do: %{id: option.id, label: option.label, kind: option.kind && to_string(option.kind)}
+
+  # Results come from `Questions.results/2`, which leaves answerers out of an anonymous poll.
+  defp serialize_question(%Question{} = question) do
+    results = Questions.results(question, nil)
 
     %{
-      id: poll.id,
-      multi_select: poll.multi_select,
-      anonymous: poll.anonymous,
-      allow_other: poll.allow_other,
-      closes_at: poll.closes_at,
-      closed_at: poll.closed_at,
+      id: question.id,
+      kind: to_string(question.kind),
+      multi_select: question.multi_select,
+      anonymous: question.anonymous,
+      allow_other: question.allow_other,
+      closes_at: question.closes_at,
+      closed_at: question.closed_at,
       closed: results.closed?,
-      max_voters: poll.max_voters,
-      voter_user_ids: poll.voter_user_ids,
-      voter_role_ids: poll.voter_role_ids,
-      voter_count: results.voter_count,
+      max_answers: question.max_answers,
+      answerer_user_ids: question.answerer_user_ids,
+      answerer_role_ids: question.answerer_role_ids,
+      answer_count: results.answer_count,
       options:
         Enum.map(results.options, fn option ->
           %{
             id: option.id,
             label: option.label,
+            kind: option.kind && to_string(option.kind),
             count: option.count,
-            voter_ids: option.voters && Enum.map(option.voters, & &1.id)
+            answerer_ids: option.answerers && Enum.map(option.answerers, & &1.id)
           }
         end),
       other:
@@ -178,8 +186,8 @@ defmodule Tavern.Bots.Serializer do
     }
   end
 
-  defp serialize_poll(%NotLoaded{}), do: nil
-  defp serialize_poll(nil), do: nil
+  defp serialize_question(%NotLoaded{}), do: nil
+  defp serialize_question(nil), do: nil
 
   def serialize_thread(%Channel{} = thread) do
     serialize_channel_summary(thread)

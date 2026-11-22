@@ -77,10 +77,10 @@ An event that happens somewhere carries its **place**: `channel_id`, `channel_na
 | `member.rejoined` | `member` | A kicked member rejoins with an invite. |
 | `member.deleted` | `member`, `by` (`sweep`, `self`, `moderator`) | An account is deleted. `sweep` is the scheduled deletion running. Deleting an account already deleted emits nothing. |
 | `session.seen` | `member` | A member signs in, or uses a session last used 5 or more minutes ago (an HTTP request or a LiveView connect). The member had Tavern open. |
-| `message.created` | `member`, `author_kind` (`person`, `bot`, `system`), `message_kind` (`default`, `reply`, `system`, `thread_starter`, ...), `poll` (bool), place | A message is sent, by the web client, a bot or a forum post. A poll is a message with `poll` true. |
+| `message.created` | `member`, `author_kind` (`person`, `bot`, `system`), `message_kind` (`default`, `reply`, `system`, `thread_starter`, ...), `question` (`none`, `poll`, `ask`, `permission`), place | A message is sent, by the web client, a bot or a forum post. A question (questions.md) is a message whose `question` is its kind. Events before 2026-11-22 carry `poll` (bool) instead. |
 | `reaction.added`, `reaction.removed` | `member`, `emoji_kind` (`unicode`, `custom`), place | A reaction toggles on or off. |
-| `poll.voted` | `member`, place | A vote, a changed vote or a withdrawn vote. |
-| `poll.closed` | `reason` (`closed_by_hand`, `time`, `max_voters`), place | A poll closes. |
+| `question.answered` | `member`, `question` (kind), place | An answer: a vote, a changed or withdrawn vote, or a prompt's answer. Before 2026-11-22 a vote was `poll.voted`. |
+| `question.closed` | `reason` (`closed_by_hand`, `time`, `answered`), `question` (kind), place | A question closes. Before 2026-11-22 this was `poll.closed`, with `max_voters` for `answered`. |
 | `thread.created` | `member`, place | A thread or forum post starts; `channel_kind` `forum` marks a forum post. A repeated request to thread the same message emits nothing: it returns the existing thread, which `Chat.Threads` does not broadcast. |
 | `channel.created` | place | A channel or category is created. |
 | `invite.created` | `actor`, place | A manager creates an invite. Invites made by approving an invite request are not counted. |
@@ -157,16 +157,18 @@ WHERE service_name = 'tavern' AND event = 'member.moderated'
 GROUP BY day, action ORDER BY day
 ```
 
-Other activity per day (reactions, threads, polls, votes, invites, uploads):
+Other activity per day (reactions, threads, polls, votes, invites, uploads). Rows before 2026-11-22 use the old poll names, so this counts from that day on:
 
 ```sql
 SELECT histogram(_timestamp, '1 day') AS day,
-       CASE WHEN event = 'message.created' THEN 'poll.created' ELSE event END AS activity,
+       CASE WHEN event = 'message.created' THEN 'poll.created'
+            WHEN event = 'question.answered' THEN 'poll.voted' ELSE event END AS activity,
        count(*) AS count
 FROM "default"
 WHERE service_name = 'tavern'
-  AND (event IN ('reaction.added', 'thread.created', 'poll.voted', 'invite.created', 'upload.created')
-       OR (event = 'message.created' AND poll = true))
+  AND (event IN ('reaction.added', 'thread.created', 'invite.created', 'upload.created')
+       OR (event = 'question.answered' AND question = 'poll')
+       OR (event = 'message.created' AND question = 'poll'))
 GROUP BY day, activity ORDER BY day
 ```
 

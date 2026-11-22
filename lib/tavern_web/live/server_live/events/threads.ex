@@ -41,7 +41,7 @@ defmodule TavernWeb.ServerLive.Events.Threads do
      |> ForumNav.reload_for_post(message.channel)}
   end
 
-  def handle_info({:thread_message_deleted, message}, socket),
+  def handle_info({:thread_message_unlisted, message}, socket),
     do: {:noreply, refresh_closed_thread_chip(socket, message)}
 
   def handle_info({:thread_followers_changed, _thread_id, user_ids}, socket),

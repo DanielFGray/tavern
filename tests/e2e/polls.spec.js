@@ -15,6 +15,7 @@ test('a member sends a poll, votes, answers Other and ends it', async ({ page })
 
   const question = `Lunch ${Date.now()}?`
 
+  await page.locator('#composer-plus-button').click()
   await page.locator('#open-poll-button').click()
   const form = page.locator('#poll-form')
   await expect(form).toBeVisible()
@@ -28,23 +29,23 @@ test('a member sends a poll, votes, answers Other and ends it', async ({ page })
   await form.locator('#send-poll-button').click()
 
   await expect(form).toBeHidden()
-  const card = page.locator('[id^="poll-"][data-closed]', { hasText: question })
+  const card = page.locator('[id^="question-"][data-closed]', { hasText: question })
   await expect(card).toBeVisible()
 
-  const tacos = card.locator('[id^="poll-option-"]', { hasText: 'Tacos' }).first()
+  const tacos = card.locator('[id^="question-option-"]', { hasText: 'Tacos' }).first()
   await tacos.click()
   await expect(tacos).toHaveAttribute('aria-pressed', 'true')
-  await expect(card.locator('[id^="poll-voter-count-"]')).toHaveText('1 vote')
+  await expect(card.locator('[id^="question-answer-count-"]')).toHaveText('1 vote')
 
   // A single-choice poll takes one answer: Other replaces the option.
-  await card.locator('[id^="poll-other-"][aria-pressed]').click()
-  await card.locator('[id^="poll-other-text-"]').fill('Noodles')
-  await card.locator('[id^="poll-other-form-"] button[type="submit"]').click()
-  await expect(card.locator('[id^="poll-other-answers-"]')).toContainText('Noodles')
+  await card.locator('[id^="question-other-"][aria-pressed]').click()
+  await card.locator('[id^="question-other-text-"]').fill('Noodles')
+  await card.locator('[id^="question-other-form-"] button[type="submit"]').click()
+  await expect(card.locator('[id^="question-other-answers-"]')).toContainText('Noodles')
   await expect(tacos).toHaveAttribute('aria-pressed', 'false')
 
   page.once('dialog', dialog => dialog.accept())
-  await card.locator('[id^="poll-close-"]').click()
+  await card.locator('[id^="question-close-"]').click()
   await expect(card).toHaveAttribute('data-closed', 'true')
   await expect(tacos).toBeDisabled()
 })

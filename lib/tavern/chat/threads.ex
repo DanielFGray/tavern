@@ -173,15 +173,15 @@ defmodule Tavern.Chat.Threads do
   defp cursor(:created, %{thread: %Channel{inserted_at: at, id: id}}), do: {at, id}
   defp cursor(_activity, %{last_activity_at: at, thread: %Channel{id: id}}), do: {at, id}
 
-  # Live replies in the threads `thread_ids`. A reply is a message in the thread other than its
-  # starter: a forum post's starter is inside the post, and is not a reply.
+  # Listed replies (`Message.listed?/1`) in the threads `thread_ids`. A reply is a message in the
+  # thread other than its starter: a forum post's starter is inside the post, and is not a reply.
   defp replies_query(thread_ids) do
     from(message in Message,
       left_join: started in Channel,
       on: started.starter_message_id == message.id,
-      where:
-        message.channel_id in ^thread_ids and is_nil(message.deleted_at) and is_nil(started.id)
+      where: message.channel_id in ^thread_ids and is_nil(started.id)
     )
+    |> Message.where_listed()
   end
 
   defp escape_like(text), do: String.replace(text, ~r/[\\%_]/, "\\\\\\0")

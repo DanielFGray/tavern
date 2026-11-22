@@ -840,7 +840,7 @@ defmodule Tavern.Accounts do
   "Deleted user", so every place that shows the account's messages shows that name. Profile
   fields and images, sessions, bot tokens, roles, channel overwrites, channel read state, thread
   follows and notification settings go, and the membership is deactivated. Messages, reactions,
-  poll ballots, moderation cases and audit entries stay.
+  question answers, moderation cases and audit entries stay.
 
   `actor_id` names who deleted the account in the `account_deleted` audit entry. The deletion
   sweep passes none. No permission is checked here: each caller decides who may delete.

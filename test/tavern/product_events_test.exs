@@ -13,7 +13,7 @@ defmodule Tavern.ProductEventsTest do
   alias Tavern.Accounts
   alias Tavern.Bootstrap
   alias Tavern.Chat
-  alias Tavern.Chat.Polls
+  alias Tavern.Chat.Questions
   alias Tavern.Chat.UserSession
   alias Tavern.ProductEvents
 
@@ -30,11 +30,11 @@ defmodule Tavern.ProductEventsTest do
     "session.seen" => [:member],
     "invite.created" => [:actor | @place],
     "upload.created" => [:member, :kind],
-    "message.created" => [:member, :author_kind, :message_kind, :poll | @place],
+    "message.created" => [:member, :author_kind, :message_kind, :question | @place],
     "reaction.added" => [:member, :emoji_kind | @place],
     "reaction.removed" => [:member, :emoji_kind | @place],
-    "poll.voted" => [:member | @place],
-    "poll.closed" => [:reason | @place],
+    "question.answered" => [:member, :question | @place],
+    "question.closed" => [:reason, :question | @place],
     "thread.created" => [:member | @place],
     "channel.created" => @place
   }
@@ -179,7 +179,7 @@ defmodule Tavern.ProductEventsTest do
           member: ProductEvents.pseudonym(member.id),
           author_kind: "person",
           message_kind: "default",
-          poll: false,
+          question: "none",
           channel_id: channel.id,
           channel_name: "Lounge",
           channel_kind: "text"
@@ -275,47 +275,53 @@ defmodule Tavern.ProductEventsTest do
       assert_event(ctx, "reaction.removed", reaction)
     end
 
-    test "a poll, its votes and its close", ctx do
+    test "a poll, its answers and its close", ctx do
       member = user_fixture()
 
       {:ok, message} =
-        Chat.create_poll(scope_for(member), ctx.general.id, %{
+        Chat.create_question(scope_for(member), ctx.general.id, %{
           "question" => "Lunch?",
-          "options" => ["Soup", "Salad"]
+          "options" => [%{"label" => "Soup"}, %{"label" => "Salad"}]
         })
 
       assert_event(ctx, "message.created", %{
         member: ProductEvents.pseudonym(member.id),
-        poll: true
+        question: "poll"
       })
 
-      [option | _] = message.poll.options
+      [option | _] = message.question.options
 
       {:ok, _message} =
-        Chat.vote_in_poll(scope_for(member), message.id, %{"option_ids" => [option.id]})
+        Chat.answer_question(scope_for(member), message.id, %{"option_ids" => [option.id]})
 
-      assert_event(ctx, "poll.voted", %{
+      assert_event(ctx, "question.answered", %{
         member: ProductEvents.pseudonym(member.id),
+        question: "poll",
         channel_id: ctx.general.id
       })
 
-      {:ok, _message} = Chat.close_poll(scope_for(member), message.id)
-      assert_event(ctx, "poll.closed", %{channel_id: ctx.general.id, reason: "closed_by_hand"})
+      {:ok, _message} = Chat.close_question(scope_for(member), message.id)
+
+      assert_event(ctx, "question.closed", %{
+        channel_id: ctx.general.id,
+        reason: "closed_by_hand",
+        question: "poll"
+      })
     end
 
     test "a poll closed by time", ctx do
       member = user_fixture()
 
       {:ok, _message} =
-        Chat.create_poll(scope_for(member), ctx.general.id, %{
+        Chat.create_question(scope_for(member), ctx.general.id, %{
           "question" => "Lunch?",
-          "options" => ["Soup", "Salad"],
+          "options" => [%{"label" => "Soup"}, %{"label" => "Salad"}],
           "duration_minutes" => 60
         })
 
-      Polls.close_due(DateTime.add(DateTime.utc_now(), 2, :hour))
+      Questions.close_due(DateTime.add(DateTime.utc_now(), 2, :hour))
 
-      assert_event(ctx, "poll.closed", %{channel_id: ctx.general.id, reason: "time"})
+      assert_event(ctx, "question.closed", %{channel_id: ctx.general.id, reason: "time"})
     end
   end
 

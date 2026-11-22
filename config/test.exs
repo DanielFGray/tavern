@@ -62,9 +62,9 @@ config :tavern, Tavern.Embeds.SafeHTTP,
 # receives `{:mail_captured, email}` for the mail it and the processes it drives send.
 config :tavern, Tavern.Mailer, provider: :capture, from: "tavern@example.test"
 
-# Tests close polls by calling `Tavern.Chat.Polls.close_due/1` with a chosen time; a background
+# Tests close polls by calling `Tavern.Chat.Questions.close_due/1` with a chosen time; a background
 # closer would query outside the test's sandbox.
-config :tavern, :poll_closer, false
+config :tavern, :question_closer, false
 
 # Tests delete due accounts by calling `Tavern.Accounts.delete_due_accounts/1` with a chosen
 # time, for the same reason.

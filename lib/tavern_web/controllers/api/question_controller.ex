@@ -1,16 +1,17 @@
-defmodule TavernWeb.API.PollController do
+defmodule TavernWeb.API.QuestionController do
   @moduledoc """
-  Polls for bots (docs/design/polls.md). A bot sends a poll, reads its results and ends it; votes
-  and closes reach it on the event stream as `poll.voted` and `poll.closed`.
+  Questions for bots (docs/design/questions.md). A bot sends a poll or a prompt (`ask`,
+  `permission`), reads its results and closes it; answers and closes reach it on the event stream
+  as `question.answered` and `question.closed`.
   """
   use TavernWeb, :controller
 
   alias Tavern.Bots
   alias TavernWeb.API.ErrorHelpers
 
-  def create(conn, %{"channel_id" => channel_id, "poll" => poll_params})
-      when is_map(poll_params) do
-    case Bots.create_poll(conn.assigns.current_bot_scope, channel_id, poll_params) do
+  def create(conn, %{"channel_id" => channel_id, "question" => question_params})
+      when is_map(question_params) do
+    case Bots.create_question(conn.assigns.current_bot_scope, channel_id, question_params) do
       {:ok, %{message: message}} ->
         conn
         |> put_status(:created)
@@ -31,7 +32,7 @@ defmodule TavernWeb.API.PollController do
         ErrorHelpers.render_changeset_error(
           conn,
           :unprocessable_entity,
-          "invalid_poll",
+          "invalid_question",
           changeset
         )
 
@@ -49,33 +50,43 @@ defmodule TavernWeb.API.PollController do
   def create(conn, _params), do: ErrorHelpers.render_invalid_body(conn)
 
   def show(conn, %{"message_id" => message_id}) do
-    case Bots.get_poll(conn.assigns.current_bot_scope, message_id) do
+    case Bots.get_question(conn.assigns.current_bot_scope, message_id) do
       {:ok, %{message: message}} -> json(conn, %{data: message})
-      {:error, :not_found} -> poll_not_found(conn)
+      {:error, :not_found} -> question_not_found(conn)
     end
   end
 
   def close(conn, %{"message_id" => message_id}) do
-    case Bots.close_poll(conn.assigns.current_bot_scope, message_id) do
+    case Bots.close_question(conn.assigns.current_bot_scope, message_id) do
       {:ok, %{message: message}} ->
         json(conn, %{data: message})
 
-      {:error, :poll_closed} ->
-        ErrorHelpers.render_error(conn, :conflict, "poll_closed", "The poll is already closed.")
+      {:error, :question_closed} ->
+        ErrorHelpers.render_error(
+          conn,
+          :conflict,
+          "question_closed",
+          "The question is already closed."
+        )
 
       {:error, :forbidden} ->
-        ErrorHelpers.render_error(conn, :forbidden, "forbidden", "Bot cannot end that poll.")
+        ErrorHelpers.render_error(
+          conn,
+          :forbidden,
+          "forbidden",
+          "Bot cannot close that question."
+        )
 
       {:error, :not_found} ->
-        poll_not_found(conn)
+        question_not_found(conn)
 
       {:error, :unauthorized} ->
         unauthorized(conn)
     end
   end
 
-  defp poll_not_found(conn),
-    do: ErrorHelpers.render_error(conn, :not_found, "not_found", "Poll not found.")
+  defp question_not_found(conn),
+    do: ErrorHelpers.render_error(conn, :not_found, "not_found", "Question not found.")
 
   defp unauthorized(conn),
     do:

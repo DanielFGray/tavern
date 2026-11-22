@@ -5,7 +5,7 @@ defmodule Tavern.Chat.Messages do
   transaction and broadcasts after the commit.
 
   `send_message/4`, `write_message/3` and `publish_message/1` are the seams the other message
-  writers (polls, forum posts) build on. The row access they share with the embed and thread
+  writers (questions, forum posts) build on. The row access they share with the embed and thread
   writes is `Tavern.Chat.MessageRows`, below this module.
   """
 
@@ -21,7 +21,7 @@ defmodule Tavern.Chat.Messages do
   alias Tavern.Chat.Mentions
   alias Tavern.Chat.Message
   alias Tavern.Chat.MessageRows
-  alias Tavern.Chat.Poll
+  alias Tavern.Chat.Question
   alias Tavern.Chat.Reaction
   alias Tavern.Chat.SendLimit
   alias Tavern.Chat.Slowmode
@@ -41,7 +41,7 @@ defmodule Tavern.Chat.Messages do
     reactions: [emoji: :asset],
     reply_to: :author,
     embeds: :image_asset,
-    poll: [:options, ballots: :user]
+    question: [:options, answers: :user]
   ]
 
   def change_message(message, attrs \\ %{}) do
@@ -67,7 +67,7 @@ defmodule Tavern.Chat.Messages do
         messages =
           Message
           |> where([message], message.channel_id == ^channel_id)
-          |> where([message], is_nil(message.deleted_at))
+          |> Message.where_listed()
           |> page_from(cursor)
           |> limit(^limit)
           |> preload(^@read_preloads)
@@ -118,13 +118,13 @@ defmodule Tavern.Chat.Messages do
     end
   end
 
-  @doc "The number of live (not deleted) messages in a channel the scope may view. A hidden channel counts 0, as a missing one does."
+  @doc "The number of listed messages (`Message.listed?/1`) in a channel the scope may view. A hidden channel counts 0, as a missing one does."
   def message_count(%Scope{} = scope, channel_id) do
     with {:ok, channel_id} <- Ids.cast(channel_id),
          true <- Visibility.can?(scope, :view_channel, %Channel{id: channel_id}) do
       Message
       |> where([message], message.channel_id == ^channel_id)
-      |> where([message], is_nil(message.deleted_at))
+      |> Message.where_listed()
       |> Repo.aggregate(:count)
     else
       _ -> 0
@@ -146,8 +146,8 @@ defmodule Tavern.Chat.Messages do
   @doc """
   Sends a message under every send rule of `create_message/3`, then runs `extend` on what
   `write_message/3` wrote, inside the same transaction. `extend` returns `{:ok, written}`, with
-  the message reloaded when it added rows to it. A poll (`Tavern.Chat.Polls`) is a message
-  extended with its poll rows.
+  the message reloaded when it added rows to it. A question (`Tavern.Chat.Questions`) is a
+  message extended with its question rows.
   """
   def send_message(%Scope{} = scope, channel_id, attrs, extend) do
     with {:ok, channel_id} <- Ids.cast(channel_id),
@@ -222,7 +222,7 @@ defmodule Tavern.Chat.Messages do
   removed and fetches previews only for links it added. Editing a thread's starter message takes
   the thread's tags from it again (`Tavern.Chat.Hashtags`). A message the scope may not view is
   `{:error, :not_found}`. A visible message it may not edit (another author, a timeout, or a
-  poll, whose question stays as voted on) is `{:error, :forbidden}`.
+  question, whose text stays as answered) is `{:error, :forbidden}`.
   """
   def update_message(%Scope{} = scope, message_id, attrs) do
     with {:ok, message_id} <- Ids.cast(message_id),
@@ -496,10 +496,10 @@ defmodule Tavern.Chat.Messages do
 
   # --- Write helpers -----------------------------------------------------------------------------
 
-  # A poll's body is its question, and votes were cast on it, so the message stays as written.
+  # A question's body is its text, and answers were given to it, so the message stays as written.
   # Runs inside the edit's transaction, on the locked message.
   defp refuse_question_edit(%Message{id: message_id}) do
-    if Repo.exists?(from(poll in Poll, where: poll.message_id == ^message_id)),
+    if Repo.exists?(from(question in Question, where: question.message_id == ^message_id)),
       do: {:error, :forbidden},
       else: :ok
   end
@@ -557,7 +557,7 @@ defmodule Tavern.Chat.Messages do
 
   defp broadcast(event, %Message{} = message) do
     Topics.broadcast_channel(message.channel_id, {event, message})
-    if event == :message_deleted, do: ThreadFollows.broadcast_message_deleted(message)
+    if event == :message_deleted, do: ThreadFollows.broadcast_message_unlisted(message)
     :ok
   end
 

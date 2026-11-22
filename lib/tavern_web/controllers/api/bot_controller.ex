@@ -203,11 +203,11 @@ defmodule TavernWeb.API.BotController do
   def dispatch({:reaction_removed, message, reaction}),
     do: {:emit, "reaction.removed", Bots.serialize_reaction(message, reaction)}
 
-  def dispatch({:poll_voted, message, vote}),
-    do: {:emit, "poll.voted", Bots.serialize_poll_vote(message, vote)}
+  def dispatch({:question_answered, message, answer}),
+    do: {:emit, "question.answered", Bots.serialize_question_answer(message, answer)}
 
-  def dispatch({:poll_closed, message, reason}),
-    do: {:emit, "poll.closed", Bots.serialize_poll_closed(message, reason)}
+  def dispatch({:question_closed, message, reason}),
+    do: {:emit, "question.closed", Bots.serialize_question_closed(message, reason)}
 
   def dispatch({:channel_created, %{kind: :thread_public} = thread}),
     do: {:thread_created, thread}

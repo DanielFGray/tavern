@@ -383,18 +383,18 @@ defmodule Tavern.Bots do
   def create_public_thread(_, _, _), do: {:error, :invalid_params}
 
   @doc """
-  Sends a poll as the acting bot (`Tavern.Chat.Polls.create_poll/3`). The bot sets every option
-  label, and may narrow the voters and close the poll after N votes: an agent question is a poll
-  with one named voter and `max_voters: 1`. Returns `{:ok, %{message: serialized}}`.
+  Sends a question as the acting bot (`Tavern.Chat.Questions.create_question/3`): a poll, or a
+  prompt (`ask` or `permission`) that one member it names answers once. The bot sets every
+  option label. Returns `{:ok, %{message: serialized}}`.
   """
-  def create_poll(%Scope{} = scope, channel_id, attrs) when is_map(attrs) do
+  def create_question(%Scope{} = scope, channel_id, attrs) when is_map(attrs) do
     with {:ok, _bot_user} <- acting_member(scope),
-         {:ok, message} <- Chat.create_poll(scope, channel_id, attrs) do
+         {:ok, message} <- Chat.create_question(scope, channel_id, attrs) do
       {:ok, %{message: Serializer.serialize_message(message)}}
     end
   end
 
-  def create_poll(_, _, _), do: {:error, :invalid_params}
+  def create_question(_, _, _), do: {:error, :invalid_params}
 
   @doc "The message `message_id`, serialized, when the bot may view its channel."
   def get_message(%Scope{} = scope, message_id) do
@@ -407,10 +407,10 @@ defmodule Tavern.Bots do
     end
   end
 
-  @doc "The poll message `message_id` with its results, when the bot may view it."
-  def get_poll(%Scope{} = scope, message_id) do
+  @doc "The question message `message_id` with its results, when the bot may view it."
+  def get_question(%Scope{} = scope, message_id) do
     case Chat.get_message(scope, message_id) do
-      %{poll: %Tavern.Chat.Poll{}} = message ->
+      %{question: %Tavern.Chat.Question{}} = message ->
         {:ok, %{message: Serializer.serialize_message(message)}}
 
       _ ->
@@ -418,10 +418,10 @@ defmodule Tavern.Bots do
     end
   end
 
-  @doc "Ends the poll on `message_id` (`Tavern.Chat.Polls.close_poll/2`)."
-  def close_poll(%Scope{} = scope, message_id) do
+  @doc "Closes the question on `message_id` (`Tavern.Chat.Questions.close_question/2`)."
+  def close_question(%Scope{} = scope, message_id) do
     with {:ok, _bot_user} <- acting_member(scope),
-         {:ok, message} <- Chat.close_poll(scope, message_id) do
+         {:ok, message} <- Chat.close_question(scope, message_id) do
       {:ok, %{message: Serializer.serialize_message(message)}}
     end
   end
@@ -466,10 +466,11 @@ defmodule Tavern.Bots do
 
   def serialize_thread(thread), do: Serializer.serialize_thread(thread)
 
-  def serialize_poll_vote(message, vote), do: Serializer.serialize_poll_vote(message, vote)
+  def serialize_question_answer(message, answer),
+    do: Serializer.serialize_question_answer(message, answer)
 
-  def serialize_poll_closed(message, reason),
-    do: Serializer.serialize_poll_closed(message, reason)
+  def serialize_question_closed(message, reason),
+    do: Serializer.serialize_question_closed(message, reason)
 
   # A bot that is not deleted and not the system user, or `{:error, :not_found}`. A value that is
   # not a UUID is not found, not an error.

@@ -1,13 +1,14 @@
-defmodule Tavern.Chat.PollCloser do
+defmodule Tavern.Chat.QuestionCloser do
   @moduledoc """
-  Closes polls when their end time passes (`Tavern.Chat.Polls.close_due/1`), so bots receive
-  `poll.closed` without anyone voting. It wakes at the next end time it knows of, and at least
-  every `@sweep_ms`, which also picks up polls created on another node. Votes do not depend on
-  it: a vote after the end time is refused under the poll row lock.
+  Closes polls when their end time passes (`Tavern.Chat.Questions.close_due/1`), so bots receive
+  `question.closed` without anyone voting. Only a poll has an end time. It wakes at the next end
+  time it knows of, and at least every `@sweep_ms`, which also picks up polls created on another
+  node. Votes do not depend on it: a vote after the end time is refused under the question row
+  lock.
   """
   use GenServer
 
-  alias Tavern.Chat.Polls
+  alias Tavern.Chat.Questions
 
   @sweep_ms 60_000
 
@@ -29,7 +30,7 @@ defmodule Tavern.Chat.PollCloser do
 
   @impl true
   def handle_info(:sweep, _timer) do
-    next = Polls.close_due(DateTime.utc_now())
+    next = Questions.close_due(DateTime.utc_now())
     {:noreply, arm(nil, next)}
   end
 

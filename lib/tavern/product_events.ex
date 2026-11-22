@@ -24,7 +24,7 @@ defmodule Tavern.ProductEvents do
   alias Tavern.Chat.Invite
   alias Tavern.Chat.Message
   alias Tavern.Chat.ModerationCase
-  alias Tavern.Chat.Poll
+  alias Tavern.Chat.Question
   alias Tavern.Chat.Reaction
   alias Tavern.Chat.User
   alias Tavern.Repo
@@ -101,7 +101,7 @@ defmodule Tavern.ProductEvents do
         member: pseudonym(author.id),
         author_kind: author_kind(author),
         message_kind: Atom.to_string(message.kind),
-        poll: match?(%Poll{}, message.poll)
+        question: question_kind(message.question)
       })
     )
   end
@@ -121,11 +121,23 @@ defmodule Tavern.ProductEvents do
     )
   end
 
-  def record({:poll_voted, %Message{} = message, %{user_id: user_id}}),
-    do: emit("poll.voted", Map.put(place(message.channel), :member, pseudonym(user_id)))
+  def record({:question_answered, %Message{} = message, %{user_id: user_id}}) do
+    emit(
+      "question.answered",
+      message.channel
+      |> place()
+      |> Map.merge(%{member: pseudonym(user_id), question: question_kind(message.question)})
+    )
+  end
 
-  def record({:poll_closed, %Message{} = message, reason}),
-    do: emit("poll.closed", Map.put(place(message.channel), :reason, Atom.to_string(reason)))
+  def record({:question_closed, %Message{} = message, reason}) do
+    emit(
+      "question.closed",
+      message.channel
+      |> place()
+      |> Map.merge(%{reason: Atom.to_string(reason), question: question_kind(message.question)})
+    )
+  end
 
   def record({:channel_created, %Channel{} = channel}) do
     if Channel.thread?(channel) do
@@ -184,6 +196,11 @@ defmodule Tavern.ProductEvents do
       }
     end
   end
+
+  # A message's question kind (`poll`, `ask`, `permission`), or `none` for a plain message. Event
+  # fields are never nil.
+  defp question_kind(%Question{kind: kind}), do: Atom.to_string(kind)
+  defp question_kind(_question), do: "none"
 
   defp author_kind(%User{bot: true}), do: "bot"
   defp author_kind(%User{system: true}), do: "system"

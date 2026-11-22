@@ -76,9 +76,9 @@ defmodule Tavern.Chat.SendLimitTest do
              Chat.create_forum_post(scope, ctx.forum.id, %{"title" => "Help", "body" => "me"})
 
     assert {:ok, _poll} =
-             Chat.create_poll(scope, ctx.general.id, %{
+             Chat.create_question(scope, ctx.general.id, %{
                "question" => "Lunch?",
-               "options" => ["Yes", "No"]
+               "options" => [%{"label" => "Yes"}, %{"label" => "No"}]
              })
 
     assert {:error, {:rate_limited, _}} =
@@ -88,9 +88,9 @@ defmodule Tavern.Chat.SendLimitTest do
              Chat.create_forum_post(scope, ctx.forum.id, %{"title" => "Again", "body" => "me"})
 
     assert {:error, {:rate_limited, _}} =
-             Chat.create_poll(scope, ctx.general.id, %{
+             Chat.create_question(scope, ctx.general.id, %{
                "question" => "Dinner?",
-               "options" => ["Yes", "No"]
+               "options" => [%{"label" => "Yes"}, %{"label" => "No"}]
              })
   end
 

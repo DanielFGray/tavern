@@ -28,7 +28,7 @@ Hovering (after 300 ms), clicking, tapping or focusing a member's name or avatar
 - `ProfileCardHook` gives the open trigger the CSS anchor name `--profile-trigger` and pushes `show_profile`. The server keeps at most one card in the `:profile_card` assign; a newer request replaces it and `hide_profile` clears it. The card closes on Escape, a click elsewhere, or when the pointer leaves the trigger and the card.
 - `Accounts.get_profile/2` reads the card: avatar, name, username, Owner and Bot badges, status, join date, bio and roles (highest first, without the default role). A viewer outside the server, a deleted, removed or deactivated account, and an unknown username all give nil, so no card opens.
 - The bio shows through the same client Markdown renderer and sanitiser as messages. An `@name` in text becomes a trigger whether or not a member has that name; the server finds no card for a stray name.
-- Reaction and poll voter names are not triggers yet: they are a joined string inside a vote button.
+- Reaction and poll voter names are not triggers yet: they are a joined string inside a vote button (questions.md).
 
 ## Deleting an account
 
@@ -60,7 +60,7 @@ It also:
 
 After the commit, the account's open LiveViews get `"disconnect"`, and the objects of those images leave the object store (`MediaAssets.delete_objects/1`). Both happen after the commit, so a reconnect finds no session and a rollback never loses an image.
 
-What stays: messages, reactions, poll ballots, invite uses, moderation cases, message reports and audit entries. They are the server's record, and other members' messages reply to and quote these messages. Invites the account created stay usable. An invite belongs to the server, and revoking one is a moderator's choice.
+What stays: messages, reactions, question answers, invite uses, moderation cases, message reports and audit entries. They are the server's record, and other members' messages reply to and quote these messages. Invites the account created stay usable. An invite belongs to the server, and revoking one is a moderator's choice.
 
 Mentions are recorded from `@username` tokens. A token matches only accounts that are not deleted, so a tombstone name is never recorded as a mention.
 
@@ -88,7 +88,7 @@ Each cancellation clears the date and writes an `account_deletion_canceled` entr
 
 ### The sweep
 
-`DeletionSweeper` is a GenServer in the supervision tree, built like `Tavern.Chat.PollCloser`. It sweeps one minute after start and then every hour; a deletion is due 30 days ahead, so an hour late costs nothing. `config :tavern, :deletion_sweeper, false` leaves it out, which the test config does. Tests call `delete_due_accounts/1` with a chosen time.
+`DeletionSweeper` is a GenServer in the supervision tree, built like `Tavern.Chat.QuestionCloser`. It sweeps one minute after start and then every hour; a deletion is due 30 days ahead, so an hour late costs nothing. `config :tavern, :deletion_sweeper, false` leaves it out, which the test config does. Tests call `delete_due_accounts/1` with a chosen time.
 
 `delete_due_accounts(now)` selects up to 500 due memberships. It then deletes each in its own transaction. That transaction takes the membership row `FOR UPDATE SKIP LOCKED` and checks again that the date is at or before `now`, the membership is still deactivated, and it is not banned. The ban check is a second guard behind the ban path's cancellation, for a banned row that still carries a date. As a result:
 

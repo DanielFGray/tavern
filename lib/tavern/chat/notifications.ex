@@ -180,7 +180,8 @@ defmodule Tavern.Chat.Notifications do
 
   defp latest_message_for_channel(channel_id) do
     Message
-    |> where([message], message.channel_id == ^channel_id and is_nil(message.deleted_at))
+    |> where([message], message.channel_id == ^channel_id)
+    |> Message.where_listed()
     |> order_by([message], desc: message.inserted_at, desc: message.id)
     |> limit(1)
     |> Repo.one()
@@ -246,10 +247,10 @@ defmodule Tavern.Chat.Notifications do
       left_join: last_read_message in Message,
       on: last_read_message.id == membership.last_read_message_id,
       where: message.channel_id in ^channel_ids,
-      where: is_nil(message.deleted_at),
       where: message.author_id != ^user_id,
       where: ^boundary
     )
+    |> Message.where_listed()
   end
 
   defp unread_boundary_dynamic do

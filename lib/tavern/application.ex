@@ -29,8 +29,8 @@ defmodule Tavern.Application do
       # burst of messages can start; a write over it gets no embed.
       {Task.Supervisor, name: Tavern.Embeds.TaskSupervisor, max_children: 50},
       # Closes polls when their end time passes. Tests close polls by calling
-      # `Tavern.Chat.Polls.close_due/1`, so they run without it.
-      Application.get_env(:tavern, :poll_closer, true) && Tavern.Chat.PollCloser,
+      # `Tavern.Chat.Questions.close_due/1`, so they run without it.
+      Application.get_env(:tavern, :question_closer, true) && Tavern.Chat.QuestionCloser,
       # Deletes accounts whose scheduled deletion has passed. Tests call
       # `Tavern.Accounts.delete_due_accounts/1` instead.
       Application.get_env(:tavern, :deletion_sweeper, true) && Tavern.Accounts.DeletionSweeper,

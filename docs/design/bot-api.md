@@ -43,11 +43,11 @@ Lists a page of messages, oldest first, with `after` and `before` cursors. A del
 
 ## Rate limits
 
-A bot is a member, so its messages count against the per-member send limit (rate-limits.md), as a person's do. A message send, a poll and the `send_message` command over the limit answer 429 `rate_limited` with `retry_after` seconds and a `Retry-After` header. Edits of one message have their own cap (`Tavern.Bots.EditLimit`) and answer the same way.
+A bot is a member, so its messages count against the per-member send limit (rate-limits.md), as a person's do. A message send, a question (questions.md) and the `send_message` command over the limit answer 429 `rate_limited` with `retry_after` seconds and a `Retry-After` header. Edits of one message have their own cap (`Tavern.Bots.EditLimit`) and answer the same way.
 
 ## Metadata limits
 
-A message's `metadata` is capped on every write. `Tavern.Chat.Message.changeset/2` checks it, so the composer, the user API, the bot API, the `send_message` command and the poll and forum writes all meet the same bounds. Only the `entities` key is stored (`Tavern.Chat.Messages`), so the bounds apply to that list.
+A message's `metadata` is capped on every write. `Tavern.Chat.Message.changeset/2` checks it, so the composer, the user API, the bot API, the `send_message` command and the question and forum writes all meet the same bounds. Only the `entities` key is stored (`Tavern.Chat.Messages`), so the bounds apply to that list.
 
 - **16,384 bytes encoded at most.** A mention entity (`{"type":"mention","id":<36-character uuid>,"label":<username, at most 24 characters>}`) encodes to about 100 bytes, so the cap holds about 160 entities. A 4,000-character body, the body limit, with a mention every 25 characters has 160 mentions. The cap admits every message that dense and refuses more.
 - **Depth 3 at most.** The stored map is level 1, the `entities` array level 2, and each entity object level 3. An entity holds only scalars, so a value nested deeper is not an entity.

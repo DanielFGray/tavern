@@ -240,8 +240,8 @@ defmodule TavernWeb.ServerComponents.Messages do
                 </div>
               </.form>
             <% else %>
-              <%= if poll_message?(@message) do %>
-                <TavernWeb.ServerComponents.Polls.poll_card
+              <%= if question_message?(@message) do %>
+                <TavernWeb.ServerComponents.Questions.question_card
                   message={@message}
                   server={@server}
                   rights={@rights}
@@ -626,7 +626,7 @@ defmodule TavernWeb.ServerComponents.Messages do
         <% end %>
 
         <button
-          :if={own_message?(@message, @server.current_user) and not poll_message?(@message)}
+          :if={own_message?(@message, @server.current_user) and not question_message?(@message)}
           type="button"
           phx-click="edit_message"
           phx-value-id={@message.id}

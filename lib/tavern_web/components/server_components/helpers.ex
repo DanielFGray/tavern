@@ -201,9 +201,9 @@ defmodule TavernWeb.ServerComponents.Helpers do
 
   defdelegate deleted_message?(message), to: Tavern.Chat.Message, as: :deleted?
 
-  @doc "Whether the message is a poll."
-  def poll_message?(%{poll: %Tavern.Chat.Poll{}}), do: true
-  def poll_message?(_message), do: false
+  @doc "Whether the message is a question (a poll, an ask or a permission request)."
+  def question_message?(%{question: %Tavern.Chat.Question{}}), do: true
+  def question_message?(_message), do: false
 
   # Whether to show the remove button on a message's embeds. `Tavern.Chat.suppress_embeds/2`
   # decides the removal itself.

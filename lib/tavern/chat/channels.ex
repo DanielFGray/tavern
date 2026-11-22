@@ -492,10 +492,11 @@ defmodule Tavern.Chat.Channels do
 
   defp latest_messages_by_channel(channel_ids) do
     from(message in Message,
-      where: message.channel_id in ^channel_ids and is_nil(message.deleted_at),
+      where: message.channel_id in ^channel_ids,
       distinct: message.channel_id,
       order_by: [asc: message.channel_id, desc: message.inserted_at, desc: message.id]
     )
+    |> Message.where_listed()
     |> Repo.all()
     |> Map.new(&{&1.channel_id, &1})
   end
