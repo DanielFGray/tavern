@@ -145,9 +145,17 @@ defmodule Tavern.Chat.Threads do
     do: where(query, [thread], fragment("? @> ?::text[]", thread.hashtags, ^tags))
 
   # A thread no one has named is titled by its starter message (`Channel.title/1`), so its whole
-  # starter body is searched in place of a name.
+  # starter body is searched in place of a name. A deleted starter's body is a placeholder, which
+  # no title shows, so it is not searched either.
   defp where_title_words(query, words) do
-    title = dynamic([thread, starter: starter], coalesce(thread.name, starter.body))
+    title =
+      dynamic(
+        [thread, starter: starter],
+        coalesce(
+          thread.name,
+          fragment("CASE WHEN ? IS NULL THEN ? ELSE '' END", starter.deleted_at, starter.body)
+        )
+      )
 
     Enum.reduce(words, query, fn word, query ->
       where(query, ^dynamic(ilike(^title, ^"%#{escape_like(word)}%")))

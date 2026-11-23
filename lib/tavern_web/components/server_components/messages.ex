@@ -160,7 +160,8 @@ defmodule TavernWeb.ServerComponents.Messages do
   conversation that holds the message (`message_rights/2`). A thread row has no thread of its
   own: a forum post's first message is the post's starter, and would otherwise host the thread
   inside itself. A channel row whose thread is open renders the thread under itself, outside the
-  row's hover group, so hovering a reply shows only that reply's actions.
+  row's hover group, so hovering a reply shows only that reply's actions. A deleted message that
+  starts a thread renders as `deleted_starter_row/1` instead: a tombstone that keeps the thread.
   """
   def message_item(assigns) do
     rights = message_rights(assigns.server, assigns.message)
@@ -174,202 +175,167 @@ defmodule TavernWeb.ServerComponents.Messages do
 
     ~H"""
     <div id={@dom_id}>
-      <div class="group anchor-scope relative px-4 py-0.5 hover:bg-base-100/80">
-        <article class="relative flex gap-3 py-2">
-          <div class="shrink-0 pt-0.5">
-            <button
-              type="button"
-              data-profile-user-id={@message.author.id}
-              aria-label={"Profile of #{@message.author.display_name}"}
-              class="block rounded-full"
-            >
-              <.avatar user={@message.author} />
-            </button>
-          </div>
-
-          <div class="min-w-0 flex-1" phx-click="toggle_message_controls" phx-value-id={@message.id}>
-            <div :if={@message.reply_to} class="mt-1 text-xs text-base-content/65">
-              <span class="truncate">
-                Replying to
-                <span class="font-semibold text-base-content/80">
-                  {@message.reply_to.author.display_name}
-                </span>
-                ·
-                <%= if deleted_message?(@message.reply_to) do %>
-                  <span id={"reply-deleted-#{@message.id}"} class="italic">
-                    Original message deleted
-                  </span>
-                <% else %>
-                  {@message.reply_to.body}
-                <% end %>
-              </span>
-            </div>
-
-            <div class="flex items-baseline gap-2">
-              <p class="truncate text-[15px] font-medium leading-5 text-base-content">
-                <button
-                  type="button"
-                  data-profile-user-id={@message.author.id}
-                  class="max-w-full truncate text-left hover:underline"
-                >
-                  {@message.author.display_name}
-                </button>
-              </p>
-              <time class="shrink-0 text-[11px] text-base-content/50">
-                {message_timestamp(@message.inserted_at)}
-              </time>
-            </div>
-
-            <%= if @server.editing_message_id == @message.id do %>
-              <.form
-                for={@server.editing_form}
-                id={"edit-message-form-#{@message.id}"}
-                phx-submit="save_edit"
-                class="mt-2"
-              >
-                <input type="hidden" name="message[id]" value={@message.id} />
-                <div class="rounded-md border border-primary/30 bg-base-100 p-2">
-                  <.input
-                    field={@server.editing_form[:body]}
-                    type="textarea"
-                    id={"edit-message-body-#{@message.id}"}
-                    rows="3"
-                    class="min-h-24 w-full resize-none rounded-md border border-base-300 bg-base-200 px-3 py-2 text-sm text-base-content outline-none transition focus:border-primary"
-                  />
-                  <div class="mt-2 flex items-center justify-end gap-2">
-                    <button
-                      type="button"
-                      phx-click="cancel_edit"
-                      class="rounded-md px-2.5 py-1 text-[11px] font-semibold text-base-content/70 transition hover:bg-base-200 hover:text-base-content"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      class="rounded-md bg-violet-500 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-violet-400"
-                    >
-                      Save
-                    </button>
-                  </div>
-                </div>
-              </.form>
-            <% else %>
-              <%= if question_message?(@message) do %>
-                <TavernWeb.ServerComponents.Questions.question_card
-                  message={@message}
-                  server={@server}
-                  rights={@rights}
-                />
-              <% else %>
-                <div
-                  class={["message-body", message_body_classes()]}
-                  data-markdown-source={@message.body}
-                >
-                  {@message.body}
-                </div>
-              <% end %>
-            <% end %>
-
-            <TavernWeb.ServerComponents.Embeds.message_embeds
-              message={@message}
-              removable?={embeds_removable?(@message, @server)}
-            />
-
-            <div class="mt-1 flex items-center gap-2 text-[11px] text-base-content/50">
-              <span :if={edited_message?(@message)}>(edited)</span>
-            </div>
-
-            <div class="mt-2 flex flex-wrap items-center gap-1.5">
+      <%= if deleted_message?(@message) do %>
+        <.deleted_starter_row message={@message} thread={@thread} server={@server} />
+      <% else %>
+        <div class="group anchor-scope relative px-4 py-0.5 hover:bg-base-100/80">
+          <article class="relative flex gap-3 py-2">
+            <div class="shrink-0 pt-0.5">
               <button
-                :for={reaction <- reaction_summaries(@message, @server.current_user)}
                 type="button"
-                phx-click={
-                  if(reaction.kind == :unicode, do: "toggle_reaction", else: "toggle_custom_reaction")
-                }
-                phx-value-id={@message.id}
-                phx-value-emoji={reaction.emoji_unicode}
-                phx-value-emoji_id={reaction.emoji_id}
-                id={reaction_dom_id(@message, reaction)}
-                disabled={!@rights.react?}
-                class={[
-                  "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition",
-                  reaction.reacted? &&
-                    "border-violet-400/60 bg-violet-500/20 text-violet-800 dark:text-violet-100",
-                  !reaction.reacted? &&
-                    "border-base-300 bg-base-100 text-base-content/70 hover:border-base-content/20 hover:text-base-content",
-                  !@rights.react? &&
-                    "cursor-not-allowed opacity-50 hover:border-base-300 hover:text-base-content/70"
-                ]}
+                data-profile-user-id={@message.author.id}
+                aria-label={"Profile of #{@message.author.display_name}"}
+                class="block rounded-full"
               >
-                <span :if={reaction.kind == :unicode}>{reaction.emoji_unicode}</span>
-                <img
-                  :if={reaction.kind == :custom}
-                  src={reaction.url}
-                  alt={reaction.label}
-                  class="size-4 rounded object-cover"
-                />
-                <span>{reaction.count}</span>
+                <.avatar user={@message.author} />
               </button>
             </div>
 
-            <.reaction_picker
-              :if={reaction_picker_open?(@message, @server.reaction_picker_message_id)}
-              message={@message}
-              server={@server}
-            />
+            <div class="min-w-0 flex-1" phx-click="toggle_message_controls" phx-value-id={@message.id}>
+              <div :if={@message.reply_to} class="mt-1 text-xs text-base-content/65">
+                <span class="truncate">
+                  Replying to
+                  <span class="font-semibold text-base-content/80">
+                    {@message.reply_to.author.display_name}
+                  </span>
+                  ·
+                  <%= if deleted_message?(@message.reply_to) do %>
+                    <span id={"reply-deleted-#{@message.id}"} class="italic">
+                      Original message deleted
+                    </span>
+                  <% else %>
+                    {@message.reply_to.body}
+                  <% end %>
+                </span>
+              </div>
 
-            <%!-- The pill toggles the thread: it opens it, and closes it again while it is open. --%>
-            <.link
-              :if={@thread}
-              patch={
-                if thread_open_for_message?(@message, @server.active_thread),
-                  do: channel_path(@server.active_channel),
-                  else: thread_path(@server.active_channel, @thread)
-              }
-              id={"thread-summary-#{@message.id}"}
-              aria-expanded={
-                if(thread_open_for_message?(@message, @server.active_thread),
-                  do: "true",
-                  else: "false"
-                )
-              }
-              class="mt-3 inline-flex max-w-full items-center gap-2 rounded-full border border-base-300 bg-base-100 px-3 py-1 text-[11px] font-semibold text-base-content/75 transition hover:border-base-content/20 hover:text-base-content"
-            >
-              <.icon name="hero-chat-bubble-left-right" class="size-3.5 shrink-0" />
-              <%!-- The title shows only once someone has named the thread; an unnamed thread is
-                   known by its starter, which sits right above. --%>
-              <span
-                :if={@thread.name}
-                id={"thread-summary-title-#{@message.id}"}
-                class="max-w-[12rem] shrink-0 truncate text-base-content"
-              >
-                {@thread.name}
-              </span>
-              <span class={["shrink-0", @thread.name && "font-normal text-base-content/55"]}>
-                {reply_count_label(thread_reply_count(@message, @server.thread_summaries))}
-              </span>
-              <% latest = thread_latest_reply(@message, @server.thread_summaries) %>
-              <span
-                :if={latest}
-                id={"thread-latest-reply-#{@message.id}"}
-                class="min-w-0 truncate font-normal text-base-content/55"
-              >
-                <span class="font-semibold text-base-content/75">{latest.author.display_name}</span>
-                {body_preview(latest.body)}
-              </span>
-              <span :if={!latest and !@thread.name} class="truncate text-base-content/45">
-                {thread_title(@thread)}
-              </span>
-            </.link>
+              <div class="flex items-baseline gap-2">
+                <p class="truncate text-[15px] font-medium leading-5 text-base-content">
+                  <button
+                    type="button"
+                    data-profile-user-id={@message.author.id}
+                    class="max-w-full truncate text-left hover:underline"
+                  >
+                    {@message.author.display_name}
+                  </button>
+                </p>
+                <time class="shrink-0 text-[11px] text-base-content/50">
+                  {message_timestamp(@message.inserted_at)}
+                </time>
+              </div>
 
-            <p :if={!@rights.react?} class="mt-2 text-[11px] text-base-content/50">
-              Reactions are disabled for your permissions in this channel.
-            </p>
-          </div>
+              <%= if @server.editing_message_id == @message.id do %>
+                <.form
+                  for={@server.editing_form}
+                  id={"edit-message-form-#{@message.id}"}
+                  phx-submit="save_edit"
+                  class="mt-2"
+                >
+                  <input type="hidden" name="message[id]" value={@message.id} />
+                  <div class="rounded-md border border-primary/30 bg-base-100 p-2">
+                    <.input
+                      field={@server.editing_form[:body]}
+                      type="textarea"
+                      id={"edit-message-body-#{@message.id}"}
+                      rows="3"
+                      class="min-h-24 w-full resize-none rounded-md border border-base-300 bg-base-200 px-3 py-2 text-sm text-base-content outline-none transition focus:border-primary"
+                    />
+                    <div class="mt-2 flex items-center justify-end gap-2">
+                      <button
+                        type="button"
+                        phx-click="cancel_edit"
+                        class="rounded-md px-2.5 py-1 text-[11px] font-semibold text-base-content/70 transition hover:bg-base-200 hover:text-base-content"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        class="rounded-md bg-violet-500 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-violet-400"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                </.form>
+              <% else %>
+                <%= if question_message?(@message) do %>
+                  <TavernWeb.ServerComponents.Questions.question_card
+                    message={@message}
+                    server={@server}
+                    rights={@rights}
+                  />
+                <% else %>
+                  <div
+                    class={["message-body", message_body_classes()]}
+                    data-markdown-source={@message.body}
+                  >
+                    {@message.body}
+                  </div>
+                <% end %>
+              <% end %>
 
-          <.message_actions server={@server} message={@message} thread={@thread} rights={@rights} />
-        </article>
-      </div>
+              <TavernWeb.ServerComponents.Embeds.message_embeds
+                message={@message}
+                removable?={embeds_removable?(@message, @server)}
+              />
+
+              <div class="mt-1 flex items-center gap-2 text-[11px] text-base-content/50">
+                <span :if={edited_message?(@message)}>(edited)</span>
+              </div>
+
+              <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                <button
+                  :for={reaction <- reaction_summaries(@message, @server.current_user)}
+                  type="button"
+                  phx-click={
+                    if(reaction.kind == :unicode,
+                      do: "toggle_reaction",
+                      else: "toggle_custom_reaction"
+                    )
+                  }
+                  phx-value-id={@message.id}
+                  phx-value-emoji={reaction.emoji_unicode}
+                  phx-value-emoji_id={reaction.emoji_id}
+                  id={reaction_dom_id(@message, reaction)}
+                  disabled={!@rights.react?}
+                  class={[
+                    "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold transition",
+                    reaction.reacted? &&
+                      "border-violet-400/60 bg-violet-500/20 text-violet-800 dark:text-violet-100",
+                    !reaction.reacted? &&
+                      "border-base-300 bg-base-100 text-base-content/70 hover:border-base-content/20 hover:text-base-content",
+                    !@rights.react? &&
+                      "cursor-not-allowed opacity-50 hover:border-base-300 hover:text-base-content/70"
+                  ]}
+                >
+                  <span :if={reaction.kind == :unicode}>{reaction.emoji_unicode}</span>
+                  <img
+                    :if={reaction.kind == :custom}
+                    src={reaction.url}
+                    alt={reaction.label}
+                    class="size-4 rounded object-cover"
+                  />
+                  <span>{reaction.count}</span>
+                </button>
+              </div>
+
+              <.reaction_picker
+                :if={reaction_picker_open?(@message, @server.reaction_picker_message_id)}
+                message={@message}
+                server={@server}
+              />
+
+              <.thread_chip message={@message} thread={@thread} server={@server} />
+
+              <p :if={!@rights.react?} class="mt-2 text-[11px] text-base-content/50">
+                Reactions are disabled for your permissions in this channel.
+              </p>
+            </div>
+
+            <.message_actions server={@server} message={@message} thread={@thread} rights={@rights} />
+          </article>
+        </div>
+      <% end %>
 
       <div
         :if={@thread && thread_open_for_message?(@message, @server.active_thread)}
@@ -382,6 +348,81 @@ defmodule TavernWeb.ServerComponents.Messages do
         />
       </div>
     </div>
+    """
+  end
+
+  attr :message, :map, required: true
+  attr :thread, :map, default: nil
+  attr :server, :map, required: true
+
+  @doc """
+  The row a deleted message leaves when it starts a thread. Its text and author are gone, so the
+  row keeps only the thread's chip; the thread panel opens beneath it as it does under a live
+  starter (docs/design/threads.md, "Starters").
+  """
+  def deleted_starter_row(assigns) do
+    ~H"""
+    <div class="group anchor-scope relative px-4 py-0.5">
+      <article class="relative flex flex-col items-start py-2">
+        <p id={"deleted-message-#{@message.id}"} class="text-sm italic text-base-content/50">
+          Original message was deleted
+        </p>
+        <.thread_chip message={@message} thread={@thread} server={@server} />
+      </article>
+    </div>
+    """
+  end
+
+  attr :message, :map, required: true
+  attr :thread, :map, default: nil
+  attr :server, :map, required: true
+
+  @doc "The pill under a starter that opens or closes its thread. Renders nothing without a thread."
+  def thread_chip(assigns) do
+    ~H"""
+    <%!-- The pill toggles the thread: it opens it, and closes it again while it is open. --%>
+    <.link
+      :if={@thread}
+      patch={
+        if thread_open_for_message?(@message, @server.active_thread),
+          do: channel_path(@server.active_channel),
+          else: thread_path(@server.active_channel, @thread)
+      }
+      id={"thread-summary-#{@message.id}"}
+      aria-expanded={
+        if(thread_open_for_message?(@message, @server.active_thread),
+          do: "true",
+          else: "false"
+        )
+      }
+      class="mt-3 inline-flex max-w-full items-center gap-2 rounded-full border border-base-300 bg-base-100 px-3 py-1 text-[11px] font-semibold text-base-content/75 transition hover:border-base-content/20 hover:text-base-content"
+    >
+      <.icon name="hero-chat-bubble-left-right" class="size-3.5 shrink-0" />
+      <%!-- The title shows only once someone has named the thread; an unnamed thread is
+         known by its starter, which sits right above. --%>
+      <span
+        :if={@thread.name}
+        id={"thread-summary-title-#{@message.id}"}
+        class="max-w-[12rem] shrink-0 truncate text-base-content"
+      >
+        {@thread.name}
+      </span>
+      <span class={["shrink-0", @thread.name && "font-normal text-base-content/55"]}>
+        {reply_count_label(thread_reply_count(@message, @server.thread_summaries))}
+      </span>
+      <% latest = thread_latest_reply(@message, @server.thread_summaries) %>
+      <span
+        :if={latest}
+        id={"thread-latest-reply-#{@message.id}"}
+        class="min-w-0 truncate font-normal text-base-content/55"
+      >
+        <span class="font-semibold text-base-content/75">{latest.author.display_name}</span>
+        {body_preview(latest.body)}
+      </span>
+      <span :if={!latest and !@thread.name} class="truncate text-base-content/45">
+        {thread_title(@thread)}
+      </span>
+    </.link>
     """
   end
 

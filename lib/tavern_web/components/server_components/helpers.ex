@@ -69,6 +69,11 @@ defmodule TavernWeb.ServerComponents.Helpers do
 
   def thread_title(thread), do: Tavern.Chat.Channel.title(thread)
 
+  # The placeholder title of a thread whose starter was deleted reads as a missing name. Opacity,
+  # not a text colour, so it keeps the colour the title's own classes give it.
+  def thread_title_class(thread),
+    do: if(Tavern.Chat.Channel.deleted_starter_title?(thread), do: "italic opacity-60")
+
   def reply_count_label(1), do: "1 reply"
   def reply_count_label(count), do: "#{count} replies"
 

@@ -20,7 +20,7 @@ defmodule TavernWeb.ServerComponents.Threads do
     assigns =
       assign(assigns,
         menu_id: "thread-actions-menu-#{assigns.message.id}",
-        rename_form: to_form(%{"name" => thread_title(assigns.thread)}, as: :thread_rename),
+        rename_form: to_form(%{"name" => rename_value(assigns.thread)}, as: :thread_rename),
         menu?:
           assigns.server.thread_pane.abilities.archive_thread or
             assigns.server.thread_pane.abilities.rename_thread or
@@ -38,7 +38,10 @@ defmodule TavernWeb.ServerComponents.Threads do
         <.icon name="hero-chat-bubble-left-right" class="size-4 shrink-0 text-base-content/45" />
         <h3
           id={"thread-title-#{@message.id}"}
-          class="min-w-0 truncate text-sm font-semibold text-base-content"
+          class={[
+            "min-w-0 truncate text-sm font-semibold text-base-content",
+            thread_title_class(@thread)
+          ]}
         >
           {thread_title(@thread)}
         </h3>
@@ -368,7 +371,10 @@ defmodule TavernWeb.ServerComponents.Threads do
               id={"thread-browser-open-#{entry.thread.id}"}
               class="min-w-0 flex-1 text-left"
             >
-              <span class="block truncate text-sm font-semibold text-base-content">
+              <span class={[
+                "block truncate text-sm font-semibold text-base-content",
+                thread_title_class(entry.thread)
+              ]}>
                 {thread_title(entry.thread)}
               </span>
               <span class="mt-0.5 block truncate text-[11px] text-base-content/55">
@@ -409,6 +415,12 @@ defmodule TavernWeb.ServerComponents.Threads do
       </div>
     </aside>
     """
+  end
+
+  # The Rename field starts from the title, unless the title is the placeholder for a deleted
+  # starter: that is not a name anyone chose, so renaming must not save it.
+  defp rename_value(thread) do
+    if Tavern.Chat.Channel.deleted_starter_title?(thread), do: "", else: thread_title(thread)
   end
 
   defp thread_browser_empty_text(%{query: query}) when query not in [nil, ""],

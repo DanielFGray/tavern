@@ -90,7 +90,7 @@ A deleted message is hidden, not shown as a tombstone. It keeps its row (`delete
 
 - **Live delete.** A delete removes the row from every open view (`State.stream_update_message/2` calls `stream_delete`). `State.rerender_messages/2` skips deleted messages, so no later re-render brings the row back.
 - **Replies.** A reply keeps its quote line when the quoted message is deleted, and shows "Original message deleted" (`#reply-deleted-<reply id>`) in place of the body. The read still preloads the reply target. A viewer who already has the reply open sees the old quote until the row renders again.
-- **Starters.** A thread whose starter was deleted has no row in the channel, so no chip. It stays in the thread browser and, when followed, in the sidebar, and it opens from either. A forum post with a deleted first message stays a post (forums.md).
+- **Starters.** Deleting a starter never deletes its thread or its replies. In a text channel the starter's row becomes a tombstone that reads "Original message was deleted", with no author, body or message actions. The thread chip and panel hang under it as they do under a live starter. A tombstone is listed only while its thread is live (`Message.where_transcript/1`); a deleted message that starts no thread leaves the channel. Live updates follow the same rule: deleting a starter turns its row into the tombstone in every open session. A thread whose starter was deleted and that has no name is titled "Deleted message", drawn muted and italic in the sidebar, the thread browser, the panel header and the forum post list; no part of the deleted text is shown as a title or searched as one. A forum post whose first message was deleted stays a post (forums.md), with that title.
 
 ## Deleting a thread
 

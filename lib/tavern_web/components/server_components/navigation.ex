@@ -112,7 +112,9 @@ defmodule TavernWeb.ServerComponents.Navigation do
             name="hero-chat-bubble-left-right"
             class="size-3.5 shrink-0 text-base-content/40 transition group-hover:text-base-content/70"
           />
-          <span class="min-w-0 flex-1 truncate">{thread_title(entry.thread)}</span>
+          <span class={["min-w-0 flex-1 truncate", thread_title_class(entry.thread)]}>
+            {thread_title(entry.thread)}
+          </span>
           <span
             :if={entry.unread_count > 0}
             id={"sidebar-thread-unread-#{entry.thread.id}"}

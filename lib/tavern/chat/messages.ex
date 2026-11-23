@@ -56,7 +56,8 @@ defmodule Tavern.Chat.Messages do
   that starts just after that message; `before: message_id` is the page that ends just before
   it. A cursor names a message of this channel, deleted or not, or the call is
   `{:error, :invalid_cursor}`; both cursors at once are `{:error, :invalid_cursor}` too. A
-  missing channel and a hidden one are both `{:error, :not_found}`.
+  missing channel and a hidden one are both `{:error, :not_found}`. A deleted message is listed
+  only as the tombstone of a thread it starts (`Message.where_transcript/1`).
   """
   def list_messages(%Scope{} = scope, channel_id, opts \\ []) do
     with {:ok, channel_id} <- Ids.cast(channel_id),
@@ -67,7 +68,7 @@ defmodule Tavern.Chat.Messages do
         messages =
           Message
           |> where([message], message.channel_id == ^channel_id)
-          |> Message.where_listed()
+          |> Message.where_transcript()
           |> page_from(cursor)
           |> limit(^limit)
           |> preload(^@read_preloads)
