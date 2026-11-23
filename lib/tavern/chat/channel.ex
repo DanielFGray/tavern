@@ -146,15 +146,31 @@ defmodule Tavern.Chat.Channel do
   end
 
   @title_length 40
+  @deleted_starter_title "Deleted message"
 
   @doc """
   What a view shows as the name of `channel`. A channel and a named thread show their name. A
   thread that no one has named shows the start of its starter message, so the starter must be
   loaded (`Repo.preload(thread, :starter_message)`); a thread with no starter shows `"Thread"`.
+  A thread whose starter was deleted shows `"Deleted message"`: the starter's body is a
+  placeholder, and no part of it may show as a title.
   """
   def title(%__MODULE__{name: name}) when is_binary(name), do: name
+
+  def title(%__MODULE__{starter_message: %Tavern.Chat.Message{deleted_at: %DateTime{}}}),
+    do: @deleted_starter_title
+
   def title(%__MODULE__{starter_message: %Tavern.Chat.Message{body: body}}), do: title_from(body)
   def title(%__MODULE__{starter_message: nil}), do: "Thread"
+
+  @doc """
+  Whether `title/1` is the placeholder for a deleted starter. A view draws that title muted, so
+  it reads as a missing name rather than a message's text.
+  """
+  def deleted_starter_title?(%__MODULE__{name: name} = thread) when not is_binary(name),
+    do: title(thread) == @deleted_starter_title
+
+  def deleted_starter_title?(%__MODULE__{}), do: false
 
   @doc "The title of a thread that starts from a message with `body`: its first 40 characters."
   def title_from(body) when is_binary(body) do

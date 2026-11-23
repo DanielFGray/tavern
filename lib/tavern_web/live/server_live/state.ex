@@ -284,13 +284,17 @@ defmodule TavernWeb.ServerLive.State do
     end
   end
 
-  # A message no list shows (deleted, or a closed permission request) leaves the stream instead
-  # of rendering again.
+  # A message the transcript does not show (a closed permission request, or a deleted message
+  # that starts no live thread here) leaves the stream instead of rendering again. The open
+  # channel's thread summaries say which messages start a live thread.
   defp stream_message(socket, name, %Message{} = message) do
-    if Message.listed?(message),
+    if Message.transcript_shown?(message, starts_live_thread?(socket, message)),
       do: stream_insert(socket, name, message),
       else: stream_delete(socket, name, message)
   end
+
+  defp starts_live_thread?(socket, %Message{id: id}),
+    do: Map.has_key?(socket.assigns.thread_summaries, id)
 
   def maybe_refresh_thread_summaries(socket, channel) do
     active_channel = socket.assigns.active_channel
@@ -357,8 +361,8 @@ defmodule TavernWeb.ServerLive.State do
   Inserts the messages again into the stream that lists them, so their rows render with the
   current UI assigns (controls, menu, picker, edit form). A stream renders a row only when it is
   inserted. In a text channel the thread's rows render inside its starter's row, so a thread row
-  takes the starter with it. Ids of messages in neither the open channel nor the open thread are
-  skipped.
+  takes the starter with it. A message the transcript no longer shows leaves its stream. Ids of
+  messages in neither the open channel nor the open thread are skipped.
   """
   def rerender_messages(socket, message_ids) do
     %{current_scope: scope, active_channel: channel, active_thread: thread} = socket.assigns
@@ -368,26 +372,22 @@ defmodule TavernWeb.ServerLive.State do
     {thread_rows, other_rows} =
       scope
       |> Chat.get_messages(message_ids)
-      |> Enum.filter(&Message.listed?/1)
       |> Enum.split_with(&(&1.channel_id == thread_id))
 
     starter_rows =
       if thread_rows == [],
         do: [],
-        else:
-          scope
-          |> Chat.get_messages([thread.starter_message_id])
-          |> Enum.filter(&Message.listed?/1)
+        else: Chat.get_messages(scope, [thread.starter_message_id])
 
     channel_rows = Enum.filter(other_rows ++ starter_rows, &(&1.channel_id == channel_id))
 
     socket
-    |> stream_insert_all(:thread_messages, thread_rows)
-    |> stream_insert_all(:messages, channel_rows)
+    |> stream_messages(:thread_messages, thread_rows)
+    |> stream_messages(:messages, channel_rows)
   end
 
-  defp stream_insert_all(socket, name, messages),
-    do: Enum.reduce(messages, socket, &stream_insert(&2, name, &1))
+  defp stream_messages(socket, name, messages),
+    do: Enum.reduce(messages, socket, &stream_message(&2, name, &1))
 
   def rerender_active_thread_panel(socket) do
     case current_thread_starter_id(socket) do

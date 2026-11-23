@@ -239,7 +239,9 @@ defmodule TavernWeb.ServerComponents.Forums do
               id={"forum-post-open-#{entry.thread.id}"}
               class="min-w-0 text-sm font-semibold text-base-content hover:text-primary"
             >
-              <span class="line-clamp-2">{thread_title(entry.thread)}</span>
+              <span class={["line-clamp-2", thread_title_class(entry.thread)]}>
+                {thread_title(entry.thread)}
+              </span>
             </.link>
           </div>
 

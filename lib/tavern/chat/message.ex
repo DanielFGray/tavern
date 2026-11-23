@@ -1,7 +1,7 @@
 defmodule Tavern.Chat.Message do
   use Ecto.Schema
   import Ecto.Changeset
-  import Ecto.Query, only: [where: 3]
+  import Ecto.Query, only: [where: 3, from: 2]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -71,14 +71,47 @@ defmodule Tavern.Chat.Message do
 
   @doc "Narrows a query whose first binding is a message to the messages `listed?/1` accepts."
   def where_listed(query) do
+    query
+    |> where([message], is_nil(message.deleted_at))
+    |> where_open_permission()
+  end
+
+  @doc """
+  Narrows a query whose first binding is a message to the messages a transcript shows: the
+  `where_listed/1` rows, plus a deleted message that starts a live public thread. That row is the
+  thread's tombstone, which keeps the thread's chip and panel under it (docs/design/threads.md,
+  "Starters"). `transcript_shown?/2` is the same rule for a message already in memory.
+  """
+  def where_transcript(query) do
+    query
+    |> where_open_permission()
+    |> where([message], is_nil(message.deleted_at) or message.id in subquery(thread_starters()))
+  end
+
+  @doc """
+  Whether a transcript shows `message`, given whether it starts a live public thread in its
+  channel. The database form is `where_transcript/1`.
+  """
+  def transcript_shown?(%__MODULE__{} = message, starts_live_thread?) do
+    not closed_permission?(message.question) and
+      (not deleted?(message) or starts_live_thread?)
+  end
+
+  defp where_open_permission(query) do
     where(
       query,
       [message],
-      is_nil(message.deleted_at) and
-        fragment(
-          "NOT EXISTS (SELECT 1 FROM questions WHERE message_id = ? AND kind = 'permission' AND closed_at IS NOT NULL)",
-          message.id
-        )
+      fragment(
+        "NOT EXISTS (SELECT 1 FROM questions WHERE message_id = ? AND kind = 'permission' AND closed_at IS NOT NULL)",
+        message.id
+      )
+    )
+  end
+
+  defp thread_starters do
+    from(thread in Tavern.Chat.Channel,
+      where: thread.kind == :thread_public and is_nil(thread.deleted_at),
+      select: thread.starter_message_id
     )
   end
 

@@ -34,7 +34,9 @@ defmodule TavernWeb.ServerComponents.Composer do
             <span class="min-w-0 truncate">
               <.icon name="hero-chat-bubble-left-right" class="mr-1 size-3.5 align-text-bottom" />
               Replying in thread
-              <span class="font-semibold text-base-content">{thread_title(@thread)}</span>
+              <span class={["font-semibold text-base-content", thread_title_class(@thread)]}>
+                {thread_title(@thread)}
+              </span>
             </span>
             <button
               type="button"

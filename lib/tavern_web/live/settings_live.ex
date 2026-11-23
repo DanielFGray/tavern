@@ -291,9 +291,7 @@ defmodule TavernWeb.SettingsLive do
 
   @impl true
   def handle_event("save_server_settings", %{"server_settings" => attrs}, socket) do
-    attrs = State.maybe_attach_server_icon_upload(socket, attrs)
-
-    case Chat.update_server_settings(socket.assigns.current_scope, attrs) do
+    case State.save_server_settings(socket, attrs) do
       {:ok, settings} ->
         {:noreply,
          socket
