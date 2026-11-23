@@ -134,16 +134,19 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
   end
 
   # The reload drops the thread from the sidebar, the browser and a forum's post list; the
-  # summaries drop the reply pill under its starter.
+  # summaries drop the reply pill under its starter, or the starter's row when it was deleted.
+  # The summaries go first: leaving the thread re-renders the starter's row, and a row inserted
+  # and then deleted in one render stays, because the client applies a stream's deletes before
+  # its inserts.
   defp drop_deleted_thread(socket, thread) do
     socket =
-      if match?(%{id: id} when id == thread.id, socket.assigns.active_thread),
-        do: socket |> State.leave_thread() |> put_flash(:info, "Thread deleted."),
-        else: socket
+      socket
+      |> State.refresh_channels()
+      |> State.maybe_refresh_thread_summaries(thread)
 
-    socket
-    |> State.refresh_channels()
-    |> State.maybe_refresh_thread_summaries(thread)
+    if match?(%{id: id} when id == thread.id, socket.assigns.active_thread),
+      do: socket |> State.leave_thread() |> put_flash(:info, "Thread deleted."),
+      else: socket
   end
 
   # The active channel is read before the refresh, which drops a channel that is no longer visible.

@@ -8,6 +8,7 @@ defmodule TavernWeb.ServerLive.Events.Messages do
   alias Tavern.Chat
   alias TavernWeb.ServerComponents.Helpers, as: RowHelpers
   alias TavernWeb.ServerLive.Events.Helpers
+  alias TavernWeb.ServerLive.Events.Navigation
   alias TavernWeb.ServerLive.Pane
   alias TavernWeb.ServerLive.State
   alias TavernWeb.ServerLive.ThreadNav
@@ -302,18 +303,30 @@ defmodule TavernWeb.ServerLive.Events.Messages do
 
     with {:ok, message} <- State.fetch_open_message(socket, message_id),
          {:ok, deleted_message} <- Chat.delete_message(socket.assigns.current_scope, message.id) do
-      {:noreply,
-       socket
-       |> State.close_message_ui()
-       |> assign(:editing_message_id, nil)
-       |> assign(:editing_form, nil)
-       |> State.rerender_messages([
-         message_id,
-         previous_controls_id,
-         previous_menu_id,
-         previous_delete_id
-       ])
-       |> State.stream_update_message(deleted_message)}
+      socket =
+        socket
+        |> State.close_message_ui()
+        |> assign(:editing_message_id, nil)
+        |> assign(:editing_form, nil)
+        |> State.rerender_messages([
+          message_id,
+          previous_controls_id,
+          previous_menu_id,
+          previous_delete_id
+        ])
+        |> State.stream_update_message(deleted_message)
+
+      # Deleting a starter retitles its thread. The deleter's own view hears no broadcast, so it
+      # runs the handler of `{:channel_updated, _}` itself, as every other session does.
+      starter_id = deleted_message.id
+
+      case socket.assigns.thread_summaries do
+        %{^starter_id => %{thread: thread}} ->
+          Navigation.handle_info({:channel_updated, thread}, socket)
+
+        _ ->
+          {:noreply, socket}
+      end
     else
       :error ->
         {:noreply, socket}

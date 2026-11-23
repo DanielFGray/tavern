@@ -97,7 +97,7 @@ defmodule TavernWeb.ServerLiveDeletedMessagesTest do
     {:ok, _} = Chat.delete_message(scope_for(ctx.other), starter.id)
 
     {:ok, view, _html} = live_hydrated(ctx.conn, ~p"/")
-    refute has_element?(view, "#messages-#{starter.id}")
+    assert has_element?(view, "#deleted-message-#{starter.id}")
 
     view |> element("#open-thread-browser") |> render_click()
 

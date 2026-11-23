@@ -287,7 +287,19 @@ defmodule Tavern.Chat.Messages do
         {:ok, deleted_message}
       end
     end)
+    |> retitle_started_thread()
   end
+
+  # A thread's title comes from its starter, so deleting the starter retitles the thread: each
+  # view reloads its sidebar, open thread and reply pills on `:channel_updated`.
+  defp retitle_started_thread({:ok, %Message{} = message} = result) do
+    if thread = Threads.thread_for_starter(message.id),
+      do: Topics.broadcast_server({:channel_updated, thread})
+
+    result
+  end
+
+  defp retitle_started_thread(error), do: error
 
   @doc """
   Adds the scope's reaction with this unicode emoji to a message, or removes it when present.

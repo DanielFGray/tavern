@@ -41,12 +41,15 @@ defmodule Tavern.Chat.DeletedMessagesTest do
     assert id == keep.id
   end
 
-  test "a deleted starter leaves the channel page but not its thread", ctx do
+  test "a deleted starter stays on the channel page as its thread's tombstone", ctx do
     starter = message_fixture(ctx.channel, ctx.author, %{body: "starter"})
     thread = thread_fixture(ctx.channel, starter, ctx.author)
     {:ok, _} = Chat.delete_message(ctx.scope, starter.id)
 
-    assert {:ok, []} = Chat.list_messages(ctx.scope, ctx.channel.id)
+    assert {:ok, [%{id: id, deleted_at: %DateTime{}}]} =
+             Chat.list_messages(ctx.scope, ctx.channel.id)
+
+    assert id == starter.id
 
     assert {:ok, %{entries: [%{thread: %{id: thread_id}}]}} =
              Chat.browse_threads(ctx.scope, ctx.channel.id)

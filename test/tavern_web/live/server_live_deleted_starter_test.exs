@@ -96,7 +96,7 @@ defmodule TavernWeb.ServerLiveDeletedStarterTest do
 
     watcher |> element("#open-thread-browser") |> render_click()
     assert has_element?(watcher, "#thread-browser-open-#{ctx.thread.id}", "Deleted message")
-    assert has_element?(watcher, "#thread-browser-open-#{ctx.thread.id}.italic")
+    assert has_element?(watcher, "#thread-browser-open-#{ctx.thread.id} span.italic")
   end
 
   test "Delete thread removes the tombstone from every open view", ctx do

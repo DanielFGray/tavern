@@ -543,7 +543,8 @@ defmodule Tavern.Chat.Threads do
     )
   end
 
-  defp thread_for_starter(starter_id) do
+  @doc "The public thread that `starter_id` starts in a text channel, or `nil`."
+  def thread_for_starter(starter_id) do
     Repo.one(
       from(channel in Channel,
         where: channel.starter_message_id == ^starter_id and channel.kind == :thread_public
