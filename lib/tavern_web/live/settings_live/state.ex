@@ -94,27 +94,21 @@ defmodule TavernWeb.SettingsLive.State do
     end
   end
 
-  def maybe_attach_server_icon_upload(socket, attrs) do
-    case SharedHelpers.uploaded_entry(socket, :server_icon) do
-      nil ->
-        attrs
+  # Saves the server settings form. A chosen icon file replaces the icon; otherwise it stays
+  # (removing is its own event). LiveView deletes the temporary file when the consume callback
+  # returns, so the write runs inside the callback.
+  def save_server_settings(socket, attrs) do
+    scope = socket.assigns.current_scope
 
-      _entry ->
-        result =
-          Phoenix.LiveView.consume_uploaded_entries(socket, :server_icon, fn %{path: path},
-                                                                             entry ->
-            {:ok,
-             %{
-               path: path,
-               client_name: entry.client_name,
-               client_type: entry.client_type
-             }}
-          end)
+    result =
+      Phoenix.LiveView.consume_uploaded_entries(socket, :server_icon, fn %{path: path}, entry ->
+        upload = %{path: path, client_name: entry.client_name, client_type: entry.client_type}
+        {:ok, Chat.update_server_settings(scope, Map.put(attrs, "icon_upload", upload))}
+      end)
 
-        case result do
-          [upload] -> Map.put(attrs, "icon_upload", upload)
-          _ -> attrs
-        end
+    case result do
+      [saved] -> saved
+      [] -> Chat.update_server_settings(scope, attrs)
     end
   end
 

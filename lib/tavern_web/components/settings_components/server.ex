@@ -28,6 +28,7 @@ defmodule TavernWeb.SettingsComponents.Server do
 
           <%= if @server_settings.icon_asset do %>
             <img
+              id="server-icon"
               src={Chat.server_icon_url(@server_settings)}
               alt={@server_settings.name}
               class="size-14 rounded-2xl border border-base-300 object-cover shadow-sm"

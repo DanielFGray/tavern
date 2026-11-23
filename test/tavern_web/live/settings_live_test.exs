@@ -167,6 +167,31 @@ defmodule TavernWeb.SettingsLiveTest do
     end
   end
 
+  describe "server icon upload" do
+    test "saves a new server icon and the server shows the new icon", %{conn: conn} do
+      Bootstrap.ensure_seed_data!()
+      user = owner_fixture(%{email: "icon-owner@example.com", username: "icon_owner"})
+      {:ok, view, _html} = live(log_in_as(conn, user), ~p"/settings?tab=server")
+
+      png = Tavern.UploadFixtures.unique_png()
+
+      icon =
+        file_input(view, "#server-settings-form", :server_icon, [
+          %{last_modified: 1_711_000_000_000, name: "icon.png", content: png, type: "image/png"}
+        ])
+
+      render_upload(icon, "icon.png")
+
+      view
+      |> form("#server-settings-form", %{server_settings: %{"name" => "Icon Server"}})
+      |> render_submit()
+
+      assert has_element?(view, "#server-icon")
+      assert Tavern.UploadFixtures.stored?(png)
+      assert Chat.get_server_settings().icon_asset_id
+    end
+  end
+
   describe "owner promote/demote" do
     test "owner sees Owner badge and Promote button for members", %{conn: conn} do
       Bootstrap.ensure_seed_data!()
