@@ -2,8 +2,6 @@
 
 Tavern is a self-hostable chat app, with each deployment representing exactly one chat server.
 
-The repository directory, the GitHub repository and the task-store project are still named `rfchat`.
-
 This repo currently contains the Phoenix bootstrap plus local infrastructure for:
 
 - PostgreSQL for durable app state

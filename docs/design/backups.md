@@ -176,6 +176,6 @@ These are things the platform or Tavern lacks. Platform gaps are filed in the ro
 | OpenBao is not backed up, so `secret_key_base` and the bucket key's secret have one copy | roamancer, task "Back up OpenBao" |
 | A one-database restore from the nightly backup takes a hand-run scratch cluster first | roamancer, task "Restore one app's database straight from the nightly backup" |
 | No `ops` path to dump or load a production database | roamancer, existing task "ops db: query, dump and load a production app database" |
-| `Tavern.Release` has no rollback function | rfchat task "Release.rollback" |
+| `Tavern.Release` has no rollback function | tavern task "Release.rollback" |
 | A restore returns deleted accounts' data, and nothing records which accounts to delete again | User decision 2026-11-20: narrow the window with shorter retention (roamancer task "Shorter backup retention for Tavern's database and uploads"), not a deletion ledger. The gap stays for accounts deleted after the restored snapshot. |
-| No check for `media_assets` rows whose object is missing | rfchat task "Find media_assets rows with no object" |
+| No check for `media_assets` rows whose object is missing | tavern task "Find media_assets rows with no object" |
