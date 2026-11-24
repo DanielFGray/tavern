@@ -309,11 +309,15 @@ const RichComposerHook = {
     return this.el.querySelector("[data-pending-attachment]") !== null
   },
 
-  // Pasted files, such as a screenshot, join the waiting attachments. The composer renders the
-  // attach control only where the member may attach, so its absence leaves the paste to Tiptap.
+  // Pasted files, such as a screenshot, join the waiting attachments. A paste that also carries
+  // plain text stays text: Office apps put a picture of the copied cells beside the text. The
+  // composer renders the attach control only where the member may attach, so its absence leaves
+  // the paste to Tiptap.
   attachPastedFiles(event) {
-    const files = Array.from(event.clipboardData?.files || [])
-    if(files.length === 0 || !this.el.querySelector("[data-attach-control]")) return false
+    const clipboard = event.clipboardData
+    const files = Array.from(clipboard?.files || [])
+    if(files.length === 0 || clipboard.types.includes("text/plain")) return false
+    if(!this.el.querySelector("[data-attach-control]")) return false
 
     this.upload("attachments", files)
     return true

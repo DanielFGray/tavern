@@ -10,7 +10,7 @@ defmodule TavernWeb.ServerLive.Attachments do
   """
 
   import Phoenix.LiveView,
-    only: [allow_upload: 3, cancel_upload: 3, consume_uploaded_entries: 3]
+    only: [allow_upload: 3, cancel_upload: 3, consume_uploaded_entries: 3, uploaded_entries: 2]
 
   alias Tavern.Chat.Attachments
 
@@ -37,13 +37,26 @@ defmodule TavernWeb.ServerLive.Attachments do
     do: {:noreply, cancel_upload(socket, @upload, ref)}
 
   @doc """
-  The finished uploads as `%{path:, client_name:}` for `Tavern.Chat.create_message/4`. They stay
-  waiting, and their temporary files stay on disk, until `clear/1`.
+  The waiting files as `{:ok, [%{path:, client_name:}]}` for `Tavern.Chat.create_message/4`. They
+  stay waiting, and their temporary files stay on disk, until `clear/1`.
+
+  A send waits for every file: `{:error, :attachments_rejected}` while a file the limits refused
+  is still listed, and `{:error, :attachments_uploading}` while one is still uploading. Sending
+  without the file would lose it silently, and LiveView cannot read the others until it is done.
   """
   def pending(socket) do
-    consume_uploaded_entries(socket, @upload, fn %{path: path}, entry ->
-      {:postpone, %{path: path, client_name: entry.client_name}}
-    end)
+    case uploaded_entries(socket, @upload) do
+      {_done, []} ->
+        {:ok,
+         consume_uploaded_entries(socket, @upload, fn %{path: path}, entry ->
+           {:postpone, %{path: path, client_name: entry.client_name}}
+         end)}
+
+      {_done, unfinished} ->
+        if Enum.all?(unfinished, & &1.valid?),
+          do: {:error, :attachments_uploading},
+          else: {:error, :attachments_rejected}
+    end
   end
 
   @doc "Drops the waiting files after a send that used them."
@@ -72,6 +85,11 @@ defmodule TavernWeb.ServerLive.Attachments do
 
   def refusal(:attachment_too_large),
     do: "Each file can be up to #{div(Attachments.max_bytes(), 1_000_000)} MB."
+
+  def refusal(:attachments_uploading), do: "Wait for your files to finish uploading."
+
+  def refusal(:attachments_rejected),
+    do: "Remove the files that cannot be attached, then send again."
 
   def refusal(_reason), do: nil
 

@@ -32,6 +32,10 @@ defmodule TavernWeb.ServerLiveAttachmentsTest do
     assert has_element?(view, "#attachment-#{attachment.id} img[src^='/attachments/']")
     refute has_element?(view, "#composer-attachments")
     assert UploadFixtures.stored?(png)
+
+    # Previews of a message with no text name what it holds.
+    view |> element("#quick-reply-message-#{message.id}") |> render_click()
+    assert view |> element("#replying-to-banner") |> render() =~ "Attachment"
   end
 
   test "a file that is not an image shows as a download card", %{view: view} = ctx do
@@ -82,6 +86,64 @@ defmodule TavernWeb.ServerLiveAttachmentsTest do
     {:ok, view, _html} = live_hydrated(conn, ~p"/")
     assert has_element?(view, "#composer-attach-button[disabled]")
     refute has_element?(view, "#message-form [data-attach-control]")
+  end
+
+  test "a send waits while a file is still uploading, and keeps it", %{view: view} = ctx do
+    upload =
+      pick(view, [%{name: "cat.png", content: UploadFixtures.unique_png(), type: "image/png"}])
+
+    render_upload(upload, "cat.png", 50)
+    view |> form("#message-form", %{message: %{body: "too soon"}}) |> render_submit()
+
+    assert render(view) =~ "Wait for your files to finish uploading."
+    assert has_element?(view, "#composer-attachments [data-pending-attachment]")
+    refute Enum.any?(latest_messages(ctx.conn), &(&1.body == "too soon"))
+  end
+
+  test "a send waits while a refused file is still listed", %{view: view} = ctx do
+    big = :binary.copy("x", Tavern.Chat.Attachments.max_bytes() + 1)
+
+    pick(view, [%{name: "huge.bin", content: big, type: "application/octet-stream"}])
+    |> render_upload("huge.bin")
+
+    view |> form("#message-form", %{message: %{body: "with the big one"}}) |> render_submit()
+
+    assert render(view) =~ "Remove the files that cannot be attached"
+    refute Enum.any?(latest_messages(ctx.conn), &(&1.body == "with the big one"))
+  end
+
+  test "a files-only message can start a thread, and the thread composer attaches too",
+       %{view: view} = ctx do
+    upload =
+      pick(view, [%{name: "cat.png", content: UploadFixtures.unique_png(), type: "image/png"}])
+
+    render_upload(upload, "cat.png")
+    view |> form("#message-form", %{message: %{body: ""}}) |> render_submit()
+    [starter] = latest_messages(ctx.conn)
+
+    view |> element("#create-thread-#{starter.id}") |> render_click()
+    _ = :sys.get_state(view.pid)
+    view |> element("#open-thread-#{starter.id}") |> render_click()
+    assert has_element?(view, "#thread-message-form")
+
+    upload =
+      file_input(view, "#thread-message-form", :attachments, [
+        %{name: "reply.txt", content: "reply words", type: "text/plain"}
+      ])
+
+    render_upload(upload, "reply.txt")
+    assert has_element?(view, "#thread-composer-attachments [data-pending-attachment]")
+
+    view |> form("#thread-message-form", %{message: %{body: ""}}) |> render_submit()
+
+    scope = scope_for(current_user_from_conn(ctx.conn))
+    thread = Chat.get_thread_for_starter_message(scope, starter.id)
+
+    [reply] =
+      thread.id |> messages_in() |> Enum.map(& &1.id) |> then(&Chat.get_messages(scope, &1))
+
+    assert [attachment] = reply.attachments
+    assert has_element?(view, "#attachment-#{attachment.id}[download='reply.txt']")
   end
 
   defp pick(view, files), do: file_input(view, "#message-form", :attachments, files)

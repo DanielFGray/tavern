@@ -57,7 +57,8 @@ other file shows as a card that downloads it. Code: `Tavern.Chat.Attachments` (c
   and the composer shows its progress. Members add files through the + menu's "Upload attachment"
   (a label for the hidden file input), by dropping them on the composer, or by pasting them
   (`RichComposerHook.attachPastedFiles`). Each control exists only where the member holds
-  `attach_files`.
+  `attach_files`. A paste that carries plain text stays text, because Office apps put a picture of
+  the copied cells beside the text.
 - **Files belong to the composer they were added in.** The view shows one composer, the open
   thread's or else the open channel's. When an event changes which conversation that is, the
   waiting files are dropped (`Attachments.follow_composer/2`, wrapped around every `ServerLive`
@@ -65,7 +66,13 @@ other file shows as a card that downloads it. Code: `Tavern.Chat.Attachments` (c
 - A send reads the waiting files with `{:postpone, _}`, so they stay waiting during the send. Only a
   successful send drops them; a refused send (slowmode, rate limit, permission) keeps both the text
   and the files.
+- A send waits for every listed file (`Attachments.pending/1`). While one is still uploading, or a
+  file the limits refused is still listed, the send is refused with a flash and nothing is lost.
+  Sending without that file would drop it silently.
 - Enter sends an empty editor when files are waiting, so a message can be files alone.
+- One-line previews of a message with no text (the reply line, the reply banner, a thread's
+  latest reply) read "Attachment" (`Helpers.body_preview/1`). A thread started from one is titled
+  "Thread" (`Channel.title_from/1`).
 - A page reload drops waiting files. The composer's text survives it
   (docs/design/new-build-reload.md); the files do not, because the browser's copies are gone.
 

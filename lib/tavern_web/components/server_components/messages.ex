@@ -204,7 +204,7 @@ defmodule TavernWeb.ServerComponents.Messages do
                       Original message deleted
                     </span>
                   <% else %>
-                    {@message.reply_to.body}
+                    {body_preview(@message.reply_to.body)}
                   <% end %>
                 </span>
               </div>

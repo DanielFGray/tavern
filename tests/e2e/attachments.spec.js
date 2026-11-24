@@ -57,6 +57,18 @@ test('a pasted file joins the waiting files, and a non-image downloads under its
   await expect(page.locator('#composer-attachments [data-pending-attachment]')).toContainText(name)
   await expect(composer(page)).toHaveText('')
 
+  // Spreadsheet cells arrive as text and a picture of them; the text wins.
+  await composer(page).evaluate((editor) => {
+    const data = new DataTransfer()
+    data.setData('text/plain', 'cell text')
+    data.items.add(new File([new Uint8Array([137, 80, 78, 71])], 'cells.png', { type: 'image/png' }))
+    editor.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+  })
+  await expect(composer(page)).toHaveText('cell text')
+  await expect(page.locator('#composer-attachments [data-pending-attachment]')).toHaveCount(1)
+  await composer(page).press('ControlOrMeta+a')
+  await composer(page).press('Backspace')
+
   await composer(page).pressSequentially('see attached')
   await composer(page).press('Enter')
 
@@ -68,4 +80,24 @@ test('a pasted file joins the waiting files, and a non-image downloads under its
   expect(response.headers()['content-type']).toBe('application/octet-stream')
   expect(response.headers()['content-disposition']).toContain(`attachment; filename="${name}"`)
   expect(await response.text()).toBe('plain words')
+})
+
+// ProseMirror handles drops inside the editor itself, so the drop lands on the editor, not
+// beside it, to prove the composer's drop target still receives the file.
+test('a file dropped on the editor joins the waiting files', async ({ page }, testInfo) => {
+  const name = `dropped-${unique(testInfo)}.png`
+  await login(page, { next: '/?channel=general' })
+
+  const dataTransfer = await page.evaluateHandle(({ name, bytes }) => {
+    const data = new DataTransfer()
+    data.items.add(new File([new Uint8Array(bytes)], name, { type: 'image/png' }))
+    return data
+  }, { name, bytes: [...PNG] })
+
+  for(const type of ['dragenter', 'dragover', 'drop']) {
+    await composer(page).dispatchEvent(type, { dataTransfer })
+  }
+
+  await expect(page.locator('#composer-attachments [data-pending-attachment]')).toContainText(name)
+  await expect(composer(page)).toHaveText('')
 })

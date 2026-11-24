@@ -141,7 +141,7 @@ defmodule TavernWeb.ServerComponents.Composer do
             Replying to
             <span class="font-semibold">{@server.reply_to_message.author.display_name}</span>
             <p class="truncate text-[11px] text-primary/70">
-              {@server.reply_to_message.body}
+              {body_preview(@server.reply_to_message.body)}
             </p>
           </div>
           <button

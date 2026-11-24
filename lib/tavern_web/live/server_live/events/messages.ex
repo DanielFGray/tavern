@@ -416,13 +416,17 @@ defmodule TavernWeb.ServerLive.Events.Messages do
 
       conversation ->
         if Pane.can_send?(State.pane(socket, kind)) do
-          socket.assigns.current_scope
-          |> Chat.create_message(
-            conversation.id,
-            State.maybe_put_reply(socket, message_params),
-            Attachments.pending(socket)
-          )
-          |> case do
+          sent =
+            with {:ok, uploads} <- Attachments.pending(socket) do
+              Chat.create_message(
+                socket.assigns.current_scope,
+                conversation.id,
+                State.maybe_put_reply(socket, message_params),
+                uploads
+              )
+            end
+
+          case sent do
             {:ok, message} ->
               socket
               |> Attachments.clear()
@@ -452,7 +456,9 @@ defmodule TavernWeb.ServerLive.Events.Messages do
             when reason in [
                    :attach_files_forbidden,
                    :too_many_attachments,
-                   :attachment_too_large
+                   :attachment_too_large,
+                   :attachments_uploading,
+                   :attachments_rejected
                  ] ->
               put_flash(socket, :error, Attachments.refusal(reason))
 
