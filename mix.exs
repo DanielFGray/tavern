@@ -77,6 +77,7 @@ defmodule Tavern.MixProject do
       {:bcrypt_elixir, "~> 3.3"},
       {:redix, "~> 1.5"},
       {:req, "~> 0.5"},
+      {:gen_smtp, "~> 1.3"},
       {:mint, "~> 1.7"},
       {:dns_cluster, "~> 0.2.0"},
       {:bandit, "~> 1.5"},

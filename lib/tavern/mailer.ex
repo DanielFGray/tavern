@@ -2,10 +2,11 @@ defmodule Tavern.Mailer do
   @moduledoc """
   Sends one email through the provider the config names.
 
-  `config :tavern, Tavern.Mailer` holds `:provider` (`:cloudflare` or `:capture`), `:from`, and
-  for Cloudflare `:account_id`, `:api_token` and `:req_options`. Production reads them from
-  `MAIL_PROVIDER`, `EMAIL_FROM`, `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_EMAIL_API_TOKEN`
-  (`config/runtime.exs`). With no provider, or Cloudflare without its settings, `configured?/0`
+  `config :tavern, Tavern.Mailer` holds `:provider` (`:cloudflare`, `:smtp` or `:capture`),
+  `:from`, for Cloudflare `:account_id`, `:api_token` and `:req_options`, and for SMTP the
+  `:smtp_*` settings (`Tavern.Mailer.Smtp`). Production reads them from `MAIL_PROVIDER`,
+  `EMAIL_FROM`, `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_EMAIL_API_TOKEN` and the `SMTP_*` variables
+  (`config/runtime.exs`). With no provider, or a provider without its settings, `configured?/0`
   is false and `deliver/1` refuses; there is no fallback provider.
   """
 
@@ -53,12 +54,31 @@ defmodule Tavern.Mailer do
         |> Enum.filter(fn {_name, value} -> value in [nil, ""] end)
         |> Enum.map(&elem(&1, 0))
 
+      :smtp ->
+        [
+          {"EMAIL_FROM", config[:from]},
+          {"SMTP_HOST", config[:smtp_host]}
+        ]
+        |> Enum.filter(fn {_name, value} -> value in [nil, ""] end)
+        |> Enum.map(&elem(&1, 0))
+        |> Kernel.++(half_login(config))
+
       _none ->
         ["MAIL_PROVIDER"]
     end
   end
 
+  # A login needs both halves; neither means the server takes mail without one.
+  defp half_login(config) do
+    case {config[:smtp_username] in [nil, ""], config[:smtp_password] in [nil, ""]} do
+      {false, true} -> ["SMTP_PASSWORD"]
+      {true, false} -> ["SMTP_USERNAME"]
+      _both_or_neither -> []
+    end
+  end
+
   defp provider_module(:cloudflare), do: Tavern.Mailer.Cloudflare
+  defp provider_module(:smtp), do: Tavern.Mailer.Smtp
   defp provider_module(:capture), do: Tavern.Mailer.Capture
 
   defp config, do: Application.get_env(:tavern, __MODULE__, [])

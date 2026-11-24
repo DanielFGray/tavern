@@ -108,13 +108,35 @@ if config_env() == :prod do
     config :opentelemetry, traces_exporter: {Tavern.Observability.Redaction, %{}}
   end
 
-  # Invite mail. With MAIL_PROVIDER unset no provider is configured, so Settings cannot turn
-  # on invite requests; there is no fallback provider.
+  # Mail: invites, verification and password resets. MAIL_PROVIDER is `cloudflare` or `smtp`.
+  # With it unset no provider is configured, so Settings cannot turn on invite requests; there
+  # is no fallback provider. SMTP_SECURITY is `starttls` (default), `tls` or `none`
+  # (Tavern.Mailer.Smtp); SMTP_PORT defaults to the mode's usual port.
+  mail_provider =
+    case System.get_env("MAIL_PROVIDER") do
+      "cloudflare" -> :cloudflare
+      "smtp" -> :smtp
+      _unset -> nil
+    end
+
+  smtp_security =
+    case System.get_env("SMTP_SECURITY", "starttls") do
+      "starttls" -> :starttls
+      "tls" -> :tls
+      "none" -> :none
+      other -> raise "SMTP_SECURITY must be starttls, tls or none, not #{inspect(other)}"
+    end
+
   config :tavern, Tavern.Mailer,
-    provider: if(System.get_env("MAIL_PROVIDER") == "cloudflare", do: :cloudflare),
+    provider: mail_provider,
     from: System.get_env("EMAIL_FROM"),
     account_id: System.get_env("CLOUDFLARE_ACCOUNT_ID"),
-    api_token: System.get_env("CLOUDFLARE_EMAIL_API_TOKEN")
+    api_token: System.get_env("CLOUDFLARE_EMAIL_API_TOKEN"),
+    smtp_host: System.get_env("SMTP_HOST"),
+    smtp_port: System.get_env("SMTP_PORT") && String.to_integer(System.get_env("SMTP_PORT")),
+    smtp_username: System.get_env("SMTP_USERNAME"),
+    smtp_password: System.get_env("SMTP_PASSWORD"),
+    smtp_security: smtp_security
 
   # Phoenix's default `check_origin: true` accepts a socket only from a page on this url's host.
   config :tavern, TavernWeb.Endpoint,
