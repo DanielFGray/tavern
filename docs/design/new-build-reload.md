@@ -23,7 +23,8 @@ sooner reloads when that minute ends. When storage is unavailable it does not re
 limit cannot hold.
 
 The reload ends a voice call, and nothing rejoins on load; the person joins again by hand. It also
-drops text typed in forms other than the composer, such as settings.
+drops text typed in forms other than the composer, such as settings, and files waiting in the
+composer (docs/design/attachments.md).
 
 ## Keeping drafts
 

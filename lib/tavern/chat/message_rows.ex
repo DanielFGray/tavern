@@ -20,6 +20,7 @@ defmodule Tavern.Chat.MessageRows do
     reactions: [emoji: :asset],
     reply_to: :author,
     embeds: :image_asset,
+    attachments: :asset,
     question: [:options, answers: :user]
   ]
 

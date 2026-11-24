@@ -6,6 +6,7 @@ defmodule TavernWeb.ServerLive do
   alias Tavern.Chat
   alias Tavern.Chat.Topics
   alias Tavern.Chat.UserNotificationSetting
+  alias TavernWeb.ServerLive.Attachments
   alias TavernWeb.ServerLive.ChannelEditor
   alias TavernWeb.ServerLive.Events
   alias TavernWeb.ServerLive.Pane
@@ -71,6 +72,7 @@ defmodule TavernWeb.ServerLive do
       |> assign(:thread_browser, nil)
       |> Voice.init()
       |> ChannelEditor.init()
+      |> Attachments.init()
       |> stream(:messages, [], reset: true)
       |> stream(:thread_messages, [], reset: true)
 
@@ -78,13 +80,16 @@ defmodule TavernWeb.ServerLive do
   end
 
   @impl true
-  def handle_params(params, uri, socket), do: Events.handle_params(params, uri, socket)
+  def handle_params(params, uri, socket),
+    do: params |> Events.handle_params(uri, socket) |> Attachments.follow_composer(socket)
 
   @impl true
-  def handle_info(message, socket), do: Events.handle_info(message, socket)
+  def handle_info(message, socket),
+    do: message |> Events.handle_info(socket) |> Attachments.follow_composer(socket)
 
   @impl true
-  def handle_event(event, params, socket), do: Events.handle_event(event, params, socket)
+  def handle_event(event, params, socket),
+    do: event |> Events.handle_event(params, socket) |> Attachments.follow_composer(socket)
 
   @impl true
   def terminate(reason, socket) do

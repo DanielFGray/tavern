@@ -1,6 +1,7 @@
 defmodule TavernWeb.ServerLive.Events do
   @moduledoc false
 
+  alias TavernWeb.ServerLive.Attachments
   alias TavernWeb.ServerLive.ChannelEditor
   alias TavernWeb.ServerLive.Events.Forums
   alias TavernWeb.ServerLive.Events.Hydration
@@ -18,6 +19,7 @@ defmodule TavernWeb.ServerLive.Events do
   require Logger
 
   @event_modules [
+    Attachments,
     ChannelEditor,
     Forums,
     Messages,

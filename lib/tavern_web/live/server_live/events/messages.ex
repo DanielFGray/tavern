@@ -7,6 +7,7 @@ defmodule TavernWeb.ServerLive.Events.Messages do
   alias Tavern.Accounts
   alias Tavern.Chat
   alias TavernWeb.ServerComponents.Composer
+  alias TavernWeb.ServerLive.Attachments
   alias TavernWeb.ServerComponents.Helpers, as: RowHelpers
   alias TavernWeb.ServerLive.Events.Helpers
   alias TavernWeb.ServerLive.Events.Navigation
@@ -416,10 +417,15 @@ defmodule TavernWeb.ServerLive.Events.Messages do
       conversation ->
         if Pane.can_send?(State.pane(socket, kind)) do
           socket.assigns.current_scope
-          |> Chat.create_message(conversation.id, State.maybe_put_reply(socket, message_params))
+          |> Chat.create_message(
+            conversation.id,
+            State.maybe_put_reply(socket, message_params),
+            Attachments.pending(socket)
+          )
           |> case do
             {:ok, message} ->
               socket
+              |> Attachments.clear()
               |> push_event("composer:clear", %{
                 draft_key: Composer.draft_key(socket.assigns.current_user, conversation)
               })
@@ -440,6 +446,15 @@ defmodule TavernWeb.ServerLive.Events.Messages do
 
             {:error, :not_found} ->
               refuse_send(socket, kind, "That #{noun} is no longer available.")
+
+            # The text and the files stay in the composer.
+            {:error, reason}
+            when reason in [
+                   :attach_files_forbidden,
+                   :too_many_attachments,
+                   :attachment_too_large
+                 ] ->
+              put_flash(socket, :error, Attachments.refusal(reason))
 
             # The composer shows no field errors, so the reason is flashed. The draft stays in
             # the composer.

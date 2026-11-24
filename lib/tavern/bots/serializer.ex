@@ -2,11 +2,13 @@ defmodule Tavern.Bots.Serializer do
   @moduledoc false
 
   alias Ecto.Association.NotLoaded
+  alias Tavern.Chat.Attachments
   alias Tavern.Chat.Channel
   alias Tavern.Chat.Emoji
   alias Tavern.Chat.MediaAsset
   alias Tavern.Chat.MediaAssets
   alias Tavern.Chat.Message
+  alias Tavern.Chat.MessageAttachment
   alias Tavern.Chat.MessageEmbed
   alias Tavern.Chat.Question
   alias Tavern.Chat.Questions
@@ -56,6 +58,7 @@ defmodule Tavern.Bots.Serializer do
       channel: serialize_channel_summary(message.channel),
       reply_to: serialize_message_reference(message.reply_to),
       embeds: serialize_embeds(message.embeds),
+      attachments: serialize_attachments(message.attachments),
       question: serialize_question(message.question),
       reactions: serialize_reactions(message.reactions),
       mentions: serialize_mentions(message)
@@ -267,6 +270,25 @@ defmodule Tavern.Bots.Serializer do
   end
 
   defp serialize_embeds(%NotLoaded{}), do: nil
+
+  # `url` is the app's `/attachments` route, which answers only a signed-in member's browser
+  # session today, not a bot token.
+  defp serialize_attachments(attachments) when is_list(attachments) do
+    attachments
+    |> Enum.sort_by(& &1.position)
+    |> Enum.map(fn %MessageAttachment{asset: %MediaAsset{} = asset} = attachment ->
+      %{
+        id: attachment.id,
+        kind: to_string(attachment.kind),
+        filename: Attachments.filename(asset),
+        content_type: asset.content_type,
+        byte_size: asset.byte_size,
+        url: Attachments.url(attachment)
+      }
+    end)
+  end
+
+  defp serialize_attachments(%NotLoaded{}), do: nil
 
   defp serialize_image_url(%MediaAsset{} = asset), do: MediaAssets.asset_url(asset)
   defp serialize_image_url(_asset), do: nil

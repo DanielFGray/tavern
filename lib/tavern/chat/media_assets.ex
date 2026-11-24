@@ -1,11 +1,15 @@
 defmodule Tavern.Chat.MediaAssets do
   @moduledoc """
-  Stored images: uploads and link embed images. Each asset's bytes live in
-  `Tavern.ObjectStore` under its `storage_key`, and the app serves them at `asset_url/1`.
+  Stored files: uploaded images (avatars, emoji, server icons), link embed images and message
+  attachments. Each asset's bytes live in `Tavern.ObjectStore` under its `storage_key`. The app
+  serves every kind but attachments publicly at `asset_url/1`; attachments are served only to
+  members who may view their message (`Tavern.Chat.Attachments`).
 
   An asset row is deleted inside the transaction of the write that drops it, and its object
   after that transaction commits (`delete_objects/1`).
   """
+
+  import Ecto.Query, only: [from: 2]
 
   require Logger
 
@@ -21,10 +25,18 @@ defmodule Tavern.Chat.MediaAssets do
   The bytes and recorded content type of the asset stored at `storage_key`, as
   `{:ok, body, content_type}`. A key with no asset row is `{:error, :not_found}` and never
   reaches the store, so a request can read only an object the app recorded, with the type the
-  app checked when it stored it.
+  app checked when it stored it. An attachment's key is `{:error, :not_found}` too: this read
+  decides no access, and an attachment may sit in a channel the requester cannot view.
   """
   def fetch_upload(storage_key) when is_binary(storage_key) do
-    case Repo.get_by(MediaAsset, storage_provider: "s3", storage_key: storage_key) do
+    public_asset =
+      from(asset in MediaAsset,
+        where:
+          asset.storage_provider == "s3" and asset.storage_key == ^storage_key and
+            asset.kind != :attachment
+      )
+
+    case Repo.one(public_asset) do
       nil ->
         {:error, :not_found}
 

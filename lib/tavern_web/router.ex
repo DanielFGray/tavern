@@ -42,7 +42,8 @@ defmodule TavernWeb.Router do
   # The platform health check: no session, no auth, no CSRF.
   get("/healthz", TavernWeb.HealthController, :show)
 
-  # Uploaded files: public, like the static assets, with no session.
+  # Avatars, emoji, server icons and embed images: public, like the static assets, with no
+  # session. Message attachments are not served here.
   get("/uploads/*key", TavernWeb.UploadController, :show)
 
   # Login-as-anyone commands for e2e specs. The controller lives in test/support, which only
@@ -97,6 +98,9 @@ defmodule TavernWeb.Router do
 
   scope "/", TavernWeb do
     pipe_through([:browser, :require_authenticated_user])
+
+    # Message attachments: only for a member who may view the message (docs/design/attachments.md).
+    get("/attachments/:id/:filename", AttachmentController, :show)
 
     live_session :require_authenticated_user,
       on_mount: [TavernWeb.ReloadOnNewBuild, {TavernWeb.UserAuth, :ensure_authenticated}] do

@@ -261,6 +261,7 @@ defmodule Tavern.Chat.Visibility do
     :send_messages_in_threads,
     :create_public_threads,
     :add_reactions,
+    :attach_files,
     :manage_messages,
     :mention_everyone,
     :archive_thread,
@@ -639,6 +640,11 @@ defmodule Tavern.Chat.Visibility do
 
   defp channel_decision(:manage_messages, ctx, channel),
     do: view?(ctx, channel) and bit?(ctx, channel, :manage_messages)
+
+  # Attaching files to a message the member sends here. The send itself is decided apart, by
+  # `:send_messages` or `:send_messages_in_threads`.
+  defp channel_decision(:attach_files, ctx, channel),
+    do: not acting_timed_out?(ctx) and view?(ctx, channel) and bit?(ctx, channel, :attach_files)
 
   # Whether the server shows previews of the member's links here. It is decided when a fetch
   # completes, not when the message is sent, so a role change in between applies.

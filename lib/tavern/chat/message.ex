@@ -40,21 +40,51 @@ defmodule Tavern.Chat.Message do
   A changeset for what an author writes: the body and the composer's metadata. The server sets
   every other field itself (`kind`, `nonce`, `edited_at`, `deleted_at`, `pinned_at`,
   `suppress_embeds`), so a client cannot forge a system message, a pin or a deletion.
+
+  A message holds text, attachments or both, so the body may be empty only when the message has
+  attachments: loaded on `message`, or put on the changeset by `create_changeset/3`.
   """
   def changeset(message, attrs) do
     message
     |> cast(attrs, [:body, :metadata])
-    |> validate_required([:body])
-    |> update_change(:body, &String.trim/1)
-    |> validate_length(:body, min: 1, max: 4000)
+    |> update_change(:body, &trim_body/1)
+    |> validate_body()
     |> validate_change(:metadata, &check_metadata_bounds/2)
   end
 
-  @doc "A changeset for a new message: what `changeset/2` takes, plus the message it replies to."
-  def create_changeset(message, attrs) do
+  @doc """
+  A changeset for a new message: what `changeset/2` takes, plus the message it replies to and its
+  attachments (`Tavern.Chat.Attachments.prepare/2`), inserted with it.
+  """
+  def create_changeset(message, attrs, attachments \\ []) do
     message
     |> cast(attrs, [:reply_to_id])
+    |> put_assoc(:attachments, attachments)
     |> changeset(attrs)
+  end
+
+  # An edit that empties the body casts it to nil.
+  defp trim_body(nil), do: nil
+  defp trim_body(body), do: String.trim(body)
+
+  # The column is NOT NULL, so a message of attachments alone stores an empty body.
+  defp validate_body(changeset) do
+    if has_attachments?(changeset) do
+      changeset
+      |> put_change(:body, get_field(changeset, :body) || "")
+      |> validate_length(:body, max: 4000)
+    else
+      changeset
+      |> validate_required([:body])
+      |> validate_length(:body, min: 1, max: 4000)
+    end
+  end
+
+  defp has_attachments?(changeset) do
+    case get_field(changeset, :attachments) do
+      [_ | _] -> true
+      _none_or_not_loaded -> false
+    end
   end
 
   def deleted?(%{deleted_at: deleted_at}), do: not is_nil(deleted_at)

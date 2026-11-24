@@ -37,6 +37,10 @@ A bot sees who reacted through two events, and what a message holds through a su
 - `Tavern.Chat.toggle_reaction/3` broadcasts `{:reaction_added | :reaction_removed, message, reaction}` on the channel topic, after the `:message_updated` it has always sent. The bot stream subscribes only to channels the bot can view, so a reaction in any other channel is never sent. `ServerLive` ignores the two events.
 - Every serialized message carries `reactions: [{"emoji", "count"}]`, in the order each emoji was first used, with no voter list. The emoji has the same shape as in the events. The list is empty for an unreacted message. It is read from the `reactions` preload of `@read_preloads` and `@message_preloads`, so the serializer runs no query.
 
+## Attachments
+
+Every serialized message carries `attachments: [{"id", "kind", "filename", "content_type", "byte_size", "url"}]`, in the order they were attached. `kind` is `image` or `file`. `content_type` is the type the server read from the bytes, `application/octet-stream` for anything but PNG, JPEG, GIF and WebP. `url` is the `/attachments` route (docs/design/attachments.md), which serves a signed-in browser session only, so a bot cannot fetch the bytes yet, and a bot cannot attach files when it sends.
+
 ## `GET /api/v1/channels/:id/messages`
 
 Lists a page of messages, oldest first, with `after` and `before` cursors. A deleted message is not listed; its `message.deleted` event still arrives, and a cursor may name a deleted message. Read one deleted message by id with `GET /api/v1/messages/:message_id`, which still returns it.

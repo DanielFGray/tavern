@@ -304,6 +304,21 @@ const RichComposerHook = {
     this.editor?.destroy()
   },
 
+  // A message may be files alone, so Enter sends an empty editor when files wait to go with it.
+  hasPendingAttachments() {
+    return this.el.querySelector("[data-pending-attachment]") !== null
+  },
+
+  // Pasted files, such as a screenshot, join the waiting attachments. The composer renders the
+  // attach control only where the member may attach, so its absence leaves the paste to Tiptap.
+  attachPastedFiles(event) {
+    const files = Array.from(event.clipboardData?.files || [])
+    if(files.length === 0 || !this.el.querySelector("[data-attach-control]")) return false
+
+    this.upload("attachments", files)
+    return true
+  },
+
   buildEditor() {
     this.handleToolbarClick = event => {
       const actionButton = event.target.closest("[data-editor-action]")
@@ -352,7 +367,8 @@ const RichComposerHook = {
           priority: SEND_PRIORITY,
           addKeyboardShortcuts: () => ({
             Enter: ({ editor }) => {
-              if(editor.isActive("codeBlock") || editor.isEmpty) return false
+              if(editor.isActive("codeBlock")) return false
+              if(editor.isEmpty && !this.hasPendingAttachments()) return false
               this.el.requestSubmit()
               return true
             },
@@ -385,6 +401,7 @@ const RichComposerHook = {
         }),
       ],
       editorProps: {
+        handlePaste: (_view, event) => this.attachPastedFiles(event),
         attributes: {
           class: [
             "ProseMirror min-h-6 whitespace-pre-wrap break-words text-[15px] leading-6 text-base-content outline-none",

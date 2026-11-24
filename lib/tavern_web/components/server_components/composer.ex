@@ -5,7 +5,9 @@ defmodule TavernWeb.ServerComponents.Composer do
 
   import TavernWeb.ServerComponents.Helpers
 
+  alias TavernWeb.ServerComponents.MessageAttachments
   alias TavernWeb.ServerComponents.Messages
+  alias TavernWeb.ServerLive.Attachments
   alias TavernWeb.ServerLive.Pane
 
   attr :server, :map, required: true
@@ -106,6 +108,7 @@ defmodule TavernWeb.ServerComponents.Composer do
       |> assign(
         pane: pane,
         form: pane.form,
+        uploads: assigns.server.uploads.attachments,
         draft_key: draft_key(assigns.server.current_user, conversation)
       )
 
@@ -115,6 +118,7 @@ defmodule TavernWeb.ServerComponents.Composer do
       for={@form}
       id={@ids.form}
       phx-submit={@submit}
+      phx-change="validate_attachments"
       phx-hook="RichComposerHook"
       data-composer-target={@target}
       data-draft-key={@draft_key}
@@ -123,7 +127,11 @@ defmodule TavernWeb.ServerComponents.Composer do
       data-commands={@server.composer_commands_json}
       data-custom-emojis={@server.custom_emojis_json}
     >
-      <div class="rounded-lg border border-base-300 bg-base-100 shadow-sm">
+      <div
+        class="rounded-lg border border-base-300 bg-base-100 shadow-sm transition phx-drop-target-active:border-violet-400 phx-drop-target-active:ring-2 phx-drop-target-active:ring-violet-400/30"
+        phx-drop-target={@pane.abilities.attach_files && @uploads.ref}
+      >
+        <.live_file_input upload={@uploads} class="hidden" />
         <div
           :if={@server.reply_to_message}
           id={@ids.banner}
@@ -144,6 +152,8 @@ defmodule TavernWeb.ServerComponents.Composer do
             Cancel
           </button>
         </div>
+
+        <.pending_attachments uploads={@uploads} id={@ids.attachments} />
 
         <div class="flex items-end gap-2 px-3 py-2">
           <div class="relative shrink-0">
@@ -174,14 +184,29 @@ defmodule TavernWeb.ServerComponents.Composer do
               >
                 <.icon name="hero-chart-bar" class="size-4" /> Create poll
               </button>
-              <button
-                type="button"
-                role="menuitem"
-                disabled
-                class="flex w-full cursor-not-allowed items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-base-content/40"
-              >
-                <.icon name="hero-paper-clip" class="size-4" /> Upload attachment
-              </button>
+              <%= if @pane.abilities.attach_files do %>
+                <label
+                  for={@uploads.ref}
+                  id={@ids.attach}
+                  data-attach-control
+                  role="menuitem"
+                  phx-click={JS.hide(to: "##{@ids.menu}")}
+                  class="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-base-content/80 transition hover:bg-base-200 hover:text-base-content"
+                >
+                  <.icon name="hero-paper-clip" class="size-4" /> Upload attachment
+                </label>
+              <% else %>
+                <button
+                  type="button"
+                  id={@ids.attach}
+                  role="menuitem"
+                  disabled
+                  title="You do not have permission to attach files here"
+                  class="flex w-full cursor-not-allowed items-center gap-2 rounded-md px-2 py-1.5 text-left text-[13px] text-base-content/40"
+                >
+                  <.icon name="hero-paper-clip" class="size-4" /> Upload attachment
+                </button>
+              <% end %>
             </div>
           </div>
 
@@ -251,6 +276,76 @@ defmodule TavernWeb.ServerComponents.Composer do
   """
   def draft_key(user, conversation), do: "#{user.id}:#{conversation.id}"
 
+  attr :uploads, :map, required: true
+  attr :id, :string, required: true
+
+  # The files waiting to go with the next send, each with its upload progress, its errors and a
+  # remove button. An image shows a preview drawn from the browser's own copy.
+  defp pending_attachments(assigns) do
+    ~H"""
+    <div
+      :if={@uploads.entries != [] or upload_errors(@uploads) != []}
+      id={@id}
+      class="flex flex-wrap gap-2 border-b border-base-300 px-3 py-2"
+    >
+      <div
+        :for={entry <- @uploads.entries}
+        id={"pending-attachment-#{entry.ref}"}
+        data-pending-attachment
+        class={[
+          "group/attachment relative flex w-48 items-center gap-2 rounded-md border bg-base-200 p-1.5 pr-7",
+          if(upload_errors(@uploads, entry) == [],
+            do: "border-base-300",
+            else: "border-error/60"
+          )
+        ]}
+      >
+        <%= if String.starts_with?(entry.client_type || "", "image/") do %>
+          <.live_img_preview entry={entry} class="size-10 shrink-0 rounded object-cover" />
+        <% else %>
+          <span class="flex size-10 shrink-0 items-center justify-center rounded bg-base-300 text-base-content/60">
+            <.icon name="hero-document" class="size-5" />
+          </span>
+        <% end %>
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-xs font-medium text-base-content" title={entry.client_name}>
+            {entry.client_name}
+          </p>
+          <p
+            :for={error <- upload_errors(@uploads, entry)}
+            class="truncate text-[11px] text-error"
+          >
+            {Attachments.error_text(error)}
+          </p>
+          <div
+            :if={upload_errors(@uploads, entry) == [] and not entry.done?}
+            class="mt-1 h-1 overflow-hidden rounded bg-base-300"
+          >
+            <div class="h-full bg-violet-500 transition-all" style={"width: #{entry.progress}%"} />
+          </div>
+          <p :if={entry.done?} class="text-[11px] text-base-content/50">
+            {MessageAttachments.format_bytes(entry.client_size)}
+          </p>
+        </div>
+        <button
+          type="button"
+          id={"cancel-attachment-#{entry.ref}"}
+          phx-click="cancel_attachment"
+          phx-value-ref={entry.ref}
+          aria-label={"Remove #{entry.client_name}"}
+          title="Remove"
+          class="absolute right-1 top-1 rounded p-0.5 text-base-content/50 transition hover:bg-base-300 hover:text-base-content"
+        >
+          <.icon name="hero-x-mark" class="size-3.5" />
+        </button>
+      </div>
+      <p :for={error <- upload_errors(@uploads)} class="w-full text-[11px] text-error">
+        {Attachments.error_text(error)}
+      </p>
+    </div>
+    """
+  end
+
   attr :action, :string, required: true
   attr :label, :string, required: true
   slot :inner_block, required: true
@@ -283,7 +378,9 @@ defmodule TavernWeb.ServerComponents.Composer do
         send: "send-message-button",
         poll: "open-poll-button",
         plus: "composer-plus-button",
-        menu: "composer-plus-menu"
+        menu: "composer-plus-menu",
+        attach: "composer-attach-button",
+        attachments: "composer-attachments"
       }
     }
   end
@@ -301,7 +398,9 @@ defmodule TavernWeb.ServerComponents.Composer do
         send: "send-thread-message-button",
         poll: "thread-open-poll-button",
         plus: "thread-composer-plus-button",
-        menu: "thread-composer-plus-menu"
+        menu: "thread-composer-plus-menu",
+        attach: "thread-composer-attach-button",
+        attachments: "thread-composer-attachments"
       }
     }
   end
