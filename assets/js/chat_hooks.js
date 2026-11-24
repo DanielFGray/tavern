@@ -10,6 +10,7 @@ import DOMPurify from "dompurify"
 import { highlightCode } from "./code_highlight"
 import { emojiShortcodePlugin, searchEmojiShortcodes } from "./emoji_shortcodes"
 import { CATEGORY_ICONS, CATEGORY_ORDER, CATEGORY_LABELS, filterEmojiCatalog } from "./emoji_catalog"
+import { discardDraft, restoreDraft, saveDraft } from "./composer_drafts"
 
 const md = new MarkdownIt({
   html: false,
@@ -249,6 +250,7 @@ const RichComposerHook = {
     this.toolbar = this.el.querySelector("[data-rich-composer-toolbar]")
     this.composerShell = this.el.querySelector("[data-rich-composer-shell]")
     this.composerTarget = this.el.dataset.composerTarget || "default"
+    this.draftKey = this.el.dataset.draftKey
     this.submitListener = () => this.syncInputs()
     this.typingStopDelayMs = 4000
     this.typingActive = false
@@ -263,8 +265,11 @@ const RichComposerHook = {
 
     this.el.addEventListener("submit", this.submitListener)
 
-    this.handleEvent("composer:clear", payload => {
-      if(payload?.target && payload.target !== this.composerTarget) return
+    // The reader may have moved to another conversation before the send was acknowledged, so the
+    // sent conversation's draft is dropped either way and this editor empties only if it shows it.
+    this.handleEvent("composer:clear", ({draft_key}) => {
+      discardDraft(draft_key)
+      if(draft_key !== this.draftKey) return
 
       this.editor.commands.clearContent(true)
       this.syncInputs()
@@ -273,7 +278,17 @@ const RichComposerHook = {
       this.editor.commands.focus("end")
     })
 
-    this.syncComposerChrome()
+    this.showDraft()
+  },
+
+  // A channel or thread switch can keep this form mounted and only change its draft key. The
+  // outgoing draft is already saved, since every edit saves it.
+  updated() {
+    const key = this.el.dataset.draftKey
+    if(key === this.draftKey) return
+
+    this.draftKey = key
+    this.showDraft()
   },
 
   destroyed() {
@@ -392,6 +407,7 @@ const RichComposerHook = {
         this.syncComposerChrome()
       },
       onUpdate: () => {
+        saveDraft(this.editor, this.draftKey)
         this.syncInputs()
         this.syncComposerChrome()
         this.handleTypingActivity()
@@ -406,6 +422,12 @@ const RichComposerHook = {
         requestAnimationFrame(() => this.syncComposerChrome())
       },
     })
+  },
+
+  showDraft() {
+    restoreDraft(this.editor, this.draftKey)
+    this.syncInputs()
+    this.syncComposerChrome()
   },
 
   syncInputs() {

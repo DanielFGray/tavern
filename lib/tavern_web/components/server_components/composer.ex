@@ -98,11 +98,16 @@ defmodule TavernWeb.ServerComponents.Composer do
   """
   def composer(assigns) do
     pane = Map.fetch!(assigns.server, Pane.assign_key(assigns.target))
+    conversation = Map.fetch!(assigns.server, Pane.conversation_key(assigns.target))
 
     assigns =
       assigns
       |> assign(composer_config(assigns.target))
-      |> assign(pane: pane, form: pane.form)
+      |> assign(
+        pane: pane,
+        form: pane.form,
+        draft_key: draft_key(assigns.server.current_user, conversation)
+      )
 
     ~H"""
     <TavernWeb.ServerComponents.Questions.poll_composer :if={@server.poll_form} server={@server} />
@@ -112,6 +117,7 @@ defmodule TavernWeb.ServerComponents.Composer do
       phx-submit={@submit}
       phx-hook="RichComposerHook"
       data-composer-target={@target}
+      data-draft-key={@draft_key}
       data-placeholder={@placeholder}
       data-mentions={@server.composer_mentions_json}
       data-commands={@server.composer_commands_json}
@@ -238,6 +244,12 @@ defmodule TavernWeb.ServerComponents.Composer do
     </.form>
     """
   end
+
+  @doc """
+  Names the browser-side draft (`assets/js/composer_drafts.js`) of `user`'s unsent text in
+  `conversation`, a channel or a thread. The user is part of it because people can share a browser.
+  """
+  def draft_key(user, conversation), do: "#{user.id}:#{conversation.id}"
 
   attr :action, :string, required: true
   attr :label, :string, required: true

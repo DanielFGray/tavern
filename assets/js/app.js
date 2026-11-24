@@ -45,6 +45,26 @@ topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 
+// The server pushes "static_changed" when this tab runs JS or CSS from an earlier build
+// (TavernWeb.ReloadOnNewBuild). During a deploy the old and new servers can both answer for a
+// moment, so the reloaded page can come from one and its socket reach the other, which reports a
+// change again. A tab reloads at most once a minute for the same bundle, so that cannot loop.
+const BUILD_RELOAD_KEY = "tavern:build-reload"
+const BUILD_RELOAD_WINDOW_MS = 60_000
+
+window.addEventListener("phx:static_changed", () => {
+  const bundle = document.querySelector("script[phx-track-static]")?.src
+  try {
+    const last = JSON.parse(sessionStorage.getItem(BUILD_RELOAD_KEY) || "null")
+    if(last?.bundle === bundle && Date.now() - last.at < BUILD_RELOAD_WINDOW_MS) return
+    sessionStorage.setItem(BUILD_RELOAD_KEY, JSON.stringify({bundle, at: Date.now()}))
+  } catch {
+    // Without storage the guard cannot hold, so the tab keeps its build rather than risk a loop.
+    return
+  }
+  window.location.reload()
+})
+
 // connect if there are any LiveViews on the page
 liveSocket.connect()
 

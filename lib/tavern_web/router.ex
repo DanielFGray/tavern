@@ -74,7 +74,7 @@ defmodule TavernWeb.Router do
     # Password reset: the request page and the link's page. The link works signed in or not, so
     # neither redirects a signed-in visitor.
     live_session :password_reset,
-      on_mount: [{TavernWeb.UserAuth, :mount_current_scope}] do
+      on_mount: [TavernWeb.ReloadOnNewBuild, {TavernWeb.UserAuth, :mount_current_scope}] do
       live("/users/reset-password", PasswordResetRequestLive, :new)
       live("/users/reset-password/:token", PasswordResetLive, :edit)
     end
@@ -86,7 +86,10 @@ defmodule TavernWeb.Router do
     post("/login", UserSessionController, :create)
 
     live_session :redirect_if_user_is_authenticated,
-      on_mount: [{TavernWeb.UserAuth, :redirect_if_user_is_authenticated}] do
+      on_mount: [
+        TavernWeb.ReloadOnNewBuild,
+        {TavernWeb.UserAuth, :redirect_if_user_is_authenticated}
+      ] do
       live("/register", UserRegistrationLive, :new)
       live("/login", UserLoginLive, :new)
     end
@@ -96,7 +99,7 @@ defmodule TavernWeb.Router do
     pipe_through([:browser, :require_authenticated_user])
 
     live_session :require_authenticated_user,
-      on_mount: [{TavernWeb.UserAuth, :ensure_authenticated}] do
+      on_mount: [TavernWeb.ReloadOnNewBuild, {TavernWeb.UserAuth, :ensure_authenticated}] do
       live("/", ServerLive, :index)
       live("/settings", SettingsLive, :index)
     end
@@ -106,7 +109,7 @@ defmodule TavernWeb.Router do
     pipe_through([:browser, :require_banned_user])
 
     live_session :require_banned_user,
-      on_mount: [{TavernWeb.UserAuth, :ensure_banned_user}] do
+      on_mount: [TavernWeb.ReloadOnNewBuild, {TavernWeb.UserAuth, :ensure_banned_user}] do
       live("/banned", BannedLive, :index)
     end
   end
