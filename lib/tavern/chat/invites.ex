@@ -95,9 +95,39 @@ defmodule Tavern.Chat.Invites do
   end
 
   def generate_code do
-    1..@code_length
-    |> Enum.map(fn _ -> Enum.random(@code_alphabet) end)
-    |> List.to_string()
+    @code_length |> random_letters([]) |> List.to_string()
+  end
+
+  # Letters from the system's secure random source. A byte past the largest multiple of the
+  # alphabet size is skipped, so every letter is equally likely.
+  @code_byte_limit div(256, length(@code_alphabet)) * length(@code_alphabet)
+
+  defp random_letters(0, letters), do: letters
+
+  defp random_letters(count, letters) do
+    case :crypto.strong_rand_bytes(1) do
+      <<byte>> when byte < @code_byte_limit ->
+        random_letters(count - 1, [
+          Enum.at(@code_alphabet, rem(byte, length(@code_alphabet))) | letters
+        ])
+
+      _skipped ->
+        random_letters(count, letters)
+    end
+  end
+
+  @doc """
+  The newest invite from `inviter_id` that can still be redeemed at `now`: not revoked, not
+  expired and under its use cap. Nil when there is none.
+  """
+  def live_from(inviter_id, %DateTime{} = now) do
+    Invite
+    |> where([invite], invite.inviter_id == ^inviter_id and is_nil(invite.revoked_at))
+    |> where([invite], is_nil(invite.expires_at) or invite.expires_at > ^now)
+    |> where([invite], is_nil(invite.max_uses) or invite.uses < invite.max_uses)
+    |> order_by(desc: :inserted_at)
+    |> limit(1)
+    |> Repo.one()
   end
 
   @doc """

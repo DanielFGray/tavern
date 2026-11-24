@@ -158,7 +158,7 @@ defmodule Tavern.Bootstrap do
       nonce: "bootstrap:welcome"
     }
     |> Message.changeset(%{
-      body: "Welcome to Tavern. Register the first account to become this server's owner."
+      body: "Welcome to Tavern. The account registered with the setup link owns this server."
     })
     |> Repo.insert!()
   end
@@ -167,7 +167,8 @@ defmodule Tavern.Bootstrap do
     %ServerSettings{}
     |> ServerSettings.changeset(%{
       singleton: true,
-      name: Application.get_env(:tavern, :server_name, "Tavern")
+      name: Application.get_env(:tavern, :server_name, "Tavern"),
+      registration_mode: :invite_only
     })
     |> Repo.insert!()
   end

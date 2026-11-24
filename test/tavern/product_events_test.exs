@@ -41,6 +41,7 @@ defmodule Tavern.ProductEventsTest do
 
   setup do
     Bootstrap.ensure_seed_data!()
+    open_registration!()
     ref = :telemetry_test.attach_event_handlers(self(), [ProductEvents.event()])
     on_exit(fn -> :telemetry.detach(ref) end)
 

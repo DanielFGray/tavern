@@ -2,8 +2,10 @@ defmodule Tavern.Chat.InviteTree do
   @moduledoc """
   Who invited whom, read from `invites.inviter_id` and `invite_uses`. No table of its own.
 
-  A member's parent is the inviter of the invite they first used (earliest `invite_uses` row).
-  A member with no use, or whose first invite lost its inviter, is a root. Later uses (a member
+  A member's parent is the inviter of the invite they first used (earliest `invite_uses` row),
+  when that inviter is a member the tree shows. A member with no use, or whose first invite came
+  from no one the tree shows (no inviter, a deleted account, or the system account that issues
+  the setup invite), is a root. Later uses (a member
   who left and came back on a fresh invite) are listed on the node as `rejoins` and never move it.
 
   A node is a map with `:user` (avatar asset loaded), `:joined_at`, `:code`, `:inviter` (a user or
@@ -129,16 +131,19 @@ defmodule Tavern.Chat.InviteTree do
   # --- Reading the tree ------------------------------------------------------------------------
 
   # Each member's earliest invite use. Ties on `used_at` break on the use's id, so two reads
-  # agree on the parent.
+  # agree on the parent. The parent is nil when the inviter is not a tree member, so the member
+  # is a root rather than a node under someone the tree never shows.
   defp first_uses do
     from(invite_use in InviteUse,
       join: invite in Invite,
       on: invite.id == invite_use.invite_id,
+      left_join: parent in subquery(from(user in members(), select: %{id: user.id})),
+      on: parent.id == invite.inviter_id,
       distinct: invite_use.user_id,
       order_by: [asc: invite_use.user_id, asc: invite_use.used_at, asc: invite_use.id],
       select: %{
         user_id: invite_use.user_id,
-        parent_id: invite.inviter_id,
+        parent_id: parent.id,
         code: invite.code,
         used_at: invite_use.used_at
       }
@@ -225,16 +230,19 @@ defmodule Tavern.Chat.InviteTree do
   # The edges are each member's parent from `first_uses`. `UNION` (not `UNION ALL`) drops repeated
   # rows, so a loop in the data ends the walk instead of running forever.
 
+  # `first_uses/0` as SQL, so the recursive queries and the Ecto ones share one parent rule. The
+  # query takes no parameters, so `$1` stays free for the caller's.
+  defp edges_sql do
+    {sql, []} = Repo.to_sql(:all, first_uses())
+    sql
+  end
+
   # `[root, ..., user_id]`. A user with no parent is their own chain.
   defp ancestor_chain(user_id) do
     {:ok, %{rows: rows}} =
       Repo.query(
         """
-        WITH RECURSIVE edges AS (
-          SELECT DISTINCT ON (invite_use.user_id) invite_use.user_id, invite.inviter_id AS parent_id
-          FROM invite_uses invite_use JOIN invites invite ON invite.id = invite_use.invite_id
-          ORDER BY invite_use.user_id, invite_use.used_at, invite_use.id
-        ), up(user_id, parent_id) AS (
+        WITH RECURSIVE edges(user_id, parent_id, code, used_at) AS (#{edges_sql()}), up(user_id, parent_id) AS (
           SELECT user_id, parent_id FROM edges WHERE user_id = $1
           UNION
           SELECT edge.user_id, edge.parent_id FROM edges edge JOIN up ON edge.user_id = up.parent_id
@@ -259,11 +267,7 @@ defmodule Tavern.Chat.InviteTree do
     {:ok, %{rows: rows}} =
       Repo.query(
         """
-        WITH RECURSIVE edges AS (
-          SELECT DISTINCT ON (invite_use.user_id) invite_use.user_id, invite.inviter_id AS parent_id
-          FROM invite_uses invite_use JOIN invites invite ON invite.id = invite_use.invite_id
-          ORDER BY invite_use.user_id, invite_use.used_at, invite_use.id
-        ), down(user_id) AS (
+        WITH RECURSIVE edges(user_id, parent_id, code, used_at) AS (#{edges_sql()}), down(user_id) AS (
           SELECT user_id FROM edges WHERE parent_id = $1
           UNION
           SELECT edge.user_id FROM edges edge JOIN down ON edge.parent_id = down.user_id

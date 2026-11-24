@@ -13,3 +13,4 @@
 alias Tavern.Bootstrap
 
 Bootstrap.ensure_seed_data!()
+Tavern.Release.announce_setup_invite()

@@ -17,6 +17,7 @@ defmodule TavernWeb.SettingsInvitesTest do
 
   setup do
     Bootstrap.ensure_seed_data!()
+    open_registration!()
     :ok
   end
 

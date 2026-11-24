@@ -16,6 +16,7 @@ defmodule Tavern.Chat.RejoinTest do
 
   setup do
     Bootstrap.ensure_seed_data!()
+    open_registration!()
     owner = owner_fixture()
     channel = channel_fixture()
     member = user_fixture()
