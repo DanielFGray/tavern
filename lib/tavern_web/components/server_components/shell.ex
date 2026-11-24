@@ -40,7 +40,7 @@ defmodule TavernWeb.ServerComponents.Shell do
     <aside
       id="mobile-channel-drawer"
       class={[
-        "fixed inset-y-0 left-0 z-40 flex w-[85vw] max-w-72 shrink-0 flex-col border-r border-base-300 bg-base-200 transition-transform duration-200 ease-out xl:static xl:z-auto xl:w-64 xl:max-w-none xl:border-b-0 xl:border-r-base-300",
+        "fixed inset-y-0 left-0 z-40 flex w-[85vw] max-w-72 shrink-0 flex-col border-r border-base-300 bg-base-200 transition-transform duration-200 ease-out xl:relative xl:z-auto xl:w-[var(--panel-channels-w,16rem)] xl:min-w-48 xl:max-w-[min(28rem,25vw)] xl:border-b-0 xl:border-r-base-300",
         mobile_sidebar_class(@server.mobile_sidebar_open?)
       ]}
     >
@@ -141,6 +141,13 @@ defmodule TavernWeb.ServerComponents.Shell do
           </div>
         </div>
       </div>
+      <TavernWeb.ServerComponents.PanelResize.resize_handle
+        name="channels"
+        panel="mobile-channel-drawer"
+        edge="right"
+        label="Resize channel list"
+        class="hidden xl:block"
+      />
     </aside>
     """
   end
@@ -152,7 +159,7 @@ defmodule TavernWeb.ServerComponents.Shell do
     <aside
       id="mobile-members-drawer"
       class={[
-        "fixed inset-y-0 right-0 z-40 flex h-dvh w-[82vw] max-w-72 shrink-0 flex-col border-l border-base-300 bg-base-200 transition-transform duration-200 ease-out xl:static xl:z-auto xl:h-auto xl:w-60 xl:max-w-none",
+        "fixed inset-y-0 right-0 z-40 flex h-dvh w-[82vw] max-w-72 shrink-0 flex-col border-l border-base-300 bg-base-200 transition-transform duration-200 ease-out xl:relative xl:z-auto xl:h-auto xl:w-[var(--panel-members-w,15rem)] xl:min-w-48 xl:max-w-[min(24rem,22vw)]",
         mobile_members_class(@server.mobile_members_open?),
         @server.members_collapsed? && "xl:hidden"
       ]}
@@ -201,6 +208,13 @@ defmodule TavernWeb.ServerComponents.Shell do
           </div>
         <% end %>
       </div>
+      <TavernWeb.ServerComponents.PanelResize.resize_handle
+        name="members"
+        panel="mobile-members-drawer"
+        edge="left"
+        label="Resize member list"
+        class="hidden xl:block"
+      />
     </aside>
     """
   end

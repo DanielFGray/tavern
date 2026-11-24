@@ -60,13 +60,19 @@ defmodule TavernWeb.ServerComponents.Voice do
 
       <aside
         id="voice-chat"
-        class="hidden w-96 min-w-0 shrink-0 flex-col border-l border-base-300 bg-base-200 lg:flex"
+        class="relative hidden w-[var(--panel-voice-chat-w,24rem)] min-w-64 max-w-[min(40rem,45vw)] shrink-0 flex-col border-l border-base-300 bg-base-200 lg:flex"
       >
         <p class="border-b border-base-300 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em] text-base-content/50">
           #{@channel.name} chat
         </p>
         <TavernWeb.ServerComponents.Messages.message_stream server={@server} />
         <TavernWeb.ServerComponents.Composer.composer_dock server={@server} />
+        <TavernWeb.ServerComponents.PanelResize.resize_handle
+          name="voice-chat"
+          panel="voice-chat"
+          edge="left"
+          label="Resize voice channel chat"
+        />
       </aside>
     </div>
     """

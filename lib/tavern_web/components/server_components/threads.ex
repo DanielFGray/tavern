@@ -288,7 +288,7 @@ defmodule TavernWeb.ServerComponents.Threads do
       aria-labelledby="thread-browser-title"
       phx-window-keydown="close_thread_browser"
       phx-key="Escape"
-      class="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col border-l border-base-300 bg-base-100 shadow-2xl"
+      class="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col border-l lg:w-[var(--panel-thread-browser-w,32rem)] lg:min-w-96 lg:max-w-[min(56rem,80vw)] border-base-300 bg-base-100 shadow-2xl"
     >
       <header class="flex items-start justify-between gap-3 border-b border-base-300 px-4 py-4 sm:px-5">
         <div class="min-w-0">
@@ -413,6 +413,13 @@ defmodule TavernWeb.ServerComponents.Threads do
           </button>
         </div>
       </div>
+      <TavernWeb.ServerComponents.PanelResize.resize_handle
+        name="thread-browser"
+        panel="thread-browser"
+        edge="left"
+        label="Resize thread browser"
+        class="hidden lg:block"
+      />
     </aside>
     """
   end
