@@ -135,9 +135,12 @@ defmodule TavernWeb.ServerLive.Voice do
                 socket.assigns.voice_channel
               )) ||
              {:error, :forbidden},
-         {:ok, _record} <-
+         {:ok, record} <-
            Voice.set_muted(room_channel_id(socket), user_id, token, truthy?(muted)) do
-      {:noreply, push_event(socket, "voice_mic_state", %{muted: truthy?(muted)})}
+      {:noreply,
+       socket
+       |> update_room_record(record)
+       |> push_event("voice_mic_state", %{muted: truthy?(muted)})}
     else
       {:error, :forbidden} -> {:noreply, put_flash(socket, :error, "You cannot speak here.")}
       _ -> {:noreply, socket}
@@ -145,7 +148,8 @@ defmodule TavernWeb.ServerLive.Voice do
   end
 
   # The browser captured a track and holds a gathered offer. One publish session carries every
-  # kind: camera and screen add transceivers to it and send only their own entries.
+  # kind: camera and screen add transceivers to it and send only their own entries. The SFU's
+  # answer is the reply, so the hook applies it before it offers the next kind.
   def handle_event("voice_publish", %{"kind" => kind} = params, socket)
       when kind in @publish_kinds do
     with %Scope{} = scope <- socket.assigns.current_scope,
@@ -167,15 +171,11 @@ defmodule TavernWeb.ServerLive.Voice do
                track,
                rids
              ) do
-          {:ok, record} -> assign(socket, :voice_record, record)
+          {:ok, record} -> update_room_record(socket, record)
           _ -> socket
         end
 
-      {:noreply,
-       push_event(socket, "voice_sf_answer", %{
-         kind: kind,
-         session_description: answer["sessionDescription"]
-       })}
+      {:reply, %{session_description: answer["sessionDescription"]}, socket}
     else
       {:error, :forbidden} -> {:noreply, put_flash(socket, :error, "You cannot stream here.")}
       {:error, {:track, results}} -> track_refusal(socket, results)
@@ -199,7 +199,7 @@ defmodule TavernWeb.ServerLive.Voice do
                nil,
                nil
              ) do
-          {:ok, record} -> assign(socket, :voice_record, record)
+          {:ok, record} -> update_room_record(socket, record)
           _ -> socket
         end
 
@@ -663,6 +663,9 @@ defmodule TavernWeb.ServerLive.Voice do
     end
   end
 
+  # Applies a participant record to the room list and, when it is this tab's own, to
+  # `voice_record`. A change this tab makes reaches it only through here: the room broadcast
+  # skips the sending process (`Topics.broadcast_channel/2` uses `broadcast_from`).
   defp update_room_record(socket, record) do
     socket
     |> update(:voice_participants, &replace_participant(&1, record))

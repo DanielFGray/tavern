@@ -53,7 +53,6 @@
             this.published = { mic: false, camera: false, screen: false }
 
             this.handleEvent("voice_ready", (data) => this.start(data))
-            this.handleEvent("voice_sf_answer", (data) => this.applyAnswer(data))
             this.handleEvent("voice_sf_offer", (data) => this.applyRemoteOffer(data))
             this.handleEvent("voice_mic_state", (data) => this.setMicEnabled(!data.muted))
             this.handleEvent("voice_moderated_mute", () => this.setMicEnabled(false))
@@ -88,15 +87,7 @@
             const transceiver = this.pcPublish.addTransceiver(micTrack, { direction: "sendonly" })
             micTrack.enabled = true
 
-            const offer = await this.pcPublish.createOffer()
-            await this.pcPublish.setLocalDescription(offer)
-            await this.waitIce(this.pcPublish)
-
-            this.pushEvent("voice_publish", {
-              kind: "mic",
-              sdp: this.pcPublish.localDescription.sdp,
-              mids: [{ mid: transceiver.mid }],
-            })
+            this.publish("mic", transceiver)
             this.published.mic = true
 
             this.startSpeakingDetection(micTrack)
@@ -141,16 +132,29 @@
               ],
             })
 
-            const offer = await this.pcPublish.createOffer()
-            await this.pcPublish.setLocalDescription(offer)
-            await this.waitIce(this.pcPublish)
-
-            this.pushEvent("voice_publish", {
-              kind,
-              sdp: this.pcPublish.localDescription.sdp,
-              mids: [{ mid: transceiver.mid }],
-            })
+            this.publish(kind, transceiver)
             this.published[kind] = true
+          },
+
+          // Offers on the publish connection run one at a time. An offer made before the
+          // previous answer arrives replaces that offer, and the late answer then fails. The
+          // server replies to `voice_publish` with the SFU answer, or with nothing on a refusal.
+          publish(kind, transceiver) {
+            const pc = this.pcPublish
+            this.publishing = (this.publishing || Promise.resolve())
+              .then(async () => {
+                await pc.setLocalDescription(await pc.createOffer())
+                await this.waitIce(pc)
+                const reply = await this.pushEvent("voice_publish", {
+                  kind,
+                  sdp: pc.localDescription.sdp,
+                  mids: [{ mid: transceiver.mid }],
+                })
+                if (reply?.session_description && this.pcPublish === pc) {
+                  await pc.setRemoteDescription(reply.session_description)
+                }
+              })
+              .catch((err) => console.warn("voice publish failed", kind, err))
           },
 
           stopVideo(kind) {
@@ -161,11 +165,6 @@
             }
             this.videoStreams.delete(`${this.userId}:${kind}`)
             this.published[kind] = false
-          },
-
-          async applyAnswer(data) {
-            if (!this.pcPublish) return
-            await this.pcPublish.setRemoteDescription(data.session_description)
           },
 
           async applyRemoteOffer(data) {
@@ -297,6 +296,7 @@
             }
             this.pcPublish = null
             this.pcRecv = null
+            this.publishing = null
 
             for (const kind of ["mic", "camera", "screen"]) {
               const stream = this[kind + "Stream"]

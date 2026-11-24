@@ -215,6 +215,28 @@ defmodule Tavern.TestSupport do
     %{success: true}
   end
 
+  # Answers the Realtime API the way Cloudflare does for a publish, so a browser can join a
+  # voice channel and publish tracks with no network. The SFU itself is absent: nothing is ever
+  # relayed, so a spec can check only what a tab shows of its own media.
+  defp execute("stub_voice", _payload) do
+    if is_nil(Process.whereis(:e2e_voice_stub)) do
+      caller = self()
+
+      pid =
+        spawn(fn ->
+          Req.Test.set_req_test_to_shared()
+          Req.Test.stub(Tavern.Voice.Cloudflare, &stub_realtime/1)
+          send(caller, :stubbed)
+          discard_requests()
+        end)
+
+      Process.register(pid, :e2e_voice_stub)
+      receive do: (:stubbed -> :ok)
+    end
+
+    %{success: true}
+  end
+
   defp execute("delete_account", payload) do
     username = payload["username"] || raise "username is required"
     ensure_safe_test_identity!("#{username}@example.com", username)
@@ -314,6 +336,44 @@ defmodule Tavern.TestSupport do
   # ---------------------------------------------------------------------------
 
   # The stub reports each request to its owner; the owner drops the reports and lives on.
+  defp stub_realtime(%Plug.Conn{method: "POST", path_info: path} = conn) do
+    case Enum.take(path, -2) do
+      ["sessions", "new"] ->
+        Req.Test.json(conn, %{"sessionId" => "e2e-#{System.unique_integer([:positive])}"})
+
+      ["tracks", "new"] ->
+        {:ok, raw, conn} = Plug.Conn.read_body(conn)
+        body = JSON.decode!(raw)
+
+        tracks =
+          for track <- body["tracks"] || [],
+              do: Map.take(track, ["mid", "trackName", "sessionId"])
+
+        Req.Test.json(conn, %{
+          "tracks" => tracks,
+          "sessionDescription" => answer_for(body["sessionDescription"])
+        })
+    end
+  end
+
+  defp stub_realtime(conn), do: Req.Test.json(conn, %{})
+
+  # Mirrors the tab's offer into an answer that accepts every sending section, so the tab's
+  # publish connection returns to stable and can offer the next kind. No media flows: the
+  # answer carries no ICE candidate the browser can reach.
+  defp answer_for(%{"sdp" => sdp}) do
+    answer =
+      sdp
+      |> String.replace("a=sendonly", "a=recvonly")
+      |> String.replace("a=setup:actpass", "a=setup:active")
+      |> String.replace(~r/a=rid:(\w+) send/, "a=rid:\\1 recv")
+      |> String.replace("a=simulcast:send", "a=simulcast:recv")
+
+    %{"type" => "answer", "sdp" => answer}
+  end
+
+  defp answer_for(_offer), do: nil
+
   defp discard_requests do
     receive do
       _report -> discard_requests()

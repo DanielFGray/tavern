@@ -87,7 +87,7 @@ publish session; the SDP sections accumulate, which is accepted until real behav
 otherwise (then: a fresh publish session per video cycle).
 
 3. The LiveView calls `POST /sessions/new`, then `POST /sessions/{id}/tracks/new` with the offer and the local track entries, and records the returned session id.
-4. It pushes the SFU answer to the browser; the hook applies `setRemoteDescription` and reports `connected`.
+4. It replies to `voice_publish` with the SFU answer; the hook applies `setRemoteDescription`. The hook chains its publishes, so it makes the next offer only after it applies the previous answer.
 5. The LiveView writes the track into the room record and broadcasts `{:voice_published, ...}`.
 
 Subscribe (driven by the LiveView on room and publication events):

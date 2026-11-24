@@ -89,6 +89,40 @@ defmodule TavernWeb.ServerLiveVoiceTest do
     refute has_element?(view, "#voice-call-bar")
   end
 
+  test "the publisher's own tile gets a video area for the kind it publishes", %{
+    conn: conn,
+    voice: voice
+  } do
+    Req.Test.stub(Tavern.Voice.Cloudflare, fn conn ->
+      case Enum.take(conn.path_info, -2) do
+        ["tracks", "new"] ->
+          Req.Test.json(conn, %{
+            "tracks" => [%{"mid" => "1", "trackName" => "camera"}],
+            "sessionDescription" => %{"type" => "answer", "sdp" => "v=0"}
+          })
+
+        _ ->
+          Req.Test.json(conn, %{"sessionId" => "stub-session"})
+      end
+    end)
+
+    conn = log_in_member_user(conn)
+    user = current_user_from_conn(conn)
+    {:ok, view, _html} = live_hydrated(conn, "/?channel=#{voice.slug}")
+    view |> element("#voice-join-button") |> render_click()
+
+    render_hook(view, "voice_publish", %{
+      "kind" => "camera",
+      "sdp" => "v=0",
+      "mids" => [%{"mid" => "1"}]
+    })
+
+    assert_reply(view, %{session_description: %{"type" => "answer"}})
+
+    assert has_element?(view, "#voice-camera-toggle[aria-pressed=true]")
+    assert has_element?(view, "#voice-video-#{user.id}-camera")
+  end
+
   test "each published video kind gets its own area that LiveView patches leave alone", %{
     conn: conn,
     voice: voice
