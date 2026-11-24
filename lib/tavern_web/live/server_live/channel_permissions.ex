@@ -34,7 +34,8 @@ defmodule TavernWeb.ServerLive.ChannelPermissions do
     :use_external_emojis,
     :use_external_stickers,
     :mention_everyone,
-    :manage_messages
+    :manage_messages,
+    :pin_messages
   ]
 
   def events, do: @events

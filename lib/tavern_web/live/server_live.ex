@@ -71,6 +71,7 @@ defmodule TavernWeb.ServerLive do
       |> assign(:followed_threads, [])
       |> assign(:thread_browser, nil)
       |> assign(:message_search, nil)
+      |> assign(:pins, nil)
       |> Voice.init()
       |> ChannelEditor.init()
       |> Attachments.init()

@@ -9,6 +9,7 @@ defmodule TavernWeb.ServerLive.Events do
   alias TavernWeb.ServerLive.Events.Mobile
   alias TavernWeb.ServerLive.Events.Navigation
   alias TavernWeb.ServerLive.Events.Notifications
+  alias TavernWeb.ServerLive.Events.Pins
   alias TavernWeb.ServerLive.Events.Profile
   alias TavernWeb.ServerLive.Events.Questions
   alias TavernWeb.ServerLive.Events.Reactions
@@ -26,6 +27,7 @@ defmodule TavernWeb.ServerLive.Events do
     Messages,
     Mobile,
     Notifications,
+    Pins,
     Profile,
     Questions,
     Reactions,

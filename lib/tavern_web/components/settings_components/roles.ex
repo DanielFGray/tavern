@@ -35,7 +35,8 @@ defmodule TavernWeb.SettingsComponents.Roles do
        :use_external_emojis,
        :use_external_stickers,
        :mention_everyone,
-       :manage_messages
+       :manage_messages,
+       :pin_messages
      ]},
     {"Moderation", [:moderate_members, :kick_members, :ban_members]},
     {"Admin", [:administrator]}
