@@ -121,6 +121,13 @@ Losing a bit mid-call takes effect at the next gate: a revoked speaker keeps the
 
 A voice channel's pane is a grid of participant tiles with the message transcript beside it, exactly as a text channel's pane renders messages — messages are already keyed by channel id, and `:send_messages` works on a voice channel. No new message kind, no thread rules on voice channels (`Channel.thread_host?/1` excludes `:voice`).
 
+## Video in the tiles
+
+- **One area per kind.** A tile renders one video area for each kind the participant publishes, screen first, then camera. The area has the id `voice-video-<user id>-<kind>` and `phx-update="ignore"`, so the `<video>` element the hook puts in it survives the tile's re-renders on every speaking change. The server renders an area only after it records the track, and removes it when the track stops.
+- **The area asks for its track.** Each area carries the `.VoiceVideo` hook. When the area mounts, the hook sends a `voice:video-area` DOM event, and `.VoiceSession` places the matching track from its buffer, keyed `<user id>:<kind>`. A track that arrives before its area waits in the buffer. This also covers a reader who comes back to the voice channel: the areas mount again and ask again.
+- **Your own video.** The SFU never sends a tab its own tracks (`missing_publications/2` skips them), so `.VoiceSession` buffers the captured track under the reader's own id. Your preview appears when the server has accepted the publish, so a visible preview means you are streaming.
+- **No sound from video elements.** The `<video>` elements are muted. Sound plays only through the hook's `<audio>` elements. A screen share uses `object-contain`, so the whole picture shows; a camera uses `object-cover`.
+
 ## Configuration
 
 ```elixir

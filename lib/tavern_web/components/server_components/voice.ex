@@ -120,7 +120,7 @@ defmodule TavernWeb.ServerComponents.Voice do
         server={@server}
         participant={participant}
         speaking={MapSet.member?(@server.voice_speaking, participant.user_id)}
-        has_video?={participant.tracks[:camera] != nil or participant.tracks[:screen] != nil}
+        video_kinds={for kind <- [:screen, :camera], participant.tracks[kind] != nil, do: kind}
       />
     </div>
     """
@@ -129,10 +129,12 @@ defmodule TavernWeb.ServerComponents.Voice do
   attr :server, :map, required: true
   attr :participant, :map, required: true
   attr :speaking, :boolean, required: true
-  attr :has_video?, :boolean, required: true
+  attr :video_kinds, :list, required: true, doc: "the kinds of video the participant publishes"
 
-  # The tile is what the hook touches: `data-voice-speaking` marks the ring, and the tile is
-  # where received audio elements get attached.
+  # `data-voice-speaking` marks the ring. Each published video kind gets its own area, which the
+  # `.VoiceSession` hook fills with a <video>; `phx-update="ignore"` keeps that element when the
+  # tile re-renders, as it does on every speaking change. The server renders an area only once
+  # it has recorded the track, so the reader's own preview also means the publish was accepted.
   defp voice_tile(assigns) do
     ~H"""
     <div
@@ -148,11 +150,25 @@ defmodule TavernWeb.ServerComponents.Voice do
       ]}
     >
       <div
-        :if={@has_video?}
+        :for={kind <- @video_kinds}
+        id={"voice-video-#{@participant.user_id}-#{kind}"}
+        phx-hook=".VoiceVideo"
+        phx-update="ignore"
+        data-user-id={@participant.user_id}
+        data-voice-video={kind}
         class="w-full aspect-video overflow-hidden rounded-lg bg-black"
-        data-voice-video
       />
-      <%= if !@has_video? do %>
+      <script :type={Phoenix.LiveView.ColocatedHook} name=".VoiceVideo">
+        // The area announces itself; the session hook, which holds the tracks, fills it. An area
+        // mounts whenever the tile shows a kind again, so no other path re-attaches video.
+        export default {
+          mounted() {
+            const detail = {userId: this.el.dataset.userId, kind: this.el.dataset.voiceVideo}
+            document.dispatchEvent(new CustomEvent("voice:video-area", {detail}))
+          },
+        }
+      </script>
+      <%= if @video_kinds == [] do %>
         <.avatar user={member(@server, @participant.user_id)} class="size-12 text-sm" />
       <% end %>
       <span class="max-w-full truncate text-xs font-semibold">

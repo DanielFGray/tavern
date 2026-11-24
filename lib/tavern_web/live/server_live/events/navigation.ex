@@ -1,7 +1,7 @@
 defmodule TavernWeb.ServerLive.Events.Navigation do
   @moduledoc false
 
-  import Phoenix.LiveView, only: [put_flash: 3, push_event: 3]
+  import Phoenix.LiveView, only: [put_flash: 3]
 
   alias Tavern.Chat
   alias TavernWeb.ServerLive.ForumNav
@@ -58,8 +58,7 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
           else
             {:noreply,
              socket
-             |> State.switch_channel(channel)
-             |> reattach_videos(channel)}
+             |> State.switch_channel(channel)}
           end
 
         {:error, :not_found} ->
@@ -82,18 +81,6 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
         {:noreply, socket}
     end
   end
-
-  # Video tracks received while the reader was in another channel wait in the hook's buffer;
-  # returning to the voice channel asks the hook to place them in the tiles again.
-  defp reattach_videos(socket, %Tavern.Chat.Channel{kind: :voice} = channel) do
-    if socket.assigns.voice_channel && socket.assigns.voice_channel.id == channel.id do
-      push_event(socket, "voice_video_reattach", %{})
-    else
-      socket
-    end
-  end
-
-  defp reattach_videos(socket, _channel), do: socket
 
   def handle_info({:channel_created, channel}, socket) do
     if Chat.thread_channel?(channel) do

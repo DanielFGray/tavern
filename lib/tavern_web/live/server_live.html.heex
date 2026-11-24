@@ -58,9 +58,13 @@
             this.handleEvent("voice_mic_state", (data) => this.setMicEnabled(!data.muted))
             this.handleEvent("voice_moderated_mute", () => this.setMicEnabled(false))
             this.handleEvent("voice_video_request", (data) => this.toggleVideo(data.kind, data.active))
-            this.handleEvent("voice_video_reattach", () => this.reattachVideos())
             this.handleEvent("voice_ended", () => this.stop())
             this.handleEvent("voice_replaced", () => this.stop())
+
+            // A tile's video area mounts when the server records a published kind, and again
+            // whenever the reader returns to the voice channel.
+            this.onVideoArea = (e) => this.attachVideo(e.detail.userId, e.detail.kind)
+            document.addEventListener("voice:video-area", this.onVideoArea)
           },
 
           async start(data) {
@@ -117,6 +121,8 @@
             if (!stream) return
             this[kind + "Stream"] = stream
             const track = stream.getVideoTracks()[0]
+            // The reader's own video never comes back from the SFU; it previews from the capture.
+            this.videoStreams.set(`${this.userId}:${kind}`, track)
 
             // The browser's own Stop sharing bar kills the track; the room must hear about it.
             track.onended = () => {
@@ -153,6 +159,7 @@
               for (const track of stream.getTracks()) track.stop()
               this[kind + "Stream"] = null
             }
+            this.videoStreams.delete(`${this.userId}:${kind}`)
             this.published[kind] = false
           },
 
@@ -202,29 +209,24 @@
             }
           },
 
+          // Places a buffered track in its area once both exist; whichever arrives second calls this.
           attachVideo(userId, kind) {
             const track = this.videoStreams.get(`${userId}:${kind}`)
-            const tile = document.querySelector(`[data-voice-tile][data-user-id="${userId}"]`)
-            if (!track || !tile) return
+            const area = document.getElementById(`voice-video-${userId}-${kind}`)
+            if (!track || !area) return
 
-            let video = tile.querySelector(`video[data-voice-kind="${kind}"]`)
+            let video = area.querySelector("video")
             if (!video) {
               video = document.createElement("video")
               video.autoplay = true
               video.playsInline = true
-              video.dataset.voiceKind = kind
-              video.className = "h-full w-full object-cover"
-              const area = tile.querySelector("[data-voice-video]") || tile
+              // Sound plays through the hook's own <audio> elements.
+              video.muted = true
+              // A shared screen keeps its whole picture; a camera fills the tile.
+              video.className = kind === "screen" ? "h-full w-full object-contain" : "h-full w-full object-cover"
               area.appendChild(video)
             }
             video.srcObject = new MediaStream([track])
-          },
-
-          reattachVideos() {
-            for (const key of this.videoStreams.keys()) {
-              const [userId, kind] = [key.slice(0, key.lastIndexOf(":")), key.slice(key.lastIndexOf(":") + 1)]
-              this.attachVideo(userId, kind)
-            }
           },
 
           setMicEnabled(enabled) {
@@ -310,6 +312,7 @@
           },
 
           destroyed() {
+            document.removeEventListener("voice:video-area", this.onVideoArea)
             this.stop()
           },
         }

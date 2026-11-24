@@ -88,4 +88,29 @@ defmodule TavernWeb.ServerLiveVoiceTest do
     assert [] == Voice.participants(voice.id)
     refute has_element?(view, "#voice-call-bar")
   end
+
+  test "each published video kind gets its own area that LiveView patches leave alone", %{
+    conn: conn,
+    voice: voice
+  } do
+    {:ok, view, _html} = live_hydrated(log_in_member_user(conn), "/?channel=#{voice.slug}")
+    view |> element("#voice-join-button") |> render_click()
+
+    peer = %{id: Ecto.UUID.generate()}
+    {:ok, record, _} = Voice.join(voice, peer)
+    screen = %{"trackName" => "screen", "sessionId" => "s1", "mids" => ["1"]}
+    camera = %{"trackName" => "camera", "sessionId" => "s1", "mids" => ["2"]}
+    {:ok, _} = Voice.publish_track(voice.id, peer.id, record.token, :screen, screen, ["f"])
+    {:ok, _} = Voice.publish_track(voice.id, peer.id, record.token, :camera, camera, ["f"])
+
+    screen_area = "#voice-video-#{peer.id}-screen[phx-update=ignore][phx-hook]"
+    camera_area = "#voice-video-#{peer.id}-camera[phx-update=ignore][phx-hook]"
+    assert has_element?(view, screen_area)
+    assert has_element?(view, camera_area)
+
+    {:ok, _} = Voice.publish_track(voice.id, peer.id, record.token, :screen, nil, nil)
+
+    refute has_element?(view, screen_area)
+    assert has_element?(view, camera_area)
+  end
 end
