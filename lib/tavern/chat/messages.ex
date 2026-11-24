@@ -86,6 +86,46 @@ defmodule Tavern.Chat.Messages do
   end
 
   @doc """
+  The listed messages (`Message.where_listed/1`) in channels and threads the scope may view whose
+  text holds every word of `query`, newest first, as `{:ok, %{messages: messages, next: cursor}}`.
+  Each word matches the start of a word in the text, case aside: "depl" finds "Deploying".
+  Punctuation in the query is ignored, and a query with no words finds nothing. `:limit` caps the
+  page (default 25); `after: cursor` reads the page after one, and `next` is nil on the last page.
+  Each message has its `channel` set, with `starter_message` loaded so a thread has its title.
+  """
+  def search_messages(%Scope{} = scope, query, opts \\ []) when is_binary(query) do
+    limit = Keyword.get(opts, :limit, 25)
+    channels = Map.new(Visibility.visible_channels(scope), &{&1.id, &1})
+
+    case search_terms(query) do
+      nil ->
+        {:ok, %{messages: [], next: nil}}
+
+      _terms when channels == %{} ->
+        {:ok, %{messages: [], next: nil}}
+
+      terms ->
+        rows =
+          Message
+          |> where([message], message.channel_id in ^Map.keys(channels))
+          |> Message.where_listed()
+          |> where(
+            [message],
+            fragment("to_tsvector('simple', ?) @@ to_tsquery('simple', ?)", message.body, ^terms)
+          )
+          |> search_after(Keyword.get(opts, :after))
+          |> order_by([message], desc: message.inserted_at, desc: message.id)
+          |> limit(^(limit + 1))
+          |> preload(^@read_preloads)
+          |> Repo.all()
+
+        {page, more} = Enum.split(rows, limit)
+        next = if more != [], do: page |> List.last() |> search_cursor()
+        {:ok, %{messages: with_search_channels(page, channels), next: next}}
+    end
+  end
+
+  @doc """
   The message with `message_id`, when the scope may view its channel, or nil. A hidden message and
   a missing one both give nil.
   """
@@ -340,6 +380,44 @@ defmodule Tavern.Chat.Messages do
   end
 
   # --- Reading helpers ---------------------------------------------------------------------------
+
+  # A tsquery that requires each word of `query` as a word prefix, or nil when it has no words.
+  # Only letters and digits reach the tsquery, so no input can be tsquery syntax.
+  defp search_terms(query) do
+    case Regex.scan(~r/[\p{L}\p{N}]+/u, query) do
+      [] -> nil
+      words -> words |> Enum.take(10) |> Enum.map_join(" & ", fn [word] -> word <> ":*" end)
+    end
+  end
+
+  defp with_search_channels(messages, channels) do
+    by_id =
+      messages
+      |> Enum.map(&Map.fetch!(channels, &1.channel_id))
+      |> Enum.uniq_by(& &1.id)
+      |> Repo.preload(:starter_message)
+      |> Map.new(&{&1.id, &1})
+
+    Enum.map(messages, &%{&1 | channel: Map.fetch!(by_id, &1.channel_id)})
+  end
+
+  defp search_cursor(%Message{inserted_at: at, id: id}), do: "#{DateTime.to_iso8601(at)}|#{id}"
+
+  defp search_after(query, nil), do: query
+
+  defp search_after(query, cursor) do
+    with [at, id] <- String.split(cursor, "|", parts: 2),
+         {:ok, at, _offset} <- DateTime.from_iso8601(at),
+         {:ok, id} <- Ids.cast(id) do
+      where(
+        query,
+        [message],
+        message.inserted_at < ^at or (message.inserted_at == ^at and message.id < ^id)
+      )
+    else
+      _ -> where(query, false)
+    end
+  end
 
   defp message_cursor(channel_id, opts) do
     case {Keyword.get(opts, :after), Keyword.get(opts, :before)} do

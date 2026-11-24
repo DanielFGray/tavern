@@ -40,7 +40,7 @@ Counts (91 rows): yes 20 · partial 22 · no 34 · planned 15.
 | MSG12 file uploads | planned | message_attachments table only; uploads only for icon, avatar, emoji (settings_live.ex:40-51) | Task "Attachments, uploads, and media previews". |
 | MSG13 link previews | yes | chat/embeds.ex:67; docs/design/link-embeds.md | |
 | MSG14 markdown/code | yes | chat_hooks.js:8; code_highlight.js:1 | |
-| MSG15 full-text search | planned | only thread/forum title search (threads.ex:161, forum_nav.ex:56) | No search over message text. |
+| MSG15 full-text search | partial | `Chat.search_messages/3` and the Search drawer (2026-11-24) | Word-prefix search over readable messages. No `from:`/`in:`/`has:`/date filters, and a result opens its conversation, not the message. |
 | MSG16 unread tracking | partial | notifications.ex:77, :86, :154 | No "mark unread". |
 | MSG17 notification prefs | partial | settings_components/tabs.ex:231-251; chat_hooks.js:634 | Per-channel level and browser alerts. No mute UI, DND, schedules. |
 | MSG18 scheduled/reminders | no | `rg -i 'schedul\|remind'`: only account-deletion schedule | |

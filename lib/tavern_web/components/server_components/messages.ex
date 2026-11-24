@@ -67,6 +67,16 @@ defmodule TavernWeb.ServerComponents.Messages do
 
       <div class="ml-4 flex items-center gap-2 text-xs text-base-content/65">
         <button
+          type="button"
+          phx-click="open_message_search"
+          id="open-message-search"
+          title="Search messages"
+          class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-base-content/80 transition hover:bg-base-100 hover:text-base-content"
+        >
+          <.icon name="hero-magnifying-glass" class="size-4" />
+          <span class="hidden sm:inline">Search</span>
+        </button>
+        <button
           :if={Tavern.Chat.Channel.thread_host?(@server.active_channel)}
           type="button"
           phx-click="open_thread_browser"

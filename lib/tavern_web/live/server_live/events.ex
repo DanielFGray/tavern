@@ -12,6 +12,7 @@ defmodule TavernWeb.ServerLive.Events do
   alias TavernWeb.ServerLive.Events.Profile
   alias TavernWeb.ServerLive.Events.Questions
   alias TavernWeb.ServerLive.Events.Reactions
+  alias TavernWeb.ServerLive.Events.Search
   alias TavernWeb.ServerLive.Events.Threads
   alias TavernWeb.ServerLive.Events.Verification
   alias TavernWeb.ServerLive.Voice
@@ -28,6 +29,7 @@ defmodule TavernWeb.ServerLive.Events do
     Profile,
     Questions,
     Reactions,
+    Search,
     Threads,
     Verification,
     Voice
