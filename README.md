@@ -134,6 +134,12 @@ In a release install, run `bin/make-owner you@example.com` from the release dire
 
 This is intentionally barebones infra, not polished product UX.
 
+## License
+
+Tavern is licensed under the GNU Affero General Public License, version 3 or any later version
+(AGPL-3.0-or-later). See [LICENSE](LICENSE). If you run a modified Tavern for other people,
+section 13 requires you to offer those users the source of your version.
+
 ## Learn more
 
 - Official website: https://www.phoenixframework.org/
