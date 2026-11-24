@@ -98,8 +98,7 @@ defmodule Tavern.Voice do
       {:ok, nil} ->
         []
 
-      {:error, reason} = error ->
-        Logger.warning("voice: room read failed: #{inspect(reason)}")
+      {:error, :unavailable} = error ->
         error
     end
   end
@@ -325,14 +324,27 @@ defmodule Tavern.Voice do
     end
   end
 
+  # The platform's Valkey login may run cached scripts (`SCRIPT LOAD`, `EVALSHA`) but not send
+  # script source with `EVAL`. A Valkey restart empties the script cache, so a NOSCRIPT answer
+  # loads the script and runs it once more. Every failure, a refused command or a lost
+  # connection alike, answers `{:error, :unavailable}`: callers decide on that one shape.
   defp eval(script, channel_id, args) do
-    case Valkey.command(["EVAL", script, "1", namespaced(room_key(channel_id)) | args]) do
-      {:ok, result} ->
-        {:ok, result}
+    sha = :crypto.hash(:sha, script) |> Base.encode16(case: :lower)
+    command = ["EVALSHA", sha, "1", namespaced(room_key(channel_id)) | args]
 
-      {:error, reason} = error ->
+    result =
+      with {:error, %Redix.Error{message: "NOSCRIPT" <> _}} <- Valkey.command(command),
+           {:ok, _sha} <- Valkey.command(["SCRIPT", "LOAD", script]) do
+        Valkey.command(command)
+      end
+
+    case result do
+      {:ok, value} ->
+        {:ok, value}
+
+      {:error, reason} ->
         Logger.warning("voice: valkey command failed: #{inspect(reason)}")
-        error
+        {:error, :unavailable}
     end
   end
 
