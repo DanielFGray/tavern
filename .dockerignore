@@ -51,3 +51,6 @@ erl_crash.dump
 /node_modules/
 /playwright-report/
 /test-results/
+
+# Self-host settings and compose files; selfhost/.env holds its secrets
+/selfhost/
