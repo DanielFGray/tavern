@@ -1,0 +1,147 @@
+# One Tavern server on one machine: the app, Postgres, Valkey, an S3 store for uploads, and
+# Caddy for HTTPS. Steps: README.md, "Self-host with Docker Compose". Settings: selfhost/.env,
+# which `selfhost/setup` writes.
+name: tavern-selfhost
+
+x-tavern-build: &tavern-build
+  context: ..
+  dockerfile: Dockerfile
+
+# runtime.exs reads these in both the migrate step and the server.
+x-tavern-env: &tavern-env
+  # The release writes its runtime files here; /app belongs to root and the app runs as nobody.
+  RELEASE_TMP: /tmp
+  PHX_URL: https://${TAVERN_DOMAIN:?set TAVERN_DOMAIN in selfhost/.env}
+  SECRET_KEY_BASE: ${SECRET_KEY_BASE:?run selfhost/setup}
+  TAVERN_SERVER_NAME: ${TAVERN_SERVER_NAME:-Tavern}
+  DATABASE_VISITOR: tavern_visitor
+  VALKEY_URL: redis://valkey:6379/0
+  TRUSTED_PROXY_HEADER: x-real-ip
+  S3_ENDPOINT: http://s3:8333
+  S3_BUCKET: tavern
+  S3_REGION: us-east-1
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:?run selfhost/setup}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:?run selfhost/setup}
+  MAIL_PROVIDER: ${MAIL_PROVIDER:-}
+  EMAIL_FROM: ${EMAIL_FROM:-}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-}
+  SMTP_USERNAME: ${SMTP_USERNAME:-}
+  SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+  SMTP_SECURITY: ${SMTP_SECURITY:-starttls}
+  CLOUDFLARE_ACCOUNT_ID: ${CLOUDFLARE_ACCOUNT_ID:-}
+  CLOUDFLARE_EMAIL_API_TOKEN: ${CLOUDFLARE_EMAIL_API_TOKEN:-}
+  CLOUDFLARE_REALTIME_APP_ID: ${CLOUDFLARE_REALTIME_APP_ID:-}
+  CLOUDFLARE_REALTIME_APP_SECRET: ${CLOUDFLARE_REALTIME_APP_SECRET:-}
+  CLOUDFLARE_TURN_KEY_ID: ${CLOUDFLARE_TURN_KEY_ID:-}
+  CLOUDFLARE_TURN_KEY_TOKEN: ${CLOUDFLARE_TURN_KEY_TOKEN:-}
+
+services:
+  caddy:
+    image: caddy:2.10
+    restart: unless-stopped
+    depends_on: [app]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      TAVERN_DOMAIN: ${TAVERN_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+  app:
+    build: *tavern-build
+    image: tavern:selfhost
+    # The image has no USER line; under Docker, run it unprivileged.
+    user: "65534:65534"
+    restart: unless-stopped
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      valkey:
+        condition: service_started
+    environment:
+      <<: *tavern-env
+      # The app login holds no grants of its own; each connection switches to tavern_visitor.
+      DATABASE_URL: ecto://tavern_api:${TAVERN_DB_API_PASSWORD:?run selfhost/setup}@postgres/tavern
+
+  # Runs the migrations and the seed data, then exits. `up` runs it again after each upgrade.
+  # It logs in as the database owner; so does `bin/make-owner`, which runs in this service.
+  migrate:
+    build: *tavern-build
+    image: tavern:selfhost
+    # The image has no USER line; under Docker, run it unprivileged.
+    user: "65534:65534"
+    command: ["/app/bin/migrate"]
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      s3-bucket:
+        condition: service_completed_successfully
+    environment:
+      <<: *tavern-env
+      DATABASE_URL: ecto://tavern:${POSTGRES_PASSWORD:?run selfhost/setup}@postgres/tavern
+
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: tavern
+      POSTGRES_DB: tavern
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      TAVERN_DB_API_PASSWORD: ${TAVERN_DB_API_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./postgres-init.sh:/docker-entrypoint-initdb.d/10-tavern-roles.sh:ro
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "tavern", "-d", "tavern"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Presence, typing and rate limits. Nothing in it outlives a restart, so it keeps no volume.
+  valkey:
+    image: valkey/valkey:8-alpine
+    restart: unless-stopped
+    command: ["valkey-server", "--save", "", "--appendonly", "no"]
+
+  s3:
+    image: chrislusf/seaweedfs:4.50
+    restart: unless-stopped
+    entrypoint: ["/bin/sh", "/tavern/seaweedfs-start.sh"]
+    environment:
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+    volumes:
+      - s3-data:/data
+      - ./seaweedfs-start.sh:/tavern/seaweedfs-start.sh:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:9333/cluster/status"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  # Creates the upload bucket on the first start. Creating a bucket that exists fails, so it
+  # checks the list first.
+  s3-bucket:
+    image: chrislusf/seaweedfs:4.50
+    restart: "no"
+    depends_on:
+      s3:
+        condition: service_healthy
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        echo s3.bucket.list | weed shell -master=s3:9333 | grep -qw tavern ||
+        echo 's3.bucket.create -name tavern' | weed shell -master=s3:9333
+
+volumes:
+  postgres-data:
+  s3-data:
+  caddy-data:
+  caddy-config:

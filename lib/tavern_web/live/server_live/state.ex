@@ -24,6 +24,9 @@ defmodule TavernWeb.ServerLive.State do
   alias TavernWeb.ServerLive.Pane
   alias TavernWeb.ServerLive.ThreadNav
 
+  # Messages per transcript page: the first load and each "load older" step.
+  @page_size 50
+
   def queue_initial_hydration(socket) do
     if connected?(socket) do
       send(self(), :hydrate_navigation)
@@ -134,11 +137,7 @@ defmodule TavernWeb.ServerLive.State do
   defp load_pane(socket, kind, conversation) do
     scope = socket.assigns.current_scope
 
-    messages =
-      case Chat.list_messages(scope, conversation.id) do
-        {:ok, messages} -> messages
-        {:error, :not_found} -> []
-      end
+    {messages, older_cursor} = message_page(scope, conversation.id, nil)
 
     Chat.mark_channel_read(scope, conversation.id, List.last(messages))
 
@@ -147,12 +146,50 @@ defmodule TavernWeb.ServerLive.State do
       | abilities: Chat.channel_abilities(scope, conversation.id),
         typing_users: Chat.list_typing_users(scope, conversation.id),
         message_count: Pane.count_messages(scope, kind, conversation.id),
-        empty?: messages == []
+        empty?: messages == [],
+        older_cursor: older_cursor
     }
 
     socket
     |> assign(Pane.assign_key(kind), pane)
     |> stream(Pane.stream_name(kind), messages, reset: true)
+  end
+
+  @doc """
+  Adds the page of messages before the oldest one the pane of `kind` shows to the top of its
+  stream. A pane already at the start of its conversation is left alone.
+  """
+  def load_older_messages(socket, kind) do
+    with %{id: conversation_id} <- conversation(socket, kind),
+         %Pane{older_cursor: cursor} when not is_nil(cursor) <- pane(socket, kind) do
+      {messages, older_cursor} =
+        message_page(socket.assigns.current_scope, conversation_id, cursor)
+
+      # Inserting at index 0 one by one reverses the list, so the oldest goes in last.
+      socket
+      |> stream(Pane.stream_name(kind), Enum.reverse(messages), at: 0)
+      |> update_pane(kind, &%{&1 | older_cursor: older_cursor})
+    else
+      _ -> socket
+    end
+  end
+
+  # One page of a conversation, oldest first: the newest page when `before` is nil, else the page
+  # that ends just before message `before`. One extra row is read to learn whether an older page
+  # exists; the second element is the cursor for it, or nil at the start of the conversation.
+  defp message_page(scope, conversation_id, before) do
+    opts = [limit: @page_size + 1] ++ if(before, do: [before: before], else: [])
+
+    case Chat.list_messages(scope, conversation_id, opts) do
+      {:ok, [_older | page] = messages} when length(messages) > @page_size ->
+        {page, hd(page).id}
+
+      {:ok, messages} ->
+        {messages, nil}
+
+      {:error, _reason} ->
+        {[], nil}
+    end
   end
 
   defp reset_pane(socket, kind) do

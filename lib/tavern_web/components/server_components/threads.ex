@@ -253,6 +253,8 @@ defmodule TavernWeb.ServerComponents.Threads do
           No replies yet.
         </p>
 
+        <Messages.load_older_button pane={@server.thread_pane} />
+
         <div id={"thread-message-list-#{@message.id}"} phx-update="stream">
           <Messages.message_item
             :for={{thread_dom_id, thread_message} <- @server.streams.thread_messages}

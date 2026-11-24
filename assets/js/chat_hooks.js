@@ -563,6 +563,7 @@ const MessageListHook = {
     }
 
     requestAnimationFrame(() => this.scrollToBottom())
+    this.watchLoadOlder()
   },
 
   beforeUpdate() {
@@ -588,6 +589,29 @@ const MessageListHook = {
     }
 
     this.lastScrollHeight = this.el.scrollHeight
+    this.watchLoadOlder()
+  },
+
+  // Presses the channel's "Load older messages" button when the reader scrolls up near it. Only
+  // the channel list is a scroll box; a thread's button is pressed by hand. A view still stuck to
+  // the bottom has not scrolled up, so a short channel that shows the button does not load
+  // pages by itself. The restored anchor moves the button out of view after each page.
+  watchLoadOlder() {
+    if(!this.messageList()) return
+    const button = this.el.querySelector(":scope > div > #load-older-channel")
+    if(button === this.loadOlderButton) return
+
+    this.loadOlderObserver?.disconnect()
+    this.loadOlderButton = button
+    if(!button) return
+
+    this.loadOlderObserver = new IntersectionObserver(entries => {
+      const visible = entries.some(entry => entry.isIntersecting)
+      if(visible && !this.shouldStickToBottom && !button.classList.contains("phx-click-loading")) {
+        button.click()
+      }
+    }, {root: this.el, rootMargin: "300px 0px 0px 0px"})
+    this.loadOlderObserver.observe(button)
   },
 
   // The first channel row that reaches into the viewport, with its distance from the viewport top.
@@ -636,6 +660,7 @@ const MessageListHook = {
   },
 
   destroyed() {
+    this.loadOlderObserver?.disconnect()
     this.el.removeEventListener("scroll", this.onScroll)
   },
 

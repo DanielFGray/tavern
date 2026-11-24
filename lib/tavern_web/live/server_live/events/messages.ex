@@ -34,7 +34,10 @@ defmodule TavernWeb.ServerLive.Events.Messages do
     save_edit
     delete_message
     suppress_embeds
+    load_older_messages
   )
+
+  @panes %{"channel" => :channel, "thread" => :thread}
 
   def events do
     @events ++
@@ -79,6 +82,13 @@ defmodule TavernWeb.ServerLive.Events.Messages do
     {:noreply,
      socket
      |> State.stream_update_message(message)}
+  end
+
+  def handle_event("load_older_messages", %{"pane" => pane}, socket) do
+    case Map.fetch(@panes, pane) do
+      {:ok, kind} -> {:noreply, State.load_older_messages(socket, kind)}
+      :error -> {:noreply, socket}
+    end
   end
 
   def handle_event("toggle_message_controls", %{"id" => message_id}, socket) do

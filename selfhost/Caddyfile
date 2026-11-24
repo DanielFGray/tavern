@@ -1,0 +1,10 @@
+# Caddy gets and renews the TLS certificate for TAVERN_DOMAIN by itself. The domain's DNS
+# must point at this machine, with ports 80 and 443 open.
+{$TAVERN_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy app:4000 {
+		# Tavern reads the client address from this one header (TRUSTED_PROXY_HEADER). Caddy
+		# sets it from the socket, which replaces any value the client sent.
+		header_up X-Real-IP {remote_host}
+	}
+}

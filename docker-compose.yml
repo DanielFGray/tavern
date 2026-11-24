@@ -15,13 +15,19 @@ services:
       timeout: 3s
       retries: 20
 
-  # Creates the dev bucket once the store is up; creating an existing bucket succeeds.
+  # Creates the dev bucket once the store is up. Creating a bucket that exists fails, so it
+  # checks the list first.
   s3-bucket:
     image: chrislusf/seaweedfs:4.50
     depends_on:
       s3:
         condition: service_healthy
-    entrypoint: ["sh", "-c", "echo 's3.bucket.create -name tavern' | weed shell -master=s3:9333"]
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        echo s3.bucket.list | weed shell -master=s3:9333 | grep -qw tavern ||
+        echo 's3.bucket.create -name tavern' | weed shell -master=s3:9333
     restart: "no"
 
 volumes:

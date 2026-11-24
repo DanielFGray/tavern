@@ -8,6 +8,8 @@ defmodule TavernWeb.ServerLive.Pane do
 
   `abilities` is `Tavern.Chat.channel_abilities/2` for the conversation, `form` the composer's
   form, `message_count` the count its header shows and `empty?` whether the stream loaded empty.
+  `older_cursor` is the id of the oldest message the stream holds while older ones exist, and nil
+  once the stream reaches the start of the conversation.
   """
 
   import Phoenix.Component, only: [to_form: 2]
@@ -16,7 +18,15 @@ defmodule TavernWeb.ServerLive.Pane do
   alias Tavern.Chat.Message
 
   @enforce_keys [:kind, :form, :abilities]
-  defstruct [:kind, :form, :abilities, typing_users: [], message_count: 0, empty?: true]
+  defstruct [
+    :kind,
+    :form,
+    :abilities,
+    :older_cursor,
+    typing_users: [],
+    message_count: 0,
+    empty?: true
+  ]
 
   @kinds [:channel, :thread]
 
