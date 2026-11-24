@@ -37,6 +37,19 @@
         window.addEventListener("storage", (e) => e.key === "phx:theme" && setTheme(e.newValue || "system"));
         
         window.addEventListener("phx:set-theme", (e) => setTheme(e.target.dataset.phxTheme));
+
+        // Side panel widths saved by the PanelResize hook, applied before first paint. The
+        // panel's own CSS clamps them, so a width saved on a wider screen still fits.
+        try {
+          const prefix = "tavern:panel-width:";
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            const width = key.startsWith(prefix) && Number(localStorage.getItem(key));
+            if (width > 0) {
+              document.documentElement.style.setProperty(`--panel-${key.slice(prefix.length)}-w`, `${width}px`);
+            }
+          }
+        } catch (_) {}
       })();
     </script>
   </head>
