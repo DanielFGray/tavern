@@ -16,13 +16,14 @@ reload always fetches the new build; nothing needs a hard refresh.
 routed LiveView, and only routed LiveViews run session hooks, so the router is where it goes.
 
 During a deploy the old and new servers can both answer for a moment. A reloaded page can then come
-from one while its socket reaches the other, which reports a change again. The client records the
-bundle it reloaded for in `sessionStorage` and reloads at most once a minute for the same bundle.
-When storage is unavailable it does not reload, since the guard cannot hold.
+from either while its socket reaches the other, which reports a change again whichever build the
+page holds, so the bundle URL cannot tell a loop from progress. The client limits by time instead:
+it records each reload in `sessionStorage`, reloads at most once a minute, and a change reported
+sooner reloads when that minute ends. When storage is unavailable it does not reload, since the
+limit cannot hold.
 
-A voice call belongs to the LiveView process that joined it (`voice.md`), and a deploy stops that
-process, so the reload ends no call that the deploy had not ended already. Nothing rejoins on load;
-the person joins again by hand.
+The reload ends a voice call, and nothing rejoins on load; the person joins again by hand. It also
+drops text typed in forms other than the composer, such as settings.
 
 ## Keeping drafts
 

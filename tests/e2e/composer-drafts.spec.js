@@ -64,21 +64,25 @@ test('a draft the editor cannot read is dropped, not restored', async ({ page })
   await expect(composer(page)).toHaveText('still works')
 })
 
-test('a new build reloads the tab once, not in a loop', async ({ page }) => {
+test('a new build reloads the tab at most once a minute', async ({ page }) => {
+  await page.clock.install()
   await login(page)
-  await page.evaluate(() => { window.__beforeReload = true })
 
-  const loaded = page.waitForEvent('load')
-  await page.evaluate(() => window.dispatchEvent(new Event('phx:static_changed')))
+  const staticChanged = () => page.evaluate(() => window.dispatchEvent(new Event('phx:static_changed')))
+
+  let loaded = page.waitForEvent('load')
+  await staticChanged()
   await loaded
   await expect(page.locator('[data-phx-main]')).toHaveClass(/phx-connected/)
-  expect(await page.evaluate(() => window.__beforeReload)).toBeUndefined()
 
-  // The same bundle is still out of date, as when a reload lands on a server not yet replaced.
-  await page.evaluate(() => {
-    window.__afterReload = true
-    window.dispatchEvent(new Event('phx:static_changed'))
-  })
-  await page.waitForTimeout(500)
-  expect(await page.evaluate(() => window.__afterReload)).toBe(true)
+  // A second report within the minute, as when the reloaded page meets the other server.
+  await page.evaluate(() => { window.__second = true })
+  await staticChanged()
+  await page.clock.runFor(1_000)
+  expect(await page.evaluate(() => window.__second)).toBe(true)
+
+  loaded = page.waitForEvent('load')
+  await page.clock.fastForward(60_000)
+  await loaded
+  expect(await page.evaluate(() => window.__second)).toBeUndefined()
 })
