@@ -44,8 +44,11 @@ defmodule TavernWeb.ServerComponents.Helpers do
 
   @doc """
   A one-line plain-text excerpt of a message body: code fences, inline-code ticks, emphasis marks,
-  heading and quote markers are dropped, links keep their label, and whitespace collapses.
+  heading and quote markers are dropped, links keep their label, and whitespace collapses. A
+  message with no text holds only attachments (`Tavern.Chat.Message`), so its excerpt says so.
   """
+  def body_preview(""), do: "Attachment"
+
   def body_preview(body) do
     body
     |> String.replace(~r/```[^\n`]*/, " ")

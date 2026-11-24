@@ -123,7 +123,7 @@ defmodule Tavern.Chat do
   defdelegate get_messages(scope, message_ids), to: Messages
   defdelegate message_count(scope, channel_id), to: Messages
   defdelegate change_message(message, attrs \\ %{}), to: Messages
-  defdelegate create_message(scope, channel_id, attrs), to: Messages
+  defdelegate create_message(scope, channel_id, attrs, uploads \\ []), to: Messages
   defdelegate update_message(scope, message_id, attrs), to: Messages
   defdelegate suppress_embeds(scope, message_id), to: Messages
   defdelegate delete_message(scope, message_id), to: Messages

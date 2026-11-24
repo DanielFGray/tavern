@@ -12,6 +12,7 @@ defmodule Tavern.Chat.Messages do
   import Ecto.Query, warn: false
 
   alias Tavern.Accounts.Scope
+  alias Tavern.Chat.Attachments
   alias Tavern.Chat.Channel
   alias Tavern.Chat.Channels
   alias Tavern.Chat.Embeds
@@ -41,6 +42,7 @@ defmodule Tavern.Chat.Messages do
     reactions: [emoji: :asset],
     reply_to: :author,
     embeds: :image_asset,
+    attachments: :asset,
     question: [:options, answers: :user]
   ]
 
@@ -140,23 +142,29 @@ defmodule Tavern.Chat.Messages do
   may not view is `{:error, :not_found}`; a visible one it may not send to is `{:error,
   :forbidden}`. A send refused by slowmode is `{:error, {:slowmode, seconds}}`, and one over the
   member's send limit is `{:error, {:rate_limited, seconds}}`.
+
+  `uploads` are files to attach (`Tavern.Chat.Attachments.prepare/2`). Attaching needs
+  `attach_files` here, or the send is `{:error, :attach_files_forbidden}`; a message with
+  attachments may have an empty body.
   """
-  def create_message(%Scope{} = scope, channel_id, attrs),
-    do: send_message(scope, channel_id, attrs, &{:ok, &1})
+  def create_message(%Scope{} = scope, channel_id, attrs, uploads \\ []),
+    do: send_message(scope, channel_id, attrs, &{:ok, &1}, uploads)
 
   @doc """
-  Sends a message under every send rule of `create_message/3`, then runs `extend` on what
-  `write_message/3` wrote, inside the same transaction. `extend` returns `{:ok, written}`, with
+  Sends a message under every send rule of `create_message/4`, then runs `extend` on what
+  `write_message/4` wrote, inside the same transaction. `extend` returns `{:ok, written}`, with
   the message reloaded when it added rows to it. A question (`Tavern.Chat.Questions`) is a
   message extended with its question rows.
   """
-  def send_message(%Scope{} = scope, channel_id, attrs, extend) do
+  def send_message(%Scope{} = scope, channel_id, attrs, extend, uploads \\ []) do
     with {:ok, channel_id} <- Ids.cast(channel_id),
-         {:ok, attrs} <- normalize_attrs(attrs) do
+         {:ok, attrs} <- normalize_attrs(attrs),
+         {:ok, attachments} <- Attachments.prepare(scope, uploads) do
       Repo.transact(fn ->
         with :ok <- Visibility.authorize_write(scope, :send_messages, %Channel{id: channel_id}),
+             :ok <- authorize_attachments(scope, channel_id, attachments),
              {:ok, reopened} <- enforce_channel_state(scope, channel_id),
-             {:ok, written} <- write_message(scope, channel_id, attrs),
+             {:ok, written} <- write_message(scope, channel_id, attrs, attachments),
              {:ok, written} <- extend.(written) do
           {:ok, {written, reopened}}
         end
@@ -176,23 +184,26 @@ defmodule Tavern.Chat.Messages do
   end
 
   @doc """
-  Inserts a message the caller has authorized, with its mentions and the follows it makes. `attrs`
-  have string keys and a decoded `"metadata"` map, as `normalize_attrs/1` returns them. Runs
-  inside the caller's transaction; `publish_message/1` takes the result after the commit.
-  `create_message/3` and a forum post's first message (`Tavern.Chat.Forums`) share it, so the
+  Inserts a message the caller has authorized, with its mentions, the follows it makes and its
+  `attachments` (built by `Tavern.Chat.Attachments.prepare/2`, attaching already authorized).
+  `attrs` have string keys and a decoded `"metadata"` map, as `normalize_attrs/1` returns them.
+  Runs inside the caller's transaction; `publish_message/1` takes the result after the commit.
+  `create_message/4` and a forum post's first message (`Tavern.Chat.Forums`) share it, so the
   member's send limit (`Tavern.Chat.SendLimit`) is counted here, before any other query: over it,
-  the write is `{:error, {:rate_limited, seconds}}`.
+  the write is `{:error, {:rate_limited, seconds}}`. The attachments' bytes go to the object
+  store last, so a refusal stores nothing.
   """
-  def write_message(%Scope{} = scope, channel_id, attrs) do
+  def write_message(%Scope{} = scope, channel_id, attrs, attachments \\ []) do
     with :ok <- SendLimit.admit(scope.user_id),
          :ok <- validate_reply_target(channel_id, attrs),
          :ok <- Mentions.authorize(scope, channel_id, attrs),
          {:ok, message} <-
            %Message{channel_id: channel_id, author_id: scope.user_id}
-           |> Message.create_changeset(attrs)
+           |> Message.create_changeset(attrs, attachments)
            |> Repo.insert(),
          :ok <- Mentions.sync(message),
-         {:ok, new_followers} <- ThreadFollows.follow_for_message(message) do
+         {:ok, new_followers} <- ThreadFollows.follow_for_message(message),
+         :ok <- Attachments.store_objects(message) do
       {:ok, {MessageRows.reload_message(message.id), new_followers}}
     end
   end
@@ -234,6 +245,8 @@ defmodule Tavern.Chat.Messages do
              :ok <- Mentions.authorize(scope, message.channel_id, attrs),
              {:ok, updated_message} <-
                message
+               # Loaded so the changeset lets a message with attachments keep an empty body.
+               |> Repo.preload(:attachments)
                |> Message.changeset(attrs)
                |> Ecto.Changeset.put_change(:edited_at, DateTime.utc_now())
                |> Repo.update(),
@@ -530,19 +543,33 @@ defmodule Tavern.Chat.Messages do
   end
 
   # Decides `action`, applies `change` to the locked message and drops the embeds the changed
-  # message no longer wants, in one transaction. Object-store deletes run after the commit, when
-  # the rows that named the objects are already gone.
+  # message no longer wants, and a deleted message's attachments, in one transaction. Object-store
+  # deletes run after the commit, when the rows that named the objects are already gone.
   defp write_and_prune_embeds(scope, action, message_id, event, change) do
     with {:ok, message_id} <- Ids.cast(message_id) do
       Repo.transact(fn ->
         with {:ok, message} <- authorize_message_write(scope, action, message_id),
-             {:ok, changed} <- change.(message) do
+             {:ok, changed} <- change.(message),
+             {:ok, attachment_keys} <- prune_attachments(changed) do
           {_kept, image_keys} = Embeds.prune(changed)
-          {:ok, {MessageRows.reload_message(changed.id), image_keys}}
+          {:ok, {MessageRows.reload_message(changed.id), image_keys ++ attachment_keys}}
         end
       end)
       |> delete_dropped_images()
       |> broadcast_written(event)
+    end
+  end
+
+  defp prune_attachments(%Message{deleted_at: nil}), do: {:ok, []}
+  defp prune_attachments(%Message{id: id}), do: Attachments.delete_for_message(id)
+
+  defp authorize_attachments(_scope, _channel_id, []), do: :ok
+
+  # The send was allowed just before, so a refusal here is about attaching alone.
+  defp authorize_attachments(scope, channel_id, _attachments) do
+    case Visibility.authorize_write(scope, :attach_files, %Channel{id: channel_id}) do
+      {:error, :forbidden} -> {:error, :attach_files_forbidden}
+      result -> result
     end
   end
 

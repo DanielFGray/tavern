@@ -24,7 +24,7 @@ defmodule TavernWeb.Plugs.ContentSecurityPolicyTest do
 
     assert policy =~ "frame-src 'self' https://www.youtube-nocookie.com;"
     assert policy =~ "frame-ancestors 'self';"
-    assert policy =~ "img-src 'self' data:;"
+    assert policy =~ "img-src 'self' data: blob:;"
   end
 
   test "each response has its own nonce", %{conn: conn} do

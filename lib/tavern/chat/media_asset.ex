@@ -31,6 +31,8 @@ defmodule Tavern.Chat.MediaAsset do
     field(:height, :integer)
     field(:duration_ms, :integer)
     field(:metadata, :map, default: %{})
+    # The bytes of an asset built but not yet in the object store. Never a column.
+    field(:body, :binary, virtual: true, redact: true)
 
     belongs_to(:uploader, Tavern.Chat.User)
 

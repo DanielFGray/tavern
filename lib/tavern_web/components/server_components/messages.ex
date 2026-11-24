@@ -204,7 +204,7 @@ defmodule TavernWeb.ServerComponents.Messages do
                       Original message deleted
                     </span>
                   <% else %>
-                    {@message.reply_to.body}
+                    {body_preview(@message.reply_to.body)}
                   <% end %>
                 </span>
               </div>
@@ -266,6 +266,7 @@ defmodule TavernWeb.ServerComponents.Messages do
                   />
                 <% else %>
                   <div
+                    :if={@message.body != ""}
                     class={["message-body", message_body_classes()]}
                     data-markdown-source={@message.body}
                   >
@@ -273,6 +274,8 @@ defmodule TavernWeb.ServerComponents.Messages do
                   </div>
                 <% end %>
               <% end %>
+
+              <TavernWeb.ServerComponents.MessageAttachments.message_attachments message={@message} />
 
               <TavernWeb.ServerComponents.Embeds.message_embeds
                 message={@message}
