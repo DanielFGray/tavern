@@ -104,6 +104,7 @@ defmodule TavernWeb.UserAuthLiveTest do
 
   test "a registration page opened before the switch to invite-only is refused", %{conn: conn} do
     Bootstrap.ensure_seed_data!()
+    open_registration!()
     owner = owner_fixture(%{email: "stale-owner@example.com", username: "stale_owner"})
 
     {:ok, view, _html} = live(conn, ~p"/register")

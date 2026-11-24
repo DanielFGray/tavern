@@ -39,7 +39,7 @@ defmodule Tavern.ChatFixtures do
         password: "supersecurepass"
       })
 
-    {:ok, user} = Accounts.register_user(attrs)
+    {:ok, user} = Accounts.register_user(attrs, invite_code: invite_code_if_required())
 
     # The first registration owns the server; fixtures are plain members unless an
     # owner_fixture makes one. Demote here so test order never decides ownership.
@@ -53,6 +53,31 @@ defmodule Tavern.ChatFixtures do
         end)
 
       %{user | membership: demoted}
+    end
+  end
+
+  @doc """
+  Switches the seeded server to open registration, for a test about a server where people join
+  without an invite. A fresh server is invite only.
+  """
+  def open_registration! do
+    {1, _} = Repo.update_all(ServerSettings, set: [registration_mode: :open])
+    Tavern.Chat.ServerConfig.reset_server_settings_cache()
+    :ok
+  end
+
+  # A fresh server is invite only, so a fixture member registers as an invited person does: with a
+  # one-use invite of their own, when the server asks for one.
+  defp invite_code_if_required do
+    if Repo.one(from settings in ServerSettings, select: settings.registration_mode) ==
+         :invite_only do
+      {:ok, invite} =
+        Repo.transact(fn ->
+          {:ok,
+           Tavern.Chat.Invites.insert_single_use!(nil, DateTime.add(DateTime.utc_now(), 1, :day))}
+        end)
+
+      invite.code
     end
   end
 

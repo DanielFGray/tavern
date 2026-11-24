@@ -104,6 +104,7 @@ defmodule TavernWeb.TestSupportControllerTest do
   describe "clear_test_users" do
     test "removes test users and their messages", %{conn: conn} do
       Bootstrap.ensure_seed_data!()
+      open_registration!()
 
       get(conn, ~p"/api/testing/command", %{
         command: "upsert_user",

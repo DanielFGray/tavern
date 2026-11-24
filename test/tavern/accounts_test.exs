@@ -77,18 +77,14 @@ defmodule Tavern.AccountsTest do
       assert {:ok, _user} = Accounts.register_user(@attrs, invite_code: invite.code)
     end
 
-    test "lets the first registration through, and it becomes the owner" do
+    test "refuses even the first registration without a code" do
       Repo.insert!(%Tavern.Chat.ServerSettings{
         name: "Fresh",
         singleton: true,
         registration_mode: :invite_only
       })
 
-      assert {:ok, first} = Accounts.register_user(@attrs)
-      assert first.membership.is_owner
-
-      assert {:error, :invite_required} =
-               Accounts.register_user(%{@attrs | email: "two@example.com", username: "two_user"})
+      assert {:error, :invite_required} = Accounts.register_user(@attrs)
     end
   end
 

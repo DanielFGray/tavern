@@ -24,7 +24,7 @@ Counts (91 rows): yes 20 · partial 22 · no 34 · planned 15.
 | ID10 roles/permissions | yes | chat/permission_bits.ex:6-37; roles.ex:148; docs/design/roles.md | 30 allow/deny bits, ranked roles. |
 | ID11 channel overrides | yes | chat/channel_overwrites.ex:96 | Per role and per user, on channels and categories. |
 | ID12 many workspaces per deployment | no | server_settings singleton (migration 20260403024043:7,14) | One server per deployment, by design. |
-| ID13 admin console | yes | settings_components/shell.ex:31-55 | Server settings sit inside user settings. First owner set by `bin/make-owner`. |
+| ID13 admin console | yes | settings_components/shell.ex:31-55 | Server settings sit inside user settings. The first owner registers with the setup invite `bin/migrate` prints. |
 | ID14 directory/profiles | partial | server_components/shell.ex:184-202; accounts.ex:86 | Avatar, bio, roles, join date. No custom fields, org chart, directory search. |
 | MSG1 public channels | yes | chat/channel.ex:15-28; docs/design/channel-management.md | Text, announcement, forum, voice, category. |
 | MSG2 private channels | yes | channel_overwrites.ex:96 | By denying view_channel; no "private" toggle. Private threads cannot be created. |

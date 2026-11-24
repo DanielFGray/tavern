@@ -86,9 +86,15 @@ You need Docker Engine with Compose v2, a domain name whose DNS points at the ma
    docker compose up -d --build
    ```
 
-4. Open `https://<your domain>` and register. The first account registered owns the server, so
-   register yours before you share the address. Registration is open; to require an invite
-   code, set it to invite-only in Settings.
+4. Read the setup link from the migrate step's log, open it and register. The first account
+   registered owns the server, and a new server is invite only, so this one-use link is the only
+   way in:
+
+   ```bash
+   docker compose logs migrate
+   ```
+
+   To let anyone register, set registration to open in Settings.
 
    A server with members but no owner (for example, after the owner deleted their account)
    gets one with `docker compose run --rm migrate /app/bin/make-owner you@example.com`.
@@ -158,7 +164,7 @@ The root route now serves a minimal server chat shell:
 - owners can open an in-app channel manager to create/edit categories and text channels
 - channel list now renders grouped sections when channels belong to categories
 - seeded system poster: `tavern_system`
-- the first account registered owns the server
+- a new server is invite only; the first account, registered with the setup link that `bin/migrate` prints, owns it
 - default `@everyone` role grants baseline channel visibility + messaging
 - channel switching via LiveView patch params
 - local message posting persisted to Postgres
@@ -171,8 +177,9 @@ Login is rate limited, session metadata stores IP/user-agent, and channel render
 
 ### The first owner
 
-The first account registered owns the server. A server with members but no owner gets one with
-this command from a development checkout:
+A new server is invite only. While it has no owner, `bin/migrate` (and `mix run priv/repo/seeds.exs`
+in development) prints a one-use setup link, and the account registered with it owns the server.
+A server with members but no owner gets one with this command from a development checkout:
 
 ```bash
 mix run -e 'Tavern.Accounts.promote_first_owner("you@example.com")'

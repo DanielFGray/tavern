@@ -14,6 +14,7 @@ defmodule TavernWeb.VerificationLiveTest do
   setup do
     LoginRateLimiter.reset!()
     Bootstrap.ensure_seed_data!()
+    open_registration!()
     %{owner: owner_fixture()}
   end
 

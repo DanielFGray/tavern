@@ -36,6 +36,7 @@ defmodule Tavern.Accounts do
   @deletion_sweep_limit 500
   # An arbitrary constant that names "server ownership" among Postgres advisory locks.
   @ownership_lock_key 7_314_002_001
+  @setup_invite_days 7
 
   def get_user_by_email(email) when is_binary(email) do
     Repo.get_by(User, email: email)
@@ -970,6 +971,38 @@ defmodule Tavern.Accounts do
   end
 
   @doc """
+  The setup invite of a server with no owner, or nil once an owner exists. A fresh server is
+  invite only, and the first account registered becomes the owner, so this invite is how the
+  operator claims the server: the migrate step prints its link (`Tavern.Release.migrate/0`). It
+  is a one-use invite from the system user, valid for #{@setup_invite_days} days. A live one is
+  reused, so every migrate run prints the same link until it is used or expires.
+  """
+  def ensure_setup_invite do
+    {:ok, invite} =
+      Repo.transact(fn ->
+        lock_ownership!()
+
+        cond do
+          owner_exists?() ->
+            {:ok, nil}
+
+          invite = Invites.live_from(system_user_id!(), DateTime.utc_now()) ->
+            {:ok, invite}
+
+          true ->
+            expires_at = DateTime.add(DateTime.utc_now(), @setup_invite_days, :day)
+            {:ok, Invites.insert_single_use!(system_user_id!(), expires_at)}
+        end
+      end)
+
+    invite
+  end
+
+  defp system_user_id! do
+    Repo.one!(from user in User, where: user.system == true, select: user.id)
+  end
+
+  @doc """
   Promotes the oldest active human member to owner when no owner exists.
 
   Bootstrap runs this on every release, so a server whose members registered before
@@ -1018,8 +1051,8 @@ defmodule Tavern.Accounts do
   end
 
   # The registration mode is decided here, from the settings row locked `FOR SHARE`, so a mode
-  # change (which takes the row `FOR UPDATE`) and a registration serialize. A server with no owner
-  # lets its first registration through, so a fresh invite-only server can still get an owner.
+  # change (which takes the row `FOR UPDATE`) and a registration serialize. A fresh server is
+  # invite only, so its owner registers through the setup invite (`Bootstrap.setup_invite/0`).
   defp authorize_registration(invite_code) do
     mode =
       ServerSettings
@@ -1027,7 +1060,7 @@ defmodule Tavern.Accounts do
       |> select([settings], settings.registration_mode)
       |> Repo.one()
 
-    if mode == :invite_only and is_nil(invite_code) and owner_exists?(),
+    if mode == :invite_only and is_nil(invite_code),
       do: {:error, :invite_required},
       else: :ok
   end

@@ -16,6 +16,7 @@ defmodule Tavern.Chat.InviteTreeTest do
   # outsider is a second root.
   setup do
     Bootstrap.ensure_seed_data!()
+    open_registration!()
     channel = channel_fixture()
 
     root = user_fixture(%{username: "rooty"})
@@ -74,6 +75,19 @@ defmodule Tavern.Chat.InviteTreeTest do
     assert root_node.child_count == 2
     assert root_node.code == nil
     assert root_node.status == :active
+  end
+
+  test "a member invited by an account the tree does not show is a root", ctx do
+    system = Repo.get_by!(Tavern.Chat.User, system: true)
+    invite!(ctx.channel, system, ctx.outsider, "SETUP111", ~U[2026-01-05 10:00:00.000000Z])
+    ctx.root |> Ecto.Changeset.change(deleted_at: DateTime.utc_now()) |> Repo.update!()
+
+    root_ids = ids(Chat.invite_tree_children(scope_for(ctx.mod), :roots))
+    assert ctx.outsider.id in root_ids
+    assert ctx.alice.id in root_ids and ctx.bob.id in root_ids
+
+    assert {:ok, chain} = Chat.invite_tree_path_to(scope_for(ctx.mod), ctx.carol.id)
+    assert chain == [ctx.alice.id, ctx.carol.id]
   end
 
   test "children are the direct invitees with code, inviter and counts", ctx do

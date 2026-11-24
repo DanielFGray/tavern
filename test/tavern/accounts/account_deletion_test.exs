@@ -24,6 +24,7 @@ defmodule Tavern.Accounts.AccountDeletionTest do
 
   setup do
     Bootstrap.ensure_seed_data!()
+    open_registration!()
     owner = owner_fixture()
 
     member =

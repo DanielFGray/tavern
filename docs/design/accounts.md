@@ -114,7 +114,7 @@ An entry about a deleted account shows its tombstone handle. No entry stores the
 
 ## First owner
 
-A fresh server has no owner, and its first human registration becomes the owner, even when registration is invite only (`Accounts.register_user/2`). So a new production database is served on a tailnet route first: the operator registers there, sets registration to invite only, and only then does the route change to the public host. `Tavern.Release.make_owner/1` promotes an existing account when the first owner must be someone else.
+A fresh server has no owner and starts invite only (`Bootstrap` seeds the settings row so), and its first human registration becomes the owner (`Accounts.register_user/2`). While no owner exists, the migrate step makes a one-use setup invite from the system user and prints its link (`Accounts.ensure_setup_invite/0`, `Tavern.Release.migrate/0`); it prints the same link on every run until the invite is used or expires after 7 days. So only someone who can read the server's logs can claim it, and a public host needs no private first route. The invite is an ordinary invite: it shows in the invite list and the invite tree with the system user as inviter. `Tavern.Release.make_owner/1` promotes an existing account when the first owner must be someone else. A server whose settings row says open registration and that has no owner still gives ownership to the first registration; only databases made before this rule are in that state.
 
 ## Client address
 
