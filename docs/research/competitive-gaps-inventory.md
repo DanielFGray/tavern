@@ -35,7 +35,7 @@ Counts (91 rows): yes 20 · partial 22 · no 34 · planned 15.
 | MSG7 reactions, custom emoji | yes | messages.ex:308; emojis.ex:51 | |
 | MSG8 mentions | yes | chat/mentions.ex:166-196 | @here equals @everyone (not "online only"). |
 | MSG9 edit/delete | yes | messages.ex:228, :278 | |
-| MSG10 pins/bookmarks | planned | `pinned_at` column only (message.ex:19) | Task "Pinned messages, search, and history pagination". |
+| MSG10 pins/bookmarks | partial | `Chat.pin_message/2`, the Pins drawer; docs/design/pins.md (2026-11-24) | Pins per channel and thread, capped at 50, under a new `pin_messages` bit. No personal bookmarks, no jump to the pinned message. |
 | MSG11 polls | yes | questions.ex:160; docs/design/questions.md | |
 | MSG12 file uploads | planned | message_attachments table only; uploads only for icon, avatar, emoji (settings_live.ex:40-51) | Task "Attachments, uploads, and media previews". |
 | MSG13 link previews | yes | chat/embeds.ex:67; docs/design/link-embeds.md | |

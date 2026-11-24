@@ -89,7 +89,8 @@ defmodule Tavern.Chat.Messages do
   The listed messages (`Message.where_listed/1`) in channels and threads the scope may view whose
   text holds every word of `query`, newest first, as `{:ok, %{messages: messages, next: cursor}}`.
   Each word matches the start of a word in the text, case aside: "depl" finds "Deploying".
-  Punctuation in the query is ignored, and a query with no words finds nothing. `:limit` caps the
+  Punctuation in the query is ignored, and a query with no words finds nothing. Pin lines
+  (`Message.pin_line?/1`) are not searched. `:limit` caps the
   page (default 25); `after: cursor` reads the page after one, and `next` is nil on the last page.
   Each message has its `channel` set, with `starter_message` loaded so a thread has its title.
   """
@@ -109,6 +110,7 @@ defmodule Tavern.Chat.Messages do
           Message
           |> where([message], message.channel_id in ^Map.keys(channels))
           |> Message.where_listed()
+          |> where([message], message.kind != :pin)
           |> where(
             [message],
             fragment("to_tsvector('simple', ?) @@ to_tsquery('simple', ?)", message.body, ^terms)
@@ -281,7 +283,7 @@ defmodule Tavern.Chat.Messages do
          {:ok, attrs} <- normalize_attrs(attrs) do
       Repo.transact(fn ->
         with {:ok, message} <- authorize_message_write(scope, :edit_message, message_id),
-             :ok <- refuse_question_edit(message),
+             :ok <- refuse_fixed_text(message),
              :ok <- Mentions.authorize(scope, message.channel_id, attrs),
              {:ok, updated_message} <-
                message
@@ -334,7 +336,12 @@ defmodule Tavern.Chat.Messages do
 
       with {:ok, deleted_message} <-
              message
-             |> Ecto.Changeset.change(body: "[message deleted]", deleted_at: now, edited_at: now)
+             |> Ecto.Changeset.change(
+               body: "[message deleted]",
+               deleted_at: now,
+               edited_at: now,
+               pinned_at: nil
+             )
              |> Repo.update(),
            :ok <- Mentions.clear(deleted_message.id) do
         {:ok, deleted_message}
@@ -601,8 +608,10 @@ defmodule Tavern.Chat.Messages do
   # --- Write helpers -----------------------------------------------------------------------------
 
   # A question's body is its text, and answers were given to it, so the message stays as written.
-  # Runs inside the edit's transaction, on the locked message.
-  defp refuse_question_edit(%Message{id: message_id}) do
+  # A pin line's text is the server's. Runs inside the edit's transaction, on the locked message.
+  defp refuse_fixed_text(%Message{kind: :pin}), do: {:error, :forbidden}
+
+  defp refuse_fixed_text(%Message{id: message_id}) do
     if Repo.exists?(from(question in Question, where: question.message_id == ^message_id)),
       do: {:error, :forbidden},
       else: :ok

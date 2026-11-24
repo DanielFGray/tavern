@@ -31,6 +31,9 @@ defmodule Tavern.Chat.MessageRows do
     |> Repo.get!(message_id)
   end
 
+  @doc "The write preloads, for a reader that lists messages in the shape a broadcast carries."
+  def write_preloads, do: @write_preloads
+
   @doc "Locks a message row that is not deleted `FOR UPDATE`, or returns nil."
   def lock_live_message(message_id) do
     Repo.one(

@@ -3,6 +3,7 @@ defmodule TavernWeb.ServerComponents.Threads do
 
   use TavernWeb, :html
 
+  import TavernWeb.ServerComponents.Drawer
   import TavernWeb.ServerComponents.Helpers
 
   alias TavernWeb.ServerComponents.Messages
@@ -229,6 +230,18 @@ defmodule TavernWeb.ServerComponents.Threads do
 
           <button
             type="button"
+            phx-click="open_pins"
+            phx-value-channel-id={@thread.id}
+            id={"open-thread-pins-#{@message.id}"}
+            aria-label="Pinned messages"
+            title="Pinned messages"
+            class={[thread_icon_button_classes(), "text-base-content/60"]}
+          >
+            <.icon name="hero-bookmark" class="size-4" />
+          </button>
+
+          <button
+            type="button"
             phx-click="close_thread"
             id={"close-thread-#{@message.id}"}
             aria-label="Close thread"
@@ -278,42 +291,14 @@ defmodule TavernWeb.ServerComponents.Threads do
     assigns = assign(assigns, :browser, assigns.server.thread_browser)
 
     ~H"""
-    <div
-      id="thread-browser-backdrop"
-      class="fixed inset-0 z-40 bg-black/60 transition"
-      phx-click="close_thread_browser"
-    />
-    <aside
+    <.drawer
       id="thread-browser"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="thread-browser-title"
-      phx-window-keydown="close_thread_browser"
-      phx-key="Escape"
-      class="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col border-l lg:w-[var(--panel-thread-browser-w,32rem)] lg:min-w-96 lg:max-w-[min(56rem,80vw)] border-base-300 bg-base-100 shadow-2xl"
+      close="close_thread_browser"
+      label="Close thread browser"
+      class="max-w-lg lg:w-[var(--panel-thread-browser-w,32rem)] lg:min-w-96 lg:max-w-[min(56rem,80vw)]"
     >
-      <header class="flex items-start justify-between gap-3 border-b border-base-300 px-4 py-4 sm:px-5">
-        <div class="min-w-0">
-          <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-base-content/45">
-            Threads
-          </p>
-          <h2
-            id="thread-browser-title"
-            class="mt-1 truncate text-base font-semibold text-base-content"
-          >
-            # {@browser.channel.name}
-          </h2>
-        </div>
-        <button
-          type="button"
-          id="close-thread-browser"
-          phx-click="close_thread_browser"
-          aria-label="Close thread browser"
-          class="rounded-md p-1.5 text-base-content/60 transition hover:bg-base-200 hover:text-base-content"
-        >
-          <.icon name="hero-x-mark" class="size-5" />
-        </button>
-      </header>
+      <:eyebrow>Threads</:eyebrow>
+      <:title># {@browser.channel.name}</:title>
 
       <div class="space-y-3 border-b border-base-300 px-4 py-3 sm:px-5">
         <div role="tablist" class="inline-flex rounded-lg bg-base-200 p-1">
@@ -422,7 +407,7 @@ defmodule TavernWeb.ServerComponents.Threads do
         label="Resize thread browser"
         class="hidden lg:block"
       />
-    </aside>
+    </.drawer>
     """
   end
 

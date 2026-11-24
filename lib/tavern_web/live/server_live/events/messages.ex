@@ -12,6 +12,7 @@ defmodule TavernWeb.ServerLive.Events.Messages do
   alias TavernWeb.ServerLive.Events.Helpers
   alias TavernWeb.ServerLive.Events.Navigation
   alias TavernWeb.ServerLive.Pane
+  alias TavernWeb.ServerLive.Pins
   alias TavernWeb.ServerLive.State
   alias TavernWeb.ServerLive.ThreadNav
 
@@ -72,16 +73,11 @@ defmodule TavernWeb.ServerLive.Events.Messages do
     end
   end
 
-  def handle_info({:message_updated, message}, socket) do
+  def handle_info({event, message}, socket) when event in [:message_updated, :message_deleted] do
     {:noreply,
      socket
-     |> State.stream_update_message(message)}
-  end
-
-  def handle_info({:message_deleted, message}, socket) do
-    {:noreply,
-     socket
-     |> State.stream_update_message(message)}
+     |> State.stream_update_message(message)
+     |> Pins.refresh(message)}
   end
 
   def handle_event("load_older_messages", %{"pane" => pane}, socket) do

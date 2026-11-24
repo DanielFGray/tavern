@@ -312,7 +312,8 @@ defmodule Tavern.Chat.Threads do
                parent_id when is_binary(parent_id) <- message_channel_id(starter_message_id),
                %Channel{} = parent <- Channels.lock_channel(parent_id),
                :ok <- validate_thread_host(parent),
-               %Message{} = starter <- MessageRows.lock_live_message(starter_message_id) do
+               %Message{} = starter <- MessageRows.lock_live_message(starter_message_id),
+               :ok <- if(Message.pin_line?(starter), do: {:error, :forbidden}, else: :ok) do
             case thread_for_starter(starter.id) do
               nil ->
                 with {:ok, thread} <- insert_thread(scope, parent, starter, attrs),

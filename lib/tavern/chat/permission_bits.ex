@@ -33,7 +33,8 @@ defmodule Tavern.Chat.PermissionBits do
     speak_voice: 1 <<< 26,
     stream_voice: 1 <<< 27,
     mute_voice_members: 1 <<< 28,
-    disconnect_voice_members: 1 <<< 29
+    disconnect_voice_members: 1 <<< 29,
+    pin_messages: 1 <<< 30
   }
 
   def flags, do: @flags

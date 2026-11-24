@@ -72,6 +72,11 @@ defmodule TavernWeb.ServerComponents.Helpers do
 
   def thread_title(thread), do: Tavern.Chat.Channel.title(thread)
 
+  @doc "A conversation's name in a list: `# name` for a channel, the title for a thread."
+  def conversation_label(channel) do
+    if Tavern.Chat.Channel.thread?(channel), do: thread_title(channel), else: "# #{channel.name}"
+  end
+
   # The placeholder title of a thread whose starter was deleted reads as a missing name. Opacity,
   # not a text colour, so it keeps the colour the title's own classes give it.
   def thread_title_class(thread),
@@ -232,7 +237,8 @@ defmodule TavernWeb.ServerComponents.Helpers do
       thread?: thread?,
       send?: Pane.can_send?(pane),
       react?: pane.abilities.add_reactions,
-      manage?: pane.abilities.manage_messages
+      manage?: pane.abilities.manage_messages,
+      pin?: pane.abilities.pin_messages
     }
   end
 
@@ -253,6 +259,6 @@ defmodule TavernWeb.ServerComponents.Helpers do
   def can_open_message_controls?(server, message) do
     rights = message_rights(server, message)
 
-    rights.send? or own_message?(message, server.current_user) or rights.manage?
+    rights.send? or own_message?(message, server.current_user) or rights.manage? or rights.pin?
   end
 end

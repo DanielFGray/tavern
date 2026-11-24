@@ -3,9 +3,8 @@ defmodule TavernWeb.ServerComponents.Search do
 
   use TavernWeb, :html
 
+  import TavernWeb.ServerComponents.Drawer
   import TavernWeb.ServerComponents.Helpers
-
-  alias Tavern.Chat.Channel
 
   attr :server, :map, required: true
 
@@ -18,34 +17,8 @@ defmodule TavernWeb.ServerComponents.Search do
     assigns = assign(assigns, :search, assigns.server.message_search)
 
     ~H"""
-    <div
-      id="message-search-backdrop"
-      class="fixed inset-0 z-40 bg-black/60 transition"
-      phx-click="close_message_search"
-    />
-    <aside
-      id="message-search"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="message-search-title"
-      phx-window-keydown="close_message_search"
-      phx-key="Escape"
-      class="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col border-l border-base-300 bg-base-100 shadow-2xl"
-    >
-      <header class="flex items-center justify-between gap-3 border-b border-base-300 px-4 py-4 sm:px-5">
-        <h2 id="message-search-title" class="text-base font-semibold text-base-content">
-          Search messages
-        </h2>
-        <button
-          type="button"
-          id="close-message-search"
-          phx-click="close_message_search"
-          aria-label="Close message search"
-          class="rounded-md p-1.5 text-base-content/60 transition hover:bg-base-200 hover:text-base-content"
-        >
-          <.icon name="hero-x-mark" class="size-5" />
-        </button>
-      </header>
+    <.drawer id="message-search" close="close_message_search" label="Close message search">
+      <:title>Search messages</:title>
 
       <div class="border-b border-base-300 px-4 py-3 sm:px-5">
         <.form
@@ -114,11 +87,7 @@ defmodule TavernWeb.ServerComponents.Search do
           </button>
         </div>
       </div>
-    </aside>
+    </.drawer>
     """
-  end
-
-  defp conversation_label(%Channel{} = channel) do
-    if Channel.thread?(channel), do: thread_title(channel), else: "# #{channel.name}"
   end
 end

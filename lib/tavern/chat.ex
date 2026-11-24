@@ -120,6 +120,9 @@ defmodule Tavern.Chat do
 
   defdelegate list_messages(scope, channel_id, opts \\ []), to: Messages
   defdelegate search_messages(scope, query, opts \\ []), to: Messages
+  defdelegate pin_message(scope, message_id), to: Tavern.Chat.Pins
+  defdelegate unpin_message(scope, message_id), to: Tavern.Chat.Pins
+  defdelegate list_pins(scope, channel_id), to: Tavern.Chat.Pins
   defdelegate get_message(scope, message_id), to: Messages
   defdelegate get_messages(scope, message_ids), to: Messages
   defdelegate message_count(scope, channel_id), to: Messages

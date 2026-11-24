@@ -59,7 +59,7 @@ defmodule Tavern.Chat.Visibility do
   Channel bits take a `%Channel{}` target. Server-wide bits take `:server`. `:send_messages`,
   `:send_messages_in_threads` and the rest of the timed actions check the member's timeout
   first. `:edit_message`, `:delete_message`, `:suppress_embeds`, `:add_reactions`,
-  `:answer_question` and `:close_question` take a `%Message{}` and read only its id: the message and its channel load in
+  `:answer_question`, `:close_question` and `:pin_message` take a `%Message{}` and read only its id: the message and its channel load in
   the decision's own statement. `{:moderate, bit}` takes the subject's user id. So does `:assign_roles` (giving or taking a member role).
   `:manage_permissions` (reading a channel's overwrites) takes a `%Channel{}`; so does
   `{:manage_permissions, target}`, which decides a write of the overwrite for `target`
@@ -263,6 +263,7 @@ defmodule Tavern.Chat.Visibility do
     :add_reactions,
     :attach_files,
     :manage_messages,
+    :pin_messages,
     :mention_everyone,
     :archive_thread,
     :rename_thread,
@@ -591,6 +592,11 @@ defmodule Tavern.Chat.Visibility do
          view?(ctx, channel) and not thread_closed?(ctx, channel) and
            (ctx.member.id == author_id or bit?(ctx, channel, :manage_messages))
 
+  # Pinning or unpinning: `pin_messages` here, no timeout, and an open thread unless the member
+  # manages it, as for a delete.
+  defp message_decision(:pin_message, ctx, _author_id, channel),
+    do: channel_decision(:pin_messages, ctx, channel)
+
   defp message_decision(:add_reactions, ctx, _author_id, channel),
     do: channel_decision(:add_reactions, ctx, channel) and not thread_closed?(ctx, channel)
 
@@ -640,6 +646,11 @@ defmodule Tavern.Chat.Visibility do
 
   defp channel_decision(:manage_messages, ctx, channel),
     do: view?(ctx, channel) and bit?(ctx, channel, :manage_messages)
+
+  defp channel_decision(:pin_messages, ctx, channel),
+    do:
+      view?(ctx, channel) and bit?(ctx, channel, :pin_messages) and not acting_timed_out?(ctx) and
+        not thread_closed?(ctx, channel)
 
   # Attaching files to a message the member sends here. The send itself is decided apart, by
   # `:send_messages` or `:send_messages_in_threads`.

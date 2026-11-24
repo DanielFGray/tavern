@@ -10,7 +10,7 @@ defmodule Tavern.Chat.Message do
     field(:body, :string)
 
     field(:kind, Ecto.Enum,
-      values: [:default, :system, :reply, :thread_starter, :call, :slash_command],
+      values: [:default, :system, :reply, :thread_starter, :call, :slash_command, :pin],
       default: :default
     )
 
@@ -40,6 +40,10 @@ defmodule Tavern.Chat.Message do
   A changeset for what an author writes: the body and the composer's metadata. The server sets
   every other field itself (`kind`, `nonce`, `edited_at`, `deleted_at`, `pinned_at`,
   `suppress_embeds`), so a client cannot forge a system message, a pin or a deletion.
+
+  A `:pin` message is the line `Tavern.Chat.Pins` writes when a member pins a message: its author
+  is the member who pinned and `reply_to` is the pinned message. Its text is fixed, so it takes no
+  edit, pin or thread, and search skips it.
 
   A message holds text, attachments or both, so the body may be empty only when the message has
   attachments: loaded on `message`, or put on the changeset by `create_changeset/3`.
@@ -88,6 +92,9 @@ defmodule Tavern.Chat.Message do
   end
 
   def deleted?(%{deleted_at: deleted_at}), do: not is_nil(deleted_at)
+
+  @doc "Whether the message is a pin line (`kind: :pin`), whose text the server wrote."
+  def pin_line?(%{kind: kind}), do: kind == :pin
 
   @doc """
   Whether a list shows the message: the transcript, reply counts, unread counts, channel previews
