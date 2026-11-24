@@ -104,12 +104,17 @@
               return
             }
 
-            const stream =
-              kind === "camera"
-                ? await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } })
-                : await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+            let stream
+            try {
+              stream =
+                kind === "camera"
+                  ? await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } })
+                  : await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false })
+            } catch (err) {
+              this.reportError("capture", kind, err)
+              return
+            }
 
-            if (!stream) return
             this[kind + "Stream"] = stream
             const track = stream.getVideoTracks()[0]
             // The reader's own video never comes back from the SFU; it previews from the capture.
@@ -154,7 +159,18 @@
                   await pc.setRemoteDescription(reply.session_description)
                 }
               })
-              .catch((err) => console.warn("voice publish failed", kind, err))
+              .catch((err) => this.reportError("publish", kind, err))
+          },
+
+          // Capture and publish fail only in the browser, so the hook reports them for the
+          // server log. A dismissed screen picker reports too, as NotAllowedError.
+          reportError(step, kind, err) {
+            console.warn(`voice error: ${step} ${kind}`, err)
+            this.pushEvent("voice_client_error", {
+              step,
+              kind,
+              error: `${err?.name}: ${err?.message}`,
+            }).catch(() => {})
           },
 
           stopVideo(kind) {

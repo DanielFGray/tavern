@@ -19,7 +19,7 @@ test('your own camera and screen play in your tile and survive re-renders', asyn
   // A publish whose offer and answer cross shows up only as a page error or a warning.
   const faults = []
   page.on('pageerror', (err) => faults.push(err.message))
-  page.on('console', (msg) => msg.text().startsWith('voice publish failed') && faults.push(msg.text()))
+  page.on('console', (msg) => msg.text().startsWith('voice error:') && faults.push(msg.text()))
 
   await command(request, 'stub_voice')
   await command(request, 'ensure_channel', { slug: 'e2e-voice-preview', name: 'voice-preview', kind: 'voice' })

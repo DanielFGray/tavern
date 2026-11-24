@@ -123,6 +123,26 @@ defmodule TavernWeb.ServerLiveVoiceTest do
     assert has_element?(view, "#voice-video-#{user.id}-camera")
   end
 
+  test "a capture or publish error from the browser reaches the server log", %{
+    conn: conn,
+    voice: voice
+  } do
+    {:ok, view, _html} = live_hydrated(log_in_member_user(conn), "/?channel=#{voice.slug}")
+    view |> element("#voice-join-button") |> render_click()
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        render_hook(view, "voice_client_error", %{
+          "step" => "capture",
+          "kind" => "screen",
+          "error" => "NotAllowedError: The request is not allowed"
+        })
+      end)
+
+    assert log =~ "voice: browser capture of screen failed"
+    assert log =~ "NotAllowedError"
+  end
+
   test "each published video kind gets its own area that LiveView patches leave alone", %{
     conn: conn,
     voice: voice

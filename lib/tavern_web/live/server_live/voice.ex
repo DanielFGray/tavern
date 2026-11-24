@@ -33,7 +33,7 @@ defmodule TavernWeb.ServerLive.Voice do
 
   @kind_atoms %{"mic" => :mic, "camera" => :camera, "screen" => :screen}
 
-  @events ~w(voice_join voice_leave voice_mute_toggle voice_toggle_video voice_publish voice_unpublish voice_sf_offer_answer voice_speaking voice_permission_denied)
+  @events ~w(voice_join voice_leave voice_mute_toggle voice_toggle_video voice_publish voice_unpublish voice_sf_offer_answer voice_speaking voice_permission_denied voice_client_error)
 
   def events, do: @events
 
@@ -114,6 +114,23 @@ defmodule TavernWeb.ServerLive.Voice do
   end
 
   def handle_event("voice_toggle_video", _params, socket), do: {:noreply, socket}
+
+  # The browser's capture or publish step failed. Only the browser sees that error, so the log
+  # line is the one place it can be read after the fact.
+  def handle_event(
+        "voice_client_error",
+        %{"step" => step, "kind" => kind, "error" => error},
+        socket
+      )
+      when step in ~w(capture publish) and kind in @publish_kinds and is_binary(error) do
+    Logger.warning(
+      "voice: browser #{step} of #{kind} failed: #{inspect(String.slice(error, 0, 300))}"
+    )
+
+    {:noreply, socket}
+  end
+
+  def handle_event("voice_client_error", _params, socket), do: {:noreply, socket}
 
   def handle_event("voice_permission_denied", _params, socket) do
     {:noreply,
