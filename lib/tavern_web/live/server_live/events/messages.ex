@@ -6,6 +6,7 @@ defmodule TavernWeb.ServerLive.Events.Messages do
 
   alias Tavern.Accounts
   alias Tavern.Chat
+  alias TavernWeb.ServerComponents.Composer
   alias TavernWeb.ServerComponents.Helpers, as: RowHelpers
   alias TavernWeb.ServerLive.Events.Helpers
   alias TavernWeb.ServerLive.Events.Navigation
@@ -419,7 +420,9 @@ defmodule TavernWeb.ServerLive.Events.Messages do
           |> case do
             {:ok, message} ->
               socket
-              |> push_event("composer:clear", %{target: Atom.to_string(kind)})
+              |> push_event("composer:clear", %{
+                draft_key: Composer.draft_key(socket.assigns.current_user, conversation)
+              })
               |> State.clear_reply_to_message()
               |> State.reset_form(kind)
               |> State.refresh_typing_users(kind)

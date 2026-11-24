@@ -35,7 +35,7 @@ defmodule TavernWeb.SendLimitTest do
 
     view |> form("#message-form", %{message: %{body: "first"}}) |> render_submit()
     refute has_element?(view, "#flash-error")
-    assert_push_event(view, "composer:clear", %{target: "channel"})
+    assert_push_event(view, "composer:clear", %{draft_key: _})
 
     view |> form("#message-form", %{message: %{body: "second"}}) |> render_submit()
 
