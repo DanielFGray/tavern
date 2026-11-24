@@ -12,7 +12,8 @@ defmodule Tavern.MixProject do
       deps: deps(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
       listeners: [Phoenix.CodeReloader],
-      releases: releases()
+      releases: releases(),
+      package: [licenses: ["AGPL-3.0-or-later"]]
     ]
   end
 

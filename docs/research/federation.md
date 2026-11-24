@@ -171,7 +171,7 @@ Figures are from the Hex API (`https://hex.pm/api/packages?search=...`) and repo
 - **XMPP.** ejabberd 26.9.0 is on Hex (2026-10-05). It is GPL-2.0 ([COPYING][ejabberd-lic]), and its `mod_mix` declares XEP-0369 0.14.1 as "complete" ([source][ejabberd-mix]). MongooseIM is also GPL-2.0 ([COPYING][mongoose-lic]). The `xmpp` parser 1.13.5 is Apache-2.0.
 - **Host-authoritative.** OTP `:crypto` (Ed25519), `rfc8785` 1.0.0, and Req, which Tavern already uses for HTTP.
 
-Tavern has no `licenses` entry in `mix.exs` and no LICENSE file, so GPL and AGPL compatibility is an open question.
+Tavern is AGPL-3.0-or-later (LICENSE). An AGPL-3.0 library such as Bonfire's can be combined with it. A GPL-2.0 library can be combined only if it allows "any later version"; a GPL-2.0-only one cannot.
 
 ## Interop reach
 
@@ -258,7 +258,7 @@ The cost is that the server depends on its host. If the host dies, the server st
 4. **Remote media.** Does the host copy attachments into its own store, or do member hosts fetch from the uploader's server?
 5. **Replay window.** How long does the log keep events for resume: hours, days, or all history?
 6. **End-to-end encryption.** Out of scope? Matrix has it. Tavern and option (d) do not.
-7. **Licenses.** Tavern declares no license. Is a GPL-2.0 (ejabberd) or AGPL-3.0 (Bonfire) dependency acceptable for a future bridge?
+7. **Licenses.** Tavern is AGPL-3.0-or-later. Do ejabberd's and MongooseIM's GPL-2.0 terms allow later versions, so that a bridge can use them?
 8. **Canonical JSON.** RFC 8785, or Matrix canonical JSON so that Matrix tools can check signatures?
 
 ## Sources

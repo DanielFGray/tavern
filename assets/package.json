@@ -8,7 +8,7 @@
   },
   "keywords": [],
   "author": "DanielFGray <DanielFGray@gmail.com>",
-  "license": "Unlicense",
+  "license": "AGPL-3.0-or-later",
   "type": "commonjs",
   "dependencies": {
     "@emoji-mart/data": "^1.2.1",
