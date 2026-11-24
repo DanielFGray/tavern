@@ -139,6 +139,8 @@ defmodule TavernWeb.ServerComponents.Messages do
         </p>
       </div>
 
+      <.load_older_button pane={@server.channel_pane} />
+
       <div id="message-list" phx-update="stream" class="px-0 py-3">
         <.message_item
           :for={{dom_id, message} <- @server.streams.messages}
@@ -147,6 +149,34 @@ defmodule TavernWeb.ServerComponents.Messages do
           server={@server}
         />
       </div>
+    </div>
+    """
+  end
+
+  attr :pane, :map, required: true
+
+  @doc """
+  The control above a transcript that loads the page of messages before the oldest one shown. It
+  renders only while older messages exist. In the channel pane, `MessageListHook` also presses it
+  when the reader scrolls up to it.
+  """
+  def load_older_button(assigns) do
+    ~H"""
+    <div :if={@pane.older_cursor} class="flex justify-center px-4 pt-3">
+      <button
+        id={"load-older-#{@pane.kind}"}
+        type="button"
+        phx-click="load_older_messages"
+        phx-value-pane={@pane.kind}
+        data-load-older
+        class={[
+          "rounded-full border border-base-300 bg-base-100 px-3 py-1 text-xs font-medium",
+          "text-base-content/70 transition hover:border-primary/50 hover:text-base-content",
+          "phx-click-loading:pointer-events-none phx-click-loading:opacity-60"
+        ]}
+      >
+        Load older messages
+      </button>
     </div>
     """
   end

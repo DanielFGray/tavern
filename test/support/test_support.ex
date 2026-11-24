@@ -150,6 +150,21 @@ defmodule Tavern.TestSupport do
     %{channel: %{id: channel.id, name: channel.name, slug: channel.slug, kind: channel.kind}}
   end
 
+  # Posts `count` numbered messages ("<prefix> 1" oldest) to a channel as the owner, so a spec can
+  # page through a transcript longer than one page.
+  defp execute("fill_channel", payload) do
+    %{"slug" => slug, "count" => count} = payload
+    prefix = payload["prefix"] || "history"
+    channel = Repo.one!(from(c in Channel, where: c.slug == ^slug and is_nil(c.deleted_at)))
+    scope = owner_scope!()
+
+    for n <- 1..count//1 do
+      {:ok, _message} = Chat.create_message(scope, channel.id, %{body: "#{prefix} #{n}"})
+    end
+
+    %{success: true}
+  end
+
   defp execute("create_bot_with_token", payload) do
     scope = owner_scope!()
 
