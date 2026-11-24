@@ -9,6 +9,7 @@ defmodule TavernWeb.ServerLiveSearchTest do
   import TavernWeb.ServerLiveFixtures
 
   alias Tavern.Bootstrap
+  alias Tavern.Chat
 
   setup %{conn: conn} do
     Bootstrap.ensure_seed_data!()
@@ -47,6 +48,24 @@ defmodule TavernWeb.ServerLiveSearchTest do
 
     view |> element("#message-search-open-#{hit.id}") |> render_click()
     assert_patch(view, ~p"/?channel=general&thread=#{thread.id}")
+  end
+
+  test "a result in a forum post opens the post under its forum", ctx do
+    forum = channel_fixture(%{name: "Help", slug: "help", kind: :forum})
+
+    {:ok, post} =
+      Chat.create_forum_post(scope_for(ctx.me), forum.id, %{
+        "title" => "Plan",
+        "body" => "starter"
+      })
+
+    hit = message_fixture(post, ctx.me, %{body: "forum needle"})
+
+    {:ok, view, _html} = live_hydrated(ctx.conn, ~p"/?channel=general")
+    search(view, "needle")
+
+    view |> element("#message-search-open-#{hit.id}") |> render_click()
+    assert_patch(view, ~p"/?channel=help&thread=#{post.id}")
   end
 
   test "an empty search and a search with no hits say so; Escape closes", ctx do

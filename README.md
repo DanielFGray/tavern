@@ -94,7 +94,8 @@ You need Docker Engine with Compose v2, a domain name whose DNS points at the ma
    docker compose logs migrate
    ```
 
-   To let anyone register, set registration to open in Settings.
+   The link expires after 7 days; `docker compose run --rm migrate` prints a new one. To let
+   anyone register, set registration to open in Settings.
 
    A server with members but no owner (for example, after the owner deleted their account)
    gets one with `docker compose run --rm migrate /app/bin/make-owner you@example.com`.

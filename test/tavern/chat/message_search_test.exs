@@ -65,6 +65,22 @@ defmodule Tavern.Chat.MessageSearchTest do
     assert found(%Scope{user_id: ctx.owner.id}, "hidden") == ["hidden reply", "hidden starter"]
   end
 
+  test "a deleted channel and a deleted thread give no hits", ctx do
+    owner = %Scope{user_id: ctx.owner.id}
+    gone = channel_fixture(%{name: "Gone", slug: unique_slug()})
+    message_fixture(gone, ctx.owner, %{body: "buried channel words"})
+
+    starter = message_fixture(ctx.open, ctx.owner, %{body: "starter"})
+    thread = thread_fixture(ctx.open, starter, ctx.owner)
+    message_fixture(thread, ctx.owner, %{body: "buried thread words"})
+
+    {:ok, _} = Chat.delete_channel(owner, gone.id)
+    {:ok, _} = Chat.delete_thread(owner, thread.id)
+
+    assert found(ctx.scope, "buried") == []
+    assert found(owner, "buried") == []
+  end
+
   test "a reply in a visible thread is found, with its thread as its channel", ctx do
     starter = message_fixture(ctx.open, ctx.owner, %{body: "starter"})
     thread = thread_fixture(ctx.open, starter, ctx.owner)
