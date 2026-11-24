@@ -130,6 +130,85 @@ defmodule Tavern.MailerTest do
     end
   end
 
+  describe "the SMTP provider" do
+    test "sends a text and HTML mail from the configured sender" do
+      port = Tavern.SmtpSink.start()
+
+      email = %{@email | subject: "Héllo", text: "Hello ✓", html: "<p>Hello ✓</p>"}
+      assert :ok = with_config(smtp_config(port), fn -> Mailer.deliver(email) end)
+
+      assert_receive {:smtp_received, "tavern@example.test", ["to@example.com"], data}
+      # Without the optional iconv library, decoding leaves the bytes as sent: UTF-8 bodies, and
+      # the subject as an RFC 2047 encoded word.
+      {"multipart", "alternative", headers, _params, [plain, html]} =
+        :mimemail.decode(data, encoding: :none)
+
+      assert {"Subject", "=?UTF-8?" <> _} = List.keyfind(headers, "Subject", 0)
+      assert {"text", "plain", _, _, "Hello ✓"} = plain
+      assert {"text", "html", _, _, "<p>Hello ✓</p>"} = html
+    end
+
+    test "logs in when a username and password are set" do
+      port = Tavern.SmtpSink.start(login: {"mailer", "s3cret"})
+      config = smtp_config(port) ++ [smtp_username: "mailer", smtp_password: "s3cret"]
+
+      assert :ok = with_config(config, fn -> Mailer.deliver(@email) end)
+      assert_receive {:smtp_received, _, _, _}
+
+      config = smtp_config(port) ++ [smtp_username: "mailer", smtp_password: "wrong"]
+      assert {:error, "SMTP login failed"} = with_config(config, fn -> Mailer.deliver(@email) end)
+    end
+
+    test "STARTTLS mode sends nothing to a server that cannot encrypt" do
+      port = Tavern.SmtpSink.start()
+      config = Keyword.put(smtp_config(port), :smtp_security, :starttls)
+
+      assert {:error, "SMTP server does not offer STARTTLS"} =
+               with_config(config, fn -> Mailer.deliver(@email) end)
+
+      refute_receive {:smtp_received, _, _, _}
+    end
+
+    test "a refused recipient keeps only the reply code" do
+      port = Tavern.SmtpSink.start()
+
+      assert {:error, "SMTP refused: 550 5.1.1"} =
+               with_config(smtp_config(port), fn ->
+                 Mailer.deliver(%{@email | to: "reject@example.com"})
+               end)
+    end
+
+    test "an unreachable server becomes the reason" do
+      # A port that was free a moment ago has no listener.
+      {:ok, socket} = :gen_tcp.listen(0, ip: {127, 0, 0, 1})
+      {:ok, port} = :inet.port(socket)
+      :ok = :gen_tcp.close(socket)
+
+      assert {:error, "SMTP unreachable: :econnrefused"} =
+               with_config(smtp_config(port), fn -> Mailer.deliver(@email) end)
+    end
+
+    test "needs a sender, a host, and both halves of a login" do
+      with_config([provider: :smtp, from: "a@example.com", smtp_host: nil], fn ->
+        assert Mailer.missing_settings() == ["SMTP_HOST"]
+      end)
+
+      with_config([provider: :smtp, from: nil, smtp_host: "mail.test", smtp_username: "u"], fn ->
+        assert Mailer.missing_settings() == ["EMAIL_FROM", "SMTP_PASSWORD"]
+      end)
+    end
+  end
+
+  defp smtp_config(port) do
+    [
+      provider: :smtp,
+      from: "tavern@example.test",
+      smtp_host: "127.0.0.1",
+      smtp_port: port,
+      smtp_security: :none
+    ]
+  end
+
   defp cloudflare_config do
     [
       provider: :cloudflare,

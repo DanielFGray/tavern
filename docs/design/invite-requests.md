@@ -44,6 +44,12 @@ Every limit number lives in `config :tavern, Tavern.Chat.InviteRequests` in `con
 `Tavern.Mailer.deliver/1` sends through the provider in `config :tavern, Tavern.Mailer`:
 
 - `:cloudflare` (production): Cloudflare Email Service's REST API, `POST https://api.cloudflare.com/client/v4/accounts/{account_id}/email/sending/send`, with a Bearer token that holds "Email Sending: Edit". The sender's domain must be onboarded for Email Sending on the account that owns the token. `config/runtime.exs` reads `MAIL_PROVIDER`, `EMAIL_FROM`, `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_EMAIL_API_TOKEN`.
+- `:smtp` (self-hosted installs): any SMTP server, through gen_smtp (`Tavern.Mailer.Smtp`). `MAIL_PROVIDER=smtp` with `EMAIL_FROM` and `SMTP_HOST`; optional `SMTP_PORT`, `SMTP_USERNAME` and `SMTP_PASSWORD` (both or neither), and `SMTP_SECURITY`:
+  - `starttls` (default, port 587): the session must upgrade to TLS, or nothing is sent.
+  - `tls` (port 465): TLS from the first byte.
+  - `none` (port 25): for a relay on the same host or a private network.
+
+  TLS checks the server's certificate against the OS trust store and the host name. A failure is logged with the SMTP reply code only, since the reply text can name the recipient.
 - `:capture` (development and test): sends `{:mail_captured, email}` to the calling process and its `$callers`, and logs the text body, so the link is in the dev server log.
 
 Production mail: `cartridge.json` sets `EMAIL_FROM` (`tavern@danielfgray.com`, on a domain onboarded for Email Sending, with DMARC at `p=none`) and `MAIL_PROVIDER=cloudflare`, and references two `KvSecret` entries (path `secret/data/tavern`, keys `cloudflare_email_api_token` and `cloudflare_account_id`, env `CLOUDFLARE_EMAIL_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`). `ops secret set` stores only a secret the cartridge references, so the entries come first; then the operator runs `ops secret set cloudflare_email_api_token` and `ops secret set cloudflare_account_id`, and `ops secret list` shows both set. The platform refuses to deploy while a declared secret is unset. The staged copy inherits the same entries and sends real mail (user decision 2026-11-20).
