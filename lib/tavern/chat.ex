@@ -119,6 +119,7 @@ defmodule Tavern.Chat do
   defdelegate list_typing_users(scope, channel_id), to: Typing, as: :list_users
 
   defdelegate list_messages(scope, channel_id, opts \\ []), to: Messages
+  defdelegate search_messages(scope, query, opts \\ []), to: Messages
   defdelegate get_message(scope, message_id), to: Messages
   defdelegate get_messages(scope, message_ids), to: Messages
   defdelegate message_count(scope, channel_id), to: Messages
