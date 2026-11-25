@@ -5,13 +5,11 @@ defmodule TavernWeb.ServerLive.MessageSearch do
   newest first, and `next` the cursor of the page after them, nil on the last page.
   """
 
-  use TavernWeb, :verified_routes
-
   import Phoenix.Component, only: [assign: 3, to_form: 2]
   import Phoenix.LiveView, only: [push_patch: 2]
 
   alias Tavern.Chat
-  alias Tavern.Chat.Channel
+  alias TavernWeb.ServerLive.MessageJump
 
   def open(socket), do: search(socket, "")
 
@@ -48,26 +46,16 @@ defmodule TavernWeb.ServerLive.MessageSearch do
   end
 
   @doc """
-  Closes the drawer and opens the conversation that holds result `message_id`: its channel, or
-  its thread under the thread's parent. An id the drawer did not list does nothing.
+  Closes the drawer and opens result `message_id` in place (`MessageJump`). An id the drawer did
+  not list does nothing.
   """
   def open_result(socket, message_id) do
     with %{results: results} <- socket.assigns.message_search,
          %{channel: channel} <- Enum.find(results, &(&1.id == message_id)),
-         path when is_binary(path) <- conversation_path(socket, channel) do
+         path when is_binary(path) <- MessageJump.message_path(socket, channel, message_id) do
       socket |> close() |> push_patch(to: path)
     else
       _ -> socket
-    end
-  end
-
-  defp conversation_path(socket, %Channel{} = channel) do
-    if Channel.thread?(channel) do
-      parent = Enum.find(socket.assigns.channels, &(&1.id == channel.parent_channel_id))
-
-      parent && ~p"/?channel=#{parent.slug}&thread=#{channel.id}"
-    else
-      ~p"/?channel=#{channel.slug}"
     end
   end
 end

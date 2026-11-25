@@ -5,10 +5,23 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
 
   alias Tavern.Chat
   alias TavernWeb.ServerLive.ForumNav
+  alias TavernWeb.ServerLive.MessageJump
   alias TavernWeb.ServerLive.State
   alias TavernWeb.ServerLive.ThreadNav
 
-  def handle_params(%{"thread" => thread_id} = params, _uri, socket) do
+  @doc """
+  Opens the URL's channel and thread, then the message it names in place (`MessageJump`).
+  Before navigation is hydrated there is nothing to open; hydration calls this again.
+  """
+  def handle_params(params, uri, socket) do
+    {:noreply, socket} = open_url_conversation(params, uri, socket)
+
+    if socket.assigns.navigation_ready?,
+      do: {:noreply, MessageJump.follow(socket)},
+      else: {:noreply, socket}
+  end
+
+  defp open_url_conversation(%{"thread" => thread_id} = params, _uri, socket) do
     if not socket.assigns.navigation_ready? do
       {:noreply, socket}
     else
@@ -47,7 +60,7 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
     end
   end
 
-  def handle_params(%{"channel" => slug}, _uri, socket) do
+  defp open_url_conversation(%{"channel" => slug}, _uri, socket) do
     if not socket.assigns.navigation_ready? do
       {:noreply, socket}
     else
@@ -70,7 +83,7 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
     end
   end
 
-  def handle_params(_params, _uri, socket) do
+  defp open_url_conversation(_params, _uri, socket) do
     case {socket.assigns.active_channel, List.first(socket.assigns.channels)} do
       {nil, %{} = channel} ->
         {:noreply,

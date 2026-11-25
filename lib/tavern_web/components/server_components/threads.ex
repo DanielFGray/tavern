@@ -276,6 +276,8 @@ defmodule TavernWeb.ServerComponents.Threads do
             server={@server}
           />
         </div>
+
+        <Messages.load_newer_button pane={@server.thread_pane} />
       </div>
     </section>
     """

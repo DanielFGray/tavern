@@ -544,9 +544,22 @@ function animateEntered(ids) {
   })
 }
 
+// A row that a link opened: its background takes the primary colour and fades back. The
+// animation does not move anything, so it runs under reduced motion too, and a patch of the row
+// does not cut it short the way a removed class would.
+function flashRow(row) {
+  const primary = getComputedStyle(row).getPropertyValue("--color-primary").trim() || "#5b4be8"
+  const tint = `color-mix(in oklab, ${primary} 24%, transparent)`
+  row.animate(
+    [{backgroundColor: tint}, {backgroundColor: tint, offset: 0.5}, {backgroundColor: "transparent"}],
+    {duration: 2400, easing: "ease-out"},
+  )
+}
+
 const MessageListHook = {
   mounted() {
     this.handleEvent("entered", ({ids}) => animateEntered(ids))
+    this.handleEvent("message:focus", payload => this.focusMessage(payload))
     this.autoscrollThreshold = 96
     this.shouldStickToBottom = true
     this.lastScrollHeight = this.el.scrollHeight
@@ -565,6 +578,7 @@ const MessageListHook = {
 
     requestAnimationFrame(() => this.scrollToBottom())
     this.watchLoadOlder()
+    this.watchLoadNewer()
   },
 
   beforeUpdate() {
@@ -575,6 +589,8 @@ const MessageListHook = {
     const grew = this.el.scrollHeight > this.lastScrollHeight
     this.renderMarkdownBodies()
     const list = this.messageList()
+    // A window around an older message has a gap below it, so its bottom is not the present.
+    if(this.holdsWindow()) this.shouldStickToBottom = false
 
     if(!list) {
       // A thread's own list is not a scroll box; only the channel list anchors.
@@ -591,6 +607,60 @@ const MessageListHook = {
 
     this.lastScrollHeight = this.el.scrollHeight
     this.watchLoadOlder()
+    this.watchLoadNewer()
+  },
+
+  // TavernWeb.ServerLive.MessageJump loaded the window around a message: show it in the middle
+  // of the list, and flash it when the reader asked for it. No id means the newest page. Only
+  // the outermost list acts: a thread in a text channel renders inside the channel list, which
+  // is the scroll box. It runs in the next frame, after any scroll `updated()` queued for the
+  // same patch.
+  focusMessage({id, highlight}) {
+    if(!id) return this.returnToPresent()
+    const row = document.getElementById(id)
+    if(!row || !this.el.contains(row)) return
+    if(this.el.parentElement?.closest('[phx-hook="MessageListHook"]')) return
+
+    this.shouldStickToBottom = false
+    requestAnimationFrame(() => {
+      if(this.messageList()) {
+        const offset = row.getBoundingClientRect().top - this.el.getBoundingClientRect().top
+        this.el.scrollTop += offset - Math.max(0, (this.el.clientHeight - row.offsetHeight) / 2)
+        this.shouldStickToBottom = this.isNearBottom() && !this.holdsWindow()
+      } else {
+        row.scrollIntoView({block: "center"})
+      }
+      if(highlight) flashRow(row)
+    })
+  },
+
+  // The newest page replaced a window: follow the conversation's end again.
+  returnToPresent() {
+    if(!this.messageList()) return
+    this.shouldStickToBottom = true
+    requestAnimationFrame(() => this.scrollToBottom())
+  },
+
+  holdsWindow() {
+    return this.el.querySelector('[id^="newer-messages-"]') !== null
+  },
+
+  // Presses the channel's "Load newer messages" button when the reader scrolls down near it, the
+  // mirror of `watchLoadOlder()`.
+  watchLoadNewer() {
+    if(!this.messageList()) return
+    const button = this.el.querySelector(":scope > #newer-messages-channel > #load-newer-channel")
+    if(button === this.loadNewerButton) return
+
+    this.loadNewerObserver?.disconnect()
+    this.loadNewerButton = button
+    if(!button) return
+
+    this.loadNewerObserver = new IntersectionObserver(entries => {
+      const visible = entries.some(entry => entry.isIntersecting)
+      if(visible && !button.classList.contains("phx-click-loading")) button.click()
+    }, {root: this.el, rootMargin: "0px 0px 300px 0px"})
+    this.loadNewerObserver.observe(button)
   },
 
   // Presses the channel's "Load older messages" button when the reader scrolls up near it. Only
@@ -662,6 +732,7 @@ const MessageListHook = {
 
   destroyed() {
     this.loadOlderObserver?.disconnect()
+    this.loadNewerObserver?.disconnect()
     this.el.removeEventListener("scroll", this.onScroll)
   },
 

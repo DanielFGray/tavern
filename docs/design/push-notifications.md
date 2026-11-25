@@ -51,11 +51,11 @@ more specific than the global one.
 commits. It builds one notification per recipient, `%{title, body, tag, path}`, and both
 deliveries show it as it is: the title (`Ada mentioned you in #general`, or `Ada in #general`
 for an `:all_messages` level), at most 140 characters of the message, the tag, and the path that
-opens the conversation.
+opens the message in place (docs/design/message-links.md).
 
 - **Desktop alert.** "Desktop alerts" must be on. Each open tab gets the notification on its
   member's PubSub topic (`Topics.subscribe_user/1`), and shows it only while the tab is hidden
-  and not for the conversation it shows. A click opens the conversation.
+  and not for the conversation it shows. A click opens the message in place.
 - **Push.** The member must have at least one subscription. "Push alerts" is not a stored
   setting: a device is on while it holds a subscription, and turning push off on a device
   deletes that device's subscription. So each device decides for itself, and a server-wide
@@ -165,5 +165,4 @@ no automated test turns push on in a browser.
 - "Email alerts" is a stored setting with no sender, so Settings no longer shows it.
 - A subscription the browser replaces (`pushsubscriptionchange`) is not sent to the server. The
   old one answers `410` and is deleted; the member turns push on again.
-- A click opens the conversation, not the message (task "Open a message in place").
 - Not yet proven on a real iPhone or Android phone with the app closed.

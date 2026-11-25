@@ -62,7 +62,7 @@ defmodule Tavern.Chat.AlertsTest do
     message = message_fixture(ctx.channel, ctx.author, %{body: "hi @#{ctx.member.username}"})
     tag = "mention-#{message.id}"
     channel_id = ctx.channel.id
-    path = "/?channel=#{ctx.channel.slug}"
+    path = "/?channel=#{ctx.channel.slug}&message=#{message.id}"
 
     assert_receive {:alert, %{tag: ^tag, channel_id: ^channel_id, path: ^path, title: title}}
     assert title =~ "mentioned you in ##{ctx.channel.name}"

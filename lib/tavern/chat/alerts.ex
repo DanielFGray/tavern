@@ -154,7 +154,7 @@ defmodule Tavern.Chat.Alerts do
       channel_id: channel.id,
       body: if(body == "", do: "New message", else: body),
       tag: "mention-#{message.id}",
-      path: conversation_path(channel)
+      path: message_path(message, channel)
     }
 
     fn %{mentioned?: mentioned?} ->
@@ -173,13 +173,14 @@ defmodule Tavern.Chat.Alerts do
       else: channel.name
   end
 
-  # The same URL as `TavernWeb.ServerComponents.Helpers.channel_path/1` and `thread_path/2`.
-  defp conversation_path(%Channel{} = channel) do
+  # The URL that opens the message in place, the same as
+  # `TavernWeb.ServerLive.MessageJump.message_path/3`.
+  defp message_path(%Message{id: id}, %Channel{} = channel) do
     if Channel.thread?(channel) do
       parent = Repo.get!(Channel, channel.parent_channel_id)
-      "/?" <> URI.encode_query(channel: parent.slug, thread: channel.id)
+      "/?" <> URI.encode_query(channel: parent.slug, thread: channel.id, message: id)
     else
-      "/?" <> URI.encode_query(channel: channel.slug)
+      "/?" <> URI.encode_query(channel: channel.slug, message: id)
     end
   end
 

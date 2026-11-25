@@ -45,6 +45,8 @@ messages can pin from the start. Its `down` clears bit 30 everywhere.
 - The channel header and the thread panel header each have a Pins button. The drawer lists the
   pins of that conversation, most recently pinned first. A member who may pin sees Unpin on
   each row.
+- A click on a pin closes the drawer and opens the message in place
+  (docs/design/message-links.md).
 - The drawer closes when its conversation stops being the open channel or thread, as after
   browser Back.
 - An open drawer lists its pins again on each `:message_updated` or `:message_deleted` of its
@@ -55,8 +57,6 @@ messages can pin from the start. Its `down` clears bit 30 everywhere.
 
 ## Not built
 
-- Jump from a pin to the message in the transcript. This needs the same work as jumping from
-  a search result.
 - Pins in the bot API.
 - Deleting a pin line from the interface. The domain allows `manage_messages` to delete it,
   but the row has no menu.

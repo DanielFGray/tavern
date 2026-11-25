@@ -10,9 +10,11 @@ defmodule TavernWeb.ServerLive.State do
       connected?: 1,
       push_event: 3,
       push_patch: 2,
+      stream: 3,
       stream: 4,
       stream_delete: 3,
-      stream_insert: 3
+      stream_insert: 3,
+      stream_insert: 4
     ]
 
   alias Tavern.Accounts
@@ -21,10 +23,12 @@ defmodule TavernWeb.ServerLive.State do
   alias Tavern.Chat.Topics
   alias TavernWeb.ServerLive.ChannelEditor
   alias TavernWeb.ServerLive.ForumNav
+  alias TavernWeb.ServerLive.MessageJump
   alias TavernWeb.ServerLive.Pane
   alias TavernWeb.ServerLive.ThreadNav
 
-  # Messages per transcript page: the first load and each "load older" step.
+  # Messages per transcript page: the first load, each "load older" or "load newer" step, and the
+  # window around a message a link opens.
   @page_size 50
 
   def queue_initial_hydration(socket) do
@@ -131,15 +135,32 @@ defmodule TavernWeb.ServerLive.State do
     |> rerender_active_thread_panel()
   end
 
-  # Streams the conversation's messages into the pane of `kind`, marks them read and reads the
-  # pane's rights, typing users and count. The caller has already subscribed to the conversation,
-  # so a message posted while the list loads still arrives, and renders the pane's host itself.
-  defp load_pane(socket, kind, conversation) do
+  # Streams the conversation's messages into the pane of `kind` and reads the pane's rights,
+  # typing users and count. The page is the newest one, or the window around the message the URL
+  # names (`MessageJump.target/3`); a page that holds the newest message marks the conversation
+  # read, and a window does not, because the read marker may be ahead of it. The caller has
+  # already subscribed to the conversation, so a message posted while the list loads still
+  # arrives, and renders the pane's host itself.
+  defp load_pane(socket, kind, conversation),
+    do: load_pane(socket, kind, conversation, MessageJump.target(socket, kind, conversation))
+
+  defp load_pane(socket, kind, conversation, jump) do
     scope = socket.assigns.current_scope
 
-    {messages, older_cursor} = message_page(scope, conversation.id, nil)
+    {socket, {messages, older_cursor, newer_cursor}} =
+      case jump && message_window(scope, conversation.id, jump) do
+        nil ->
+          {socket, newest_page(scope, conversation.id)}
 
-    Chat.mark_channel_read(scope, conversation.id, List.last(messages))
+        :error ->
+          {MessageJump.refuse(socket, jump), newest_page(scope, conversation.id)}
+
+        window ->
+          {socket, window}
+      end
+
+    if is_nil(newer_cursor),
+      do: Chat.mark_channel_read(scope, conversation.id, List.last(messages))
 
     pane = %{
       Pane.new(kind)
@@ -147,12 +168,94 @@ defmodule TavernWeb.ServerLive.State do
         typing_users: Chat.list_typing_users(scope, conversation.id),
         message_count: Pane.count_messages(scope, kind, conversation.id),
         empty?: messages == [],
-        older_cursor: older_cursor
+        older_cursor: older_cursor,
+        newer_cursor: newer_cursor,
+        jump: jump
     }
 
     socket
     |> assign(Pane.assign_key(kind), pane)
     |> stream(Pane.stream_name(kind), messages, reset: true)
+  end
+
+  @doc """
+  Loads the pane of `kind` again: the window around `jump`'s message
+  (`MessageJump.target/3`), or the newest page for nil. The open thread renders inside its
+  starter's row of the channel stream, so a new channel page inserts that row again, as opening
+  the thread does.
+  """
+  def reload_pane(socket, kind, jump) do
+    case conversation(socket, kind) do
+      nil -> socket
+      conversation -> socket |> load_pane(kind, conversation, jump) |> rerender_thread_host(kind)
+    end
+  end
+
+  defp rerender_thread_host(socket, :channel), do: rerender_active_thread_panel(socket)
+  defp rerender_thread_host(socket, :thread), do: rerender_pane_host(socket, :thread)
+
+  defp newest_page(scope, conversation_id) do
+    {messages, older_cursor} = message_page(scope, conversation_id, nil)
+    {messages, older_cursor, nil}
+  end
+
+  # The window around the jump's message: up to half a page on each side of it. A message the
+  # conversation does not list (deleted, hidden, or in another conversation) is `:error`.
+  defp message_window(scope, conversation_id, {_reason, message_id}) do
+    half = div(@page_size, 2)
+
+    with {:ok, message_id} <- Chat.Ids.cast(message_id),
+         {:ok, messages} <-
+           Chat.list_messages(scope, conversation_id, around: message_id, limit: half + 1),
+         {older, [%Message{id: ^message_id} = target | newer]} <-
+           Enum.split_while(messages, &(&1.id != message_id)) do
+      {older, older_cursor} = trim_older(older, half)
+      {newer, newer_cursor} = trim_newer(newer, half)
+      {older ++ [target | newer], older_cursor, newer_cursor}
+    else
+      _ -> :error
+    end
+  end
+
+  # One row more than a side holds is read to learn whether more exist past it; the cursor names
+  # the last row kept on that side, or is nil when the side reaches the end of the conversation.
+  defp trim_older(older, half) when length(older) > half do
+    [_dropped | kept] = older
+    {kept, hd(kept).id}
+  end
+
+  defp trim_older(older, _half), do: {older, nil}
+
+  defp trim_newer(newer, half) when length(newer) > half do
+    kept = Enum.take(newer, half)
+    {kept, List.last(kept).id}
+  end
+
+  defp trim_newer(newer, _half), do: {newer, nil}
+
+  @doc """
+  Adds the page of messages after the newest one the pane of `kind` shows to the end of its
+  stream. The page that reaches the conversation's newest message marks it read. A pane that
+  already holds the newest message is left alone.
+  """
+  def load_newer_messages(socket, kind) do
+    scope = socket.assigns.current_scope
+
+    with %{id: conversation_id} <- conversation(socket, kind),
+         %Pane{newer_cursor: cursor} when not is_nil(cursor) <- pane(socket, kind),
+         {:ok, messages} <-
+           Chat.list_messages(scope, conversation_id, after: cursor, limit: @page_size + 1) do
+      {messages, newer_cursor} = trim_newer(messages, @page_size)
+
+      if is_nil(newer_cursor),
+        do: Chat.mark_channel_read(scope, conversation_id, List.last(messages))
+
+      socket
+      |> stream(Pane.stream_name(kind), messages)
+      |> update_pane(kind, &%{&1 | newer_cursor: newer_cursor})
+    else
+      _ -> socket
+    end
   end
 
   @doc """
@@ -267,11 +370,13 @@ defmodule TavernWeb.ServerLive.State do
 
   @doc """
   Records whether the view's tab is visible. A tab that becomes visible again shows its open
-  conversations, so each is marked read up to its latest message.
+  conversations, so each that holds its newest message is marked read up to it.
   """
   def set_tab_visible(socket, visible?) do
     if visible? and not socket.assigns.tab_visible? do
-      for kind <- Pane.kinds(), %{id: id} <- [conversation(socket, kind)] do
+      for kind <- Pane.kinds(),
+          %{id: id} <- [conversation(socket, kind)],
+          is_nil(pane(socket, kind).newer_cursor) do
         Chat.mark_channel_read(socket.assigns.current_scope, id)
       end
     end
@@ -291,6 +396,18 @@ defmodule TavernWeb.ServerLive.State do
         socket
 
       kind ->
+        insert_at_tail(socket, kind, message)
+    end
+  end
+
+  # A pane that holds a window around an older message has a gap before the new message, so it
+  # counts the message and shows it once the reader reaches the newest page.
+  defp insert_at_tail(socket, kind, %Message{channel_id: channel_id} = message) do
+    case pane(socket, kind) do
+      %Pane{newer_cursor: cursor} when not is_nil(cursor) ->
+        update_pane(socket, kind, &%{&1 | message_count: &1.message_count + 1})
+
+      %Pane{} ->
         if socket.assigns.tab_visible?,
           do: Chat.mark_channel_read(socket.assigns.current_scope, channel_id, message)
 
@@ -316,7 +433,7 @@ defmodule TavernWeb.ServerLive.State do
         count = Pane.count_messages(socket.assigns.current_scope, kind, channel_id)
 
         socket
-        |> stream_message(Pane.stream_name(kind), message)
+        |> stream_message(Pane.stream_name(kind), message, update_only: true)
         |> update_pane(kind, &%{&1 | message_count: count})
     end
   end
@@ -324,9 +441,12 @@ defmodule TavernWeb.ServerLive.State do
   # A message the transcript does not show (a closed permission request, or a deleted message
   # that starts no live thread here) leaves the stream instead of rendering again. The open
   # channel's thread summaries say which messages start a live thread.
-  defp stream_message(socket, name, %Message{} = message) do
+  #
+  # `update_only: true` leaves out a row the browser does not hold: a change to a message outside
+  # the loaded pages must not add it at the end of the transcript.
+  defp stream_message(socket, name, %Message{} = message, opts \\ []) do
     if Message.transcript_shown?(message, starts_live_thread?(socket, message)),
-      do: stream_insert(socket, name, message),
+      do: stream_insert(socket, name, message, opts),
       else: stream_delete(socket, name, message)
   end
 
@@ -423,13 +543,23 @@ defmodule TavernWeb.ServerLive.State do
     |> stream_messages(:messages, channel_rows)
   end
 
+  # A re-render changes rows the browser holds; a row outside the loaded pages stays out.
   defp stream_messages(socket, name, messages),
-    do: Enum.reduce(messages, socket, &stream_message(&2, name, &1))
+    do: Enum.reduce(messages, socket, &stream_message(&2, name, &1, update_only: true))
 
+  @doc """
+  Inserts the open thread's starter row into the channel stream, where the thread renders. A
+  starter outside the loaded pages joins the stream, so the thread shows wherever the reader
+  opened it from.
+  """
   def rerender_active_thread_panel(socket) do
-    case current_thread_starter_id(socket) do
-      nil -> socket
-      starter_message_id -> rerender_messages(socket, [starter_message_id])
+    with %{active_channel: %{id: channel_id}} <- socket.assigns,
+         starter_id when not is_nil(starter_id) <- current_thread_starter_id(socket),
+         [%Message{channel_id: ^channel_id} = starter] <-
+           Chat.get_messages(socket.assigns.current_scope, [starter_id]) do
+      stream_message(socket, :messages, starter)
+    else
+      _ -> socket
     end
   end
 
@@ -472,7 +602,8 @@ defmodule TavernWeb.ServerLive.State do
     |> load_pane(:thread, thread)
     |> ThreadNav.mark_thread_seen(thread.id)
     |> ThreadNav.refresh_thread_following()
-    |> rerender_messages([previous_starter_message_id, thread.starter_message_id])
+    |> rerender_messages([previous_starter_message_id])
+    |> rerender_active_thread_panel()
   end
 
   defp active_channel_abilities(_socket, nil), do: Chat.no_channel_abilities()

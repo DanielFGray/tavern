@@ -11,6 +11,7 @@ defmodule TavernWeb.ServerLive.Events.Messages do
   alias TavernWeb.ServerComponents.Helpers, as: RowHelpers
   alias TavernWeb.ServerLive.Events.Helpers
   alias TavernWeb.ServerLive.Events.Navigation
+  alias TavernWeb.ServerLive.MessageJump
   alias TavernWeb.ServerLive.Pane
   alias TavernWeb.ServerLive.Pins
   alias TavernWeb.ServerLive.State
@@ -36,6 +37,9 @@ defmodule TavernWeb.ServerLive.Events.Messages do
     delete_message
     suppress_embeds
     load_older_messages
+    load_newer_messages
+    open_message
+    jump_to_present
   )
 
   @panes %{"channel" => :channel, "thread" => :thread}
@@ -82,6 +86,24 @@ defmodule TavernWeb.ServerLive.Events.Messages do
   def handle_event("load_older_messages", %{"pane" => pane}, socket) do
     case Map.fetch(@panes, pane) do
       {:ok, kind} -> {:noreply, State.load_older_messages(socket, kind)}
+      :error -> {:noreply, socket}
+    end
+  end
+
+  def handle_event("load_newer_messages", %{"pane" => pane}, socket) do
+    case Map.fetch(@panes, pane) do
+      {:ok, kind} -> {:noreply, State.load_newer_messages(socket, kind)}
+      :error -> {:noreply, socket}
+    end
+  end
+
+  # A pinned message or the message a reply answers.
+  def handle_event("open_message", %{"id" => message_id}, socket),
+    do: {:noreply, socket |> Pins.close() |> MessageJump.open(message_id)}
+
+  def handle_event("jump_to_present", %{"pane" => pane}, socket) do
+    case Map.fetch(@panes, pane) do
+      {:ok, kind} -> {:noreply, MessageJump.present(socket, kind)}
       :error -> {:noreply, socket}
     end
   end
@@ -442,6 +464,7 @@ defmodule TavernWeb.ServerLive.Events.Messages do
               |> State.reset_form(kind)
               |> State.refresh_typing_users(kind)
               |> State.insert_message(message)
+              |> MessageJump.present(kind)
               |> ThreadNav.refresh_followed_threads()
 
             {:error, {:slowmode, seconds_left}} ->
