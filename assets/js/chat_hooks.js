@@ -379,7 +379,8 @@ const RichComposerHook = {
           }),
         }),
         Placeholder.configure({
-          placeholder: this.el.dataset.placeholder || "Message channel",
+          // Read on each render: the composer stays mounted when the open conversation changes.
+          placeholder: () => this.el.dataset.placeholder || "Message channel",
         }),
         Link.configure({
           autolink: true,

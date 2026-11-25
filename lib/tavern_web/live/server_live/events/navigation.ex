@@ -60,6 +60,28 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
     end
   end
 
+  defp open_url_conversation(%{"dm" => id}, _uri, socket) do
+    if not socket.assigns.navigation_ready? do
+      {:noreply, socket}
+    else
+      active_id = socket.assigns.active_channel && socket.assigns.active_channel.id
+
+      case Chat.get_direct_message(socket.assigns.current_scope, id) do
+        %{id: ^active_id} ->
+          {:noreply, socket}
+
+        %{} = dm ->
+          {:noreply, State.switch_channel(socket, dm)}
+
+        nil ->
+          {:noreply,
+           socket
+           |> put_flash(:error, "That conversation does not exist.")
+           |> State.redirect_to_default_channel()}
+      end
+    end
+  end
+
   defp open_url_conversation(%{"channel" => slug}, _uri, socket) do
     if not socket.assigns.navigation_ready? do
       {:noreply, socket}
@@ -123,6 +145,13 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
       do: {:noreply, drop_deleted_thread(socket, channel)},
       else: drop_deleted_channel(socket, channel)
   end
+
+  # A DM another member opened, or one this member opened in another tab: subscribe to it, so its
+  # first message arrives, and list it once it is listed.
+  def handle_info({:direct_message_opened, _channel}, socket),
+    do: {:noreply, State.refresh_direct_messages(socket)}
+
+  def handle_info(:blocks_changed, socket), do: {:noreply, State.refresh_blocks(socket)}
 
   def handle_info(:channels_reordered, socket) do
     {:noreply, State.refresh_channels(socket)}

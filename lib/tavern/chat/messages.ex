@@ -16,6 +16,7 @@ defmodule Tavern.Chat.Messages do
   alias Tavern.Chat.Attachments
   alias Tavern.Chat.Channel
   alias Tavern.Chat.Channels
+  alias Tavern.Chat.DirectMessages
   alias Tavern.Chat.Embeds
   alias Tavern.Chat.Emojis
   alias Tavern.Chat.Ids
@@ -95,7 +96,7 @@ defmodule Tavern.Chat.Messages do
   end
 
   @doc """
-  The listed messages (`Message.where_listed/1`) in channels and threads the scope may view whose
+  The listed messages (`Message.where_listed/1`) in channels, threads and direct messages the scope may view whose
   text holds every word of `query`, newest first, as `{:ok, %{messages: messages, next: cursor}}`.
   Each word matches the start of a word in the text, case aside: "depl" finds "Deploying".
   Punctuation in the query is ignored, and a query with no words finds nothing. Pin lines
@@ -105,7 +106,12 @@ defmodule Tavern.Chat.Messages do
   """
   def search_messages(%Scope{} = scope, query, opts \\ []) when is_binary(query) do
     limit = Keyword.get(opts, :limit, 25)
-    channels = Map.new(Visibility.visible_channels(scope), &{&1.id, &1})
+
+    channels =
+      Map.new(
+        Visibility.visible_channels(scope) ++ DirectMessages.list_direct_messages(scope),
+        &{&1.id, &1}
+      )
 
     case search_terms(query) do
       nil ->

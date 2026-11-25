@@ -30,6 +30,7 @@ defmodule Tavern.Chat.Visibility do
   alias Tavern.Chat.Message
   alias Tavern.Chat.Role
   alias Tavern.Chat.User
+  alias Tavern.Chat.UserBlock
   alias Tavern.Repo
 
   # A UUID that names no message. Loads that have no message target join against it, so the
@@ -65,6 +66,7 @@ defmodule Tavern.Chat.Visibility do
   `{:manage_permissions, target}`, which decides a write of the overwrite for `target`
   (`{:role, role_id}` or `{:user, user_id}`) on that channel. `:restore_channel` takes a
   `%Channel{}` and is the one decision that answers yes for a deleted channel.
+  `:start_direct_message` takes the user id of the member to open a new direct message with.
   """
   def can?(%Scope{} = scope, action, target) do
     ctx = load_for(scope, action, target)
@@ -211,7 +213,9 @@ defmodule Tavern.Chat.Visibility do
   end
 
   # Every channel row, with overwrites, that `keep?` accepts for the scope's member. Each decision
-  # reads its parents from the same rows.
+  # reads its parents from the same rows. Direct messages are left out in SQL: there is one per
+  # pair of members who talked, and only their participants may list them
+  # (`Tavern.Chat.DirectMessages.list_direct_messages/1`).
   defp filter_all_channels(scope, keep?) do
     ctx = load(scope, [])
 
@@ -221,6 +225,7 @@ defmodule Tavern.Chat.Visibility do
       channels =
         Repo.all(
           from(channel in Channel,
+            where: channel.kind != :direct,
             order_by: [asc: channel.position, asc: channel.inserted_at],
             preload: [:permission_overwrites]
           )
@@ -419,6 +424,19 @@ defmodule Tavern.Chat.Visibility do
       on: parent_overwrite.channel_id == parent.id,
       left_join: grandparent_overwrite in ChannelPermissionOverwrite,
       on: grandparent_overwrite.channel_id == grandparent.id,
+      left_join: peer in User,
+      on:
+        channel.kind == :direct and peer.id != user.id and
+          peer.id in [channel.direct_low_user_id, channel.direct_high_user_id],
+      left_join: peer_membership in Membership,
+      on: peer_membership.user_id == peer.id,
+      left_join: block in UserBlock,
+      on:
+        channel.kind == :direct and
+          ((block.blocker_id == channel.direct_low_user_id and
+              block.blocked_id == channel.direct_high_user_id) or
+             (block.blocker_id == channel.direct_high_user_id and
+                block.blocked_id == channel.direct_low_user_id)),
       select: %{
         user: user,
         membership: membership,
@@ -432,7 +450,10 @@ defmodule Tavern.Chat.Visibility do
         parent: parent,
         parent_overwrite: parent_overwrite,
         grandparent: grandparent,
-        grandparent_overwrite: grandparent_overwrite
+        grandparent_overwrite: grandparent_overwrite,
+        peer: peer,
+        peer_membership: peer_membership,
+        block: block
       }
     )
   end
@@ -448,7 +469,8 @@ defmodule Tavern.Chat.Visibility do
       default_role: nil,
       implicit_roles: [],
       message: nil,
-      channels: %{}
+      channels: %{},
+      open_direct_ids: MapSet.new()
     }
 
   defp assemble([%{user: user} | _] = rows) do
@@ -493,9 +515,27 @@ defmodule Tavern.Chat.Visibility do
       default_role: default_role,
       implicit_roles: implicit_roles,
       message: message,
-      channels: channels
+      channels: channels,
+      open_direct_ids: open_direct_ids(rows)
     }
   end
+
+  # The direct messages among the loaded channels that take new writes: the peer is an active
+  # member and neither participant blocks the other.
+  defp open_direct_ids(rows) do
+    rows
+    |> Enum.filter(&match?(%Channel{kind: :direct}, &1.channel))
+    |> Enum.group_by(& &1.channel.id)
+    |> Enum.filter(fn {_id, rows} ->
+      Enum.all?(rows, &is_nil(&1.block)) and Enum.any?(rows, &active_peer?/1)
+    end)
+    |> MapSet.new(fn {id, _rows} -> id end)
+  end
+
+  defp active_peer?(%{peer: %User{deleted_at: nil}, peer_membership: %Membership{} = membership}),
+    do: is_nil(membership.deactivated_at)
+
+  defp active_peer?(_row), do: false
 
   defp add_channel(acc, nil, _overwrite), do: acc
 
@@ -551,6 +591,19 @@ defmodule Tavern.Chat.Visibility do
     decide(:manage_permissions, ctx, channel) and overwrite_target?(ctx, target)
   end
 
+  # Starting a direct message with a member who has none with the scope yet: the scope may send
+  # server-wide and is not timed out, the subject is another active member who accepts new
+  # contacts, and neither blocks the other. Reading or writing an existing DM is decided on the
+  # DM's channel instead.
+  defp decide(:start_direct_message, ctx, subject_id) when is_binary(subject_id) do
+    subject = load(%Scope{user_id: subject_id}, [])
+
+    not acting_timed_out?(ctx) and
+      Authorization.has_permission?(server_bits(ctx), :send_messages) and
+      match?(%User{direct_messages_from_new_contacts: true}, subject.member) and
+      subject_id != ctx.member.id and not blocked_between?(ctx.member.id, subject_id)
+  end
+
   defp decide({:moderate, bit}, ctx, subject_id) when is_binary(subject_id) do
     Authorization.has_permission?(server_bits(ctx), bit) and moderate_subject?(ctx, subject_id)
   end
@@ -577,6 +630,9 @@ defmodule Tavern.Chat.Visibility do
           top_position(subject.account, subject.default_role)
     end
   end
+
+  defp message_decision(action, ctx, author_id, %Channel{kind: :direct} = channel),
+    do: direct_message_decision(action, ctx, author_id, channel)
 
   # A locked or archived thread takes no edit, delete or reaction from anyone without
   # `manage_messages` in its parent channel (`thread_closed?/2`).
@@ -615,6 +671,9 @@ defmodule Tavern.Chat.Visibility do
 
   defp message_decision(:create_public_threads, ctx, _author_id, channel),
     do: channel_decision(:create_public_threads, ctx, channel)
+
+  defp channel_decision(action, ctx, %Channel{kind: :direct} = channel),
+    do: direct_decision(action, ctx, channel)
 
   defp channel_decision(:view_channel, ctx, channel), do: view?(ctx, channel)
   # A forum holds posts, which are threads, and no message of its own. Only this decision says
@@ -751,8 +810,12 @@ defmodule Tavern.Chat.Visibility do
 
   # A channel is visible when it is not deleted, grants view and its parent is visible: a thread
   # needs its channel, and a channel needs its category. A thread always has a parent. So a
-  # deleted channel hides its threads and their messages with it.
+  # deleted channel hides its threads and their messages with it. A direct message is visible to
+  # its two participants only, whatever bits anyone holds.
   defp view?(_ctx, %Channel{deleted_at: %DateTime{}}), do: false
+
+  defp view?(ctx, %Channel{kind: :direct} = channel),
+    do: Channel.participant?(channel, ctx.member.id)
 
   defp view?(ctx, %Channel{parent_channel_id: nil} = channel),
     do: not Channel.thread?(channel) and bit?(ctx, channel, :view_channel)
@@ -812,6 +875,54 @@ defmodule Tavern.Chat.Visibility do
       do: thread_manager?(ctx, channel),
       else: bit?(ctx, channel, :manage_messages)
   end
+
+  # --- Direct messages (docs/design/direct-messages.md) -----------------------------------------
+  #
+  # Only the participants act in a DM. The server-wide bits still limit them, so a member who
+  # cannot send in channels (Unverified, timed out) cannot send here either. No bit grants
+  # managing, pinning, threads, @everyone or voice in a DM: a participant who holds
+  # `manage_messages` or `administrator` still cannot delete the peer's messages.
+
+  defp direct_decision(:view_channel, ctx, channel), do: view?(ctx, channel)
+
+  defp direct_decision(action, ctx, channel)
+       when action in [:send_messages, :add_reactions, :attach_files],
+       do: direct_writable?(ctx, channel) and bit?(ctx, channel, action)
+
+  defp direct_decision(:embed_links, ctx, channel),
+    do: view?(ctx, channel) and bit?(ctx, channel, :embed_links)
+
+  defp direct_decision(_action, _ctx, _channel), do: false
+
+  defp direct_message_decision(:edit_message, ctx, author_id, channel),
+    do: ctx.member.id == author_id and not acting_timed_out?(ctx) and view?(ctx, channel)
+
+  defp direct_message_decision(action, ctx, author_id, channel)
+       when action in [:delete_message, :suppress_embeds, :close_question],
+       do: ctx.member.id == author_id and view?(ctx, channel)
+
+  defp direct_message_decision(:add_reactions, ctx, _author_id, channel),
+    do: direct_decision(:add_reactions, ctx, channel)
+
+  defp direct_message_decision(:answer_question, ctx, _author_id, channel),
+    do: direct_decision(:send_messages, ctx, channel)
+
+  defp direct_message_decision(_action, _ctx, _author_id, _channel), do: false
+
+  defp blocked_between?(user_id, other_id) do
+    Repo.exists?(
+      from(block in UserBlock,
+        where:
+          (block.blocker_id == ^user_id and block.blocked_id == ^other_id) or
+            (block.blocker_id == ^other_id and block.blocked_id == ^user_id)
+      )
+    )
+  end
+
+  defp direct_writable?(ctx, %Channel{id: id} = channel),
+    do:
+      view?(ctx, channel) and not acting_timed_out?(ctx) and
+        MapSet.member?(ctx.open_direct_ids, id)
 
   defp parent(_ctx, %Channel{parent_channel_id: nil}), do: nil
   defp parent(ctx, %Channel{parent_channel_id: parent_id}), do: Map.get(ctx.channels, parent_id)

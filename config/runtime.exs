@@ -32,6 +32,9 @@ end
 
 config :tavern,
   server_name: env.("TAVERN_SERVER_NAME") || "Tavern",
+  # Read once, when a new server is created: `private` or `owner_can_read`
+  # (docs/design/direct-messages.md). Changing it later does nothing.
+  direct_message_privacy: env.("TAVERN_DM_PRIVACY") || "private",
   valkey_url: env.("VALKEY_URL") || "redis://localhost:6379/0",
   # The platform gives each deploy its own prefix, colon included: `tavern:` live,
   # `tavern-staged:` in a staged copy. The Valkey login may touch only keys under it.

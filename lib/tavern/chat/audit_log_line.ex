@@ -18,7 +18,8 @@ defmodule Tavern.Chat.AuditLogLine do
                    member_role_added member_role_removed
                    channel_overwrite_updated channel_overwrite_deleted thread_renamed thread_deleted
                    bot_created bot_updated bot_revoked bot_token_created bot_token_revoked
-                   invite_request_approved invite_request_denied invite_requests_denied_by_ip)
+                   invite_request_approved invite_request_denied invite_requests_denied_by_ip
+                   view_direct_message)
 
   @doc "Action types with their own line, for the page's filter."
   def action_types, do: @action_types
@@ -118,6 +119,16 @@ defmodule Tavern.Chat.AuditLogLine do
 
   defp line("invite_requests_denied_by_ip", actor, _subject, meta, _entry),
     do: "#{actor} denied #{meta["count"]} invite requests from #{meta["ip_address"]}"
+
+  defp line("view_direct_message", actor, _subject, meta, _entry) do
+    between =
+      case meta["participant_usernames"] do
+        [one, two] -> "@#{one} and @#{two}"
+        _ -> "two members"
+      end
+
+    "#{actor} read the direct messages between #{between}"
+  end
 
   defp line(action_type, actor, subject, _meta, _entry) do
     "#{actor} did #{label(action_type)}" <>

@@ -36,6 +36,16 @@ defmodule Tavern.Bots.Serializer do
     }
   end
 
+  # A DM as its participant sees it: `peer` is the other account, set by the read that loaded it.
+  def serialize_direct_message(%Channel{kind: :direct} = dm) do
+    %{
+      id: dm.id,
+      kind: "direct",
+      peer: serialize_loaded_user(dm.peer),
+      inserted_at: dm.inserted_at
+    }
+  end
+
   def serialize_member(%User{} = user, roles) do
     serialize_user(user) |> Map.put(:role_ids, Enum.map(roles, & &1.id))
   end

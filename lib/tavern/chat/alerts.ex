@@ -64,7 +64,7 @@ defmodule Tavern.Chat.Alerts do
   have at least one push subscription.
   """
   def recipients(%Message{channel: %Channel{} = channel} = message) do
-    mentions = mentions(message)
+    mentions = mentions(message, channel)
     conversation_ids = conversation_ids(channel)
     candidates = message |> candidates_query(mentions, conversation_ids) |> Repo.all()
     candidate_ids = Enum.map(candidates, & &1.user_id)
@@ -147,8 +147,9 @@ defmodule Tavern.Chat.Alerts do
   # What both deliveries show, per recipient. The tag is per message, so a browser that gets
   # the alert from a tab and from a push shows it once.
   defp notification(%Message{channel: channel, author: author} = message) do
-    where = "#" <> conversation_title(channel)
     body = message.body |> to_string() |> String.trim() |> String.slice(0, @body_preview_length)
+    # A direct message has no name to show: it is addressed to the one recipient.
+    where = unless Channel.direct?(channel), do: "#" <> conversation_title(channel)
 
     base = %{
       channel_id: channel.id,
@@ -159,9 +160,11 @@ defmodule Tavern.Chat.Alerts do
 
     fn %{mentioned?: mentioned?} ->
       title =
-        if mentioned?,
-          do: "#{author.display_name} mentioned you in #{where}",
-          else: "#{author.display_name} in #{where}"
+        cond do
+          is_nil(where) -> "#{author.display_name} sent you a message"
+          mentioned? -> "#{author.display_name} mentioned you in #{where}"
+          true -> "#{author.display_name} in #{where}"
+        end
 
       Map.put(base, :title, title)
     end
@@ -176,19 +179,32 @@ defmodule Tavern.Chat.Alerts do
   # The URL that opens the message in place, the same as
   # `TavernWeb.ServerLive.MessageJump.message_path/3`.
   defp message_path(%Message{id: id}, %Channel{} = channel) do
-    if Channel.thread?(channel) do
-      parent = Repo.get!(Channel, channel.parent_channel_id)
-      "/?" <> URI.encode_query(channel: parent.slug, thread: channel.id, message: id)
-    else
-      "/?" <> URI.encode_query(channel: channel.slug, message: id)
+    cond do
+      Channel.direct?(channel) ->
+        "/?" <> URI.encode_query(dm: channel.id, message: id)
+
+      Channel.thread?(channel) ->
+        parent = Repo.get!(Channel, channel.parent_channel_id)
+        "/?" <> URI.encode_query(channel: parent.slug, thread: channel.id, message: id)
+
+      true ->
+        "/?" <> URI.encode_query(channel: channel.slug, message: id)
     end
   end
 
-  defp mentions(%Message{user_mentions: user_mentions, role_mentions: role_mentions}) do
-    {everyone, roles} = Enum.split_with(role_mentions, & &1.mentioned_role.is_default)
+  # Every message in a direct message mentions its peer: the DM is addressed to them
+  # (docs/design/direct-messages.md). The peer's level for the DM, such as a mute, still applies.
+  defp mentions(%Message{} = message, %Channel{} = channel) do
+    {everyone, roles} = Enum.split_with(message.role_mentions, & &1.mentioned_role.is_default)
+    user_ids = MapSet.new(message.user_mentions, & &1.mentioned_user_id)
+
+    user_ids =
+      if Channel.direct?(channel),
+        do: MapSet.put(user_ids, Channel.peer_id(channel, message.author_id)),
+        else: user_ids
 
     %{
-      user_ids: MapSet.new(user_mentions, & &1.mentioned_user_id),
+      user_ids: user_ids,
       role_ids: Enum.map(roles, & &1.mentioned_role_id),
       everyone?: everyone != []
     }

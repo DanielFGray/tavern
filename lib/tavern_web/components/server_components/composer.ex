@@ -105,6 +105,7 @@ defmodule TavernWeb.ServerComponents.Composer do
     assigns =
       assigns
       |> assign(composer_config(assigns.target))
+      |> assign_direct_placeholder(conversation)
       |> assign(
         pane: pane,
         form: pane.form,
@@ -364,6 +365,11 @@ defmodule TavernWeb.ServerComponents.Composer do
     </button>
     """
   end
+
+  defp assign_direct_placeholder(assigns, %Tavern.Chat.Channel{kind: :direct} = dm),
+    do: assign(assigns, :placeholder, "Message #{Tavern.Chat.Channel.title(dm)}")
+
+  defp assign_direct_placeholder(assigns, _conversation), do: assigns
 
   defp composer_config(:channel) do
     %{

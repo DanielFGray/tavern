@@ -460,6 +460,24 @@ defmodule Tavern.Bots do
     end
   end
 
+  @doc """
+  Opens (or returns) the acting bot's DM with member `user_id`, by the rules a member follows
+  (docs/design/direct-messages.md). Every refusal is `{:error, :not_available}`.
+  """
+  def open_direct_message(%Scope{} = scope, user_id) do
+    with {:ok, _bot_user} <- acting_member(scope),
+         {:ok, dm} <- Chat.open_direct_message(scope, user_id) do
+      {:ok, Serializer.serialize_direct_message(dm)}
+    else
+      {:error, :unauthorized} -> {:error, :not_available}
+      {:error, :not_available} = refused -> refused
+    end
+  end
+
+  @doc "The acting bot's DMs, most recent activity first."
+  def list_direct_messages(%Scope{} = scope),
+    do: scope |> Chat.list_direct_messages() |> Enum.map(&Serializer.serialize_direct_message/1)
+
   def serialize_message(message), do: Serializer.serialize_message(message)
 
   def serialize_reaction(message, reaction), do: Serializer.serialize_reaction(message, reaction)

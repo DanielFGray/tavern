@@ -53,6 +53,7 @@ defmodule TavernWeb.ServerLive.Events.Messages do
     socket =
       socket
       |> State.insert_message(message)
+      |> list_direct_message(message)
       |> update_unread_state(message)
 
     {:noreply, socket}
@@ -383,6 +384,14 @@ defmodule TavernWeb.ServerLive.Events.Messages do
       _missing ->
         {:noreply, socket}
     end
+  end
+
+  # A DM the peer opened is listed from its first message on.
+  defp list_direct_message(socket, message) do
+    if MapSet.member?(socket.assigns.direct_message_ids, message.channel_id) and
+         not Enum.any?(socket.assigns.direct_messages, &(&1.id == message.channel_id)),
+       do: State.refresh_direct_messages(socket),
+       else: socket
   end
 
   defp update_unread_state(socket, message) do

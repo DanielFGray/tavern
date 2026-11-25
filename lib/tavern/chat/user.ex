@@ -16,6 +16,9 @@ defmodule Tavern.Chat.User do
     field(:bot, :boolean, default: false)
     field(:system, :boolean, default: false)
     field(:deleted_at, :utc_datetime_usec)
+    # Whether members with no direct message with this account yet may start one
+    # (docs/design/direct-messages.md). An existing DM is not affected.
+    field(:direct_messages_from_new_contacts, :boolean, default: true)
 
     belongs_to(:avatar_asset, Tavern.Chat.MediaAsset)
     belongs_to(:banner_asset, Tavern.Chat.MediaAsset)
