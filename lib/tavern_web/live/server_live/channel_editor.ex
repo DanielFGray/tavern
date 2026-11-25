@@ -216,7 +216,7 @@ defmodule TavernWeb.ServerLive.ChannelEditor do
   end
 
   def handle_event("save_channel_settings", %{"channel_settings" => params}, socket) do
-    attrs = Map.take(params, ["name", "topic", "nsfw"])
+    attrs = Map.take(params, ["name", "topic", "nsfw", "slowmode_seconds", "voice_member_limit"])
 
     case Chat.update_channel(
            socket.assigns.current_scope,

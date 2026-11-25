@@ -483,6 +483,21 @@ defmodule TavernWeb.ServerComponents.ChannelEditor do
           <.input field={@form[:topic]} type="textarea" label="Topic" />
           <.input field={@form[:nsfw]} type="checkbox" label="Age-gated (18+)" />
         <% end %>
+        <.input
+          :if={@channel.kind in [:text, :announcement, :forum]}
+          field={@form[:slowmode_seconds]}
+          type="select"
+          label="Slowmode"
+          options={slowmode_options()}
+        />
+        <.input
+          :if={@channel.kind == :voice}
+          field={@form[:voice_member_limit]}
+          type="number"
+          min="1"
+          max="25"
+          label="Members in voice at once"
+        />
         <div class="flex items-center justify-between gap-2">
           <button
             type="button"
@@ -572,5 +587,25 @@ defmodule TavernWeb.ServerComponents.ChannelEditor do
       </p>
     <% end %>
     """
+  end
+
+  # The slowmode steps Discord offers; `Channel` accepts any count from 0 to 6 hours.
+  defp slowmode_options do
+    [
+      {"Off", 0},
+      {"5 seconds", 5},
+      {"10 seconds", 10},
+      {"15 seconds", 15},
+      {"30 seconds", 30},
+      {"1 minute", 60},
+      {"2 minutes", 120},
+      {"5 minutes", 300},
+      {"10 minutes", 600},
+      {"15 minutes", 900},
+      {"30 minutes", 1800},
+      {"1 hour", 3600},
+      {"2 hours", 7200},
+      {"6 hours", 21_600}
+    ]
   end
 end

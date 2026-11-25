@@ -144,6 +144,46 @@ defmodule TavernWeb.ServerLiveChannelEditorTest do
     assert has_element?(view, "#deleted-channel-#{general.id}")
   end
 
+  test "the ⚙ popover sets slowmode on a text channel and the member limit on a voice channel",
+       %{conn: conn} do
+    voice = channel_fixture(%{name: "Lounge Voice", kind: :voice})
+    view = edit_mode(conn)
+    general = channel_by_slug!("general")
+
+    view |> element("#channel-settings-#{general.id}") |> render_click()
+
+    refute has_element?(
+             view,
+             "#channel-settings-form [name='channel_settings[voice_member_limit]']"
+           )
+
+    view
+    |> form("#channel-settings-form", %{channel_settings: %{slowmode_seconds: "30"}})
+    |> render_submit()
+
+    assert Repo.get!(Channel, general.id).slowmode_seconds == 30
+
+    view |> element("#channel-settings-#{voice.id}") |> render_click()
+
+    refute has_element?(
+             view,
+             "#channel-settings-form [name='channel_settings[slowmode_seconds]']"
+           )
+
+    view
+    |> form("#channel-settings-form", %{channel_settings: %{voice_member_limit: "26"}})
+    |> render_submit()
+
+    assert has_element?(view, "#channel-settings-form p.text-error")
+    assert Repo.get!(Channel, voice.id).voice_member_limit == 6
+
+    view
+    |> form("#channel-settings-form", %{channel_settings: %{voice_member_limit: "12"}})
+    |> render_submit()
+
+    assert Repo.get!(Channel, voice.id).voice_member_limit == 12
+  end
+
   test "🗑 deletes at once and Restore brings the channel back", %{conn: conn} do
     view = edit_mode(conn)
     engineering = channel_by_slug!("engineering")
