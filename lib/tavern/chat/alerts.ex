@@ -134,7 +134,12 @@ defmodule Tavern.Chat.Alerts do
 
   defp resolve_default(level, _setting), do: level
 
-  defp mention_counts?(mention, setting) do
+  @doc """
+  Whether a mention counts for a member with `setting`: a direct mention always, a role mention
+  unless they suppress role mentions, an @everyone mention unless they suppress it. `mention` is
+  `%{direct?, role?, everyone?}`. The alert rule and the unread mention badge both use it.
+  """
+  def mention_counts?(mention, %UserNotificationSetting{} = setting) do
     mention.direct? or (mention.role? and not setting.suppress_roles) or
       (mention.everyone? and not setting.suppress_everyone)
   end

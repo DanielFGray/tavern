@@ -407,7 +407,7 @@ defmodule TavernWeb.ServerLive.Events.Messages do
 
     message.author_id != current_user.id and
       (is_nil(active_channel) or active_channel.id != message.channel_id) and
-      Chat.message_mentions_user?(message, current_user)
+      Chat.message_mentions_user?(message, current_user, socket.assigns.notification_setting)
   end
 
   # The sender hears none of its own broadcasts, so this view applies what they tell the others:
