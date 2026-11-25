@@ -8,6 +8,7 @@ defmodule TavernWeb.ServerComponents.Helpers do
 
   def message_timestamp(datetime), do: Calendar.strftime(datetime, "%b %-d at %H:%M")
 
+  def channel_path(%{kind: :direct} = dm), do: ~p"/?dm=#{dm.id}"
   def channel_path(channel), do: ~p"/?channel=#{channel.slug}"
   def thread_path(channel, thread), do: ~p"/?channel=#{channel.slug}&thread=#{thread.id}"
 
@@ -72,9 +73,16 @@ defmodule TavernWeb.ServerComponents.Helpers do
 
   def thread_title(thread), do: Tavern.Chat.Channel.title(thread)
 
-  @doc "A conversation's name in a list: `# name` for a channel, the title for a thread."
+  @doc """
+  A conversation's name in a list: `# name` for a channel, `@ name` for a direct message (the
+  peer's name), the title for a thread.
+  """
   def conversation_label(channel) do
-    if Tavern.Chat.Channel.thread?(channel), do: thread_title(channel), else: "# #{channel.name}"
+    cond do
+      Chat.Channel.direct?(channel) -> "@ #{Chat.Channel.title(channel)}"
+      Chat.Channel.thread?(channel) -> thread_title(channel)
+      true -> "# #{channel.name}"
+    end
   end
 
   # The placeholder title of a thread whose starter was deleted reads as a missing name. Opacity,

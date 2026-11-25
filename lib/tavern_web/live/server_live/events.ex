@@ -73,9 +73,14 @@ defmodule TavernWeb.ServerLive.Events do
   end
 
   def handle_info(message, socket)
-      when message in [:channels_reordered, :roles_changed] or
+      when message in [:channels_reordered, :roles_changed, :blocks_changed] or
              (is_tuple(message) and tuple_size(message) == 2 and
-                elem(message, 0) in [:channel_created, :channel_updated, :channel_deleted]) do
+                elem(message, 0) in [
+                  :channel_created,
+                  :channel_updated,
+                  :channel_deleted,
+                  :direct_message_opened
+                ]) do
     Navigation.handle_info(message, socket)
   end
 

@@ -12,6 +12,7 @@ defmodule TavernWeb.ServerComponents.ProfileCard do
     only: [member_status_class: 1, member_status_label: 1]
 
   attr :card, :map, default: nil
+  attr :current_user_id, :string, required: true
 
   def profile_card(assigns) do
     ~H"""
@@ -91,6 +92,19 @@ defmodule TavernWeb.ServerComponents.ProfileCard do
               {role.name}
             </li>
           </ul>
+        </div>
+
+        <%!-- Shown for every other member: whether a DM would be refused is not revealed here. --%>
+        <div :if={@card.user.id != @current_user_id} class="border-t border-base-300 px-4 py-3">
+          <button
+            type="button"
+            id="profile-card-message"
+            phx-click="message_member"
+            phx-value-user-id={@card.user.id}
+            class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-500 active:scale-[0.98]"
+          >
+            <.icon name="hero-chat-bubble-left-ellipsis" class="size-4" /> Message
+          </button>
         </div>
 
         <p class="border-t border-base-300 px-4 py-2.5 text-[11px] text-base-content/55">

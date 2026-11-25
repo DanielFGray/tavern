@@ -19,6 +19,8 @@ defmodule TavernWeb.ServerLive.State do
 
   alias Tavern.Accounts
   alias Tavern.Chat
+  alias Tavern.Chat.Channel
+  alias TavernWeb.ServerComponents.Helpers
   alias Tavern.Chat.Message
   alias Tavern.Chat.Topics
   alias TavernWeb.ServerLive.ChannelEditor
@@ -49,6 +51,7 @@ defmodule TavernWeb.ServerLive.State do
     socket
     |> assign(:channels, channels)
     |> assign(:channel_sections, Chat.build_channel_tree(visible_channels))
+    |> assign_direct_messages()
     |> assign(:navigation_ready?, true)
     |> sync_active_channel(channels)
     |> sync_channel_subscriptions()
@@ -57,8 +60,27 @@ defmodule TavernWeb.ServerLive.State do
   end
 
   @doc """
-  Subscribes the socket to the topics of its listed channels, the active channel and the active
-  thread, and unsubscribes it from all other channel topics.
+  Reads the member's direct messages again: the listed ones for the sidebar, and the ids of all
+  of them, so a DM another member opened delivers its first message before it is listed. Then
+  subscribes to them (`sync_channel_subscriptions/1`).
+  """
+  def refresh_direct_messages(socket) do
+    socket
+    |> assign_direct_messages()
+    |> sync_channel_subscriptions()
+  end
+
+  defp assign_direct_messages(socket) do
+    scope = socket.assigns.current_scope
+
+    socket
+    |> assign(:direct_messages, Chat.list_direct_messages(scope))
+    |> assign(:direct_message_ids, MapSet.new(Chat.direct_message_ids(scope)))
+  end
+
+  @doc """
+  Subscribes the socket to the topics of its listed channels, its direct messages, the active
+  channel and the active thread, and unsubscribes it from all other channel topics.
 
   The subscription set is the only filter between channel events and this socket, so each
   function that changes `:channels`, `:active_channel` or `:active_thread` calls this.
@@ -72,6 +94,7 @@ defmodule TavernWeb.ServerLive.State do
         [active_channel, active_thread | channels]
         |> Enum.reject(&is_nil/1)
         |> MapSet.new(& &1.id)
+        |> MapSet.union(socket.assigns.direct_message_ids)
 
       assign(
         socket,
@@ -323,8 +346,8 @@ defmodule TavernWeb.ServerLive.State do
     # The unread counts are read after the load marks the channel read.
     socket
     |> assign(:thread_summaries, Chat.thread_summaries_for_channel(scope, channel.id))
-    |> assign(:unread_counts, Chat.unread_counts(scope, ids(channels)))
-    |> assign(:unread_mentions, Chat.unread_mentions(scope, ids(channels)))
+    |> assign(:unread_counts, Chat.unread_counts(scope, conversation_ids(socket)))
+    |> assign(:unread_mentions, Chat.unread_mentions(scope, conversation_ids(socket)))
     |> ForumNav.load(channel)
     |> maybe_restore_thread(active_thread)
   end
@@ -332,7 +355,7 @@ defmodule TavernWeb.ServerLive.State do
   def redirect_to_default_channel(socket) do
     case List.first(socket.assigns.channels) do
       nil -> socket
-      channel -> push_patch(socket, to: channel_path(channel))
+      channel -> push_patch(socket, to: Helpers.channel_path(channel))
     end
   end
 
@@ -340,9 +363,12 @@ defmodule TavernWeb.ServerLive.State do
     visible_channels = Chat.list_channels(socket.assigns.current_scope)
     channels = Enum.filter(visible_channels, &visible_text_channel?/1)
 
+    # A direct message is not in the channel list; it stays open while the member is a
+    # participant, which no channel change alters.
     active_channel =
       case socket.assigns.active_channel do
         nil -> nil
+        %Channel{kind: :direct} = active -> active
         active -> Enum.find(channels, &(&1.id == active.id))
       end
 
@@ -474,7 +500,7 @@ defmodule TavernWeb.ServerLive.State do
     assign(
       socket,
       :unread_counts,
-      Chat.unread_counts(socket.assigns.current_scope, ids(socket.assigns.channels))
+      Chat.unread_counts(socket.assigns.current_scope, conversation_ids(socket))
     )
   end
 
@@ -482,7 +508,7 @@ defmodule TavernWeb.ServerLive.State do
     assign(
       socket,
       :unread_mentions,
-      Chat.unread_mentions(socket.assigns.current_scope, ids(socket.assigns.channels))
+      Chat.unread_mentions(socket.assigns.current_scope, conversation_ids(socket))
     )
   end
 
@@ -656,7 +682,7 @@ defmodule TavernWeb.ServerLive.State do
   """
   def leave_thread(socket) do
     case socket.assigns.active_channel do
-      %{} = channel -> socket |> close_thread() |> push_patch(to: channel_path(channel))
+      %{} = channel -> socket |> close_thread() |> push_patch(to: Helpers.channel_path(channel))
       nil -> close_thread(socket)
     end
   end
@@ -729,11 +755,13 @@ defmodule TavernWeb.ServerLive.State do
     end
   end
 
-  defp channel_path(channel), do: ~p"/?channel=#{channel.slug}"
-
   defp visible_text_channel?(channel) do
     channel.kind not in [:category, :thread_public, :thread_private, :thread_announcement]
   end
 
   defp ids(channels), do: Enum.map(channels, & &1.id)
+
+  # The conversations the sidebar shows a badge for: the listed channels and direct messages.
+  defp conversation_ids(socket),
+    do: ids(socket.assigns.channels) ++ ids(socket.assigns.direct_messages)
 end

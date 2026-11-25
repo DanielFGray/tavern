@@ -159,6 +159,32 @@ defmodule Tavern.Chat.DirectMessagesTest do
     end
   end
 
+  describe "alerts" do
+    test "every DM message alerts the peer as a direct mention, unless the peer mutes the DM",
+         ctx do
+      {:ok, message} = Chat.create_message(scope_for(ctx.ada), ctx.dm.id, %{"body" => "psst"})
+      assert [%{user_id: user_id, mentioned?: true}] = Alerts.recipients(message)
+      assert user_id == ctx.bo.id
+
+      {:ok, _} =
+        Chat.update_channel_membership_notification(scope_for(ctx.bo), ctx.dm.id, %{
+          notification_level: :nothing
+        })
+
+      {:ok, muted} = Chat.create_message(scope_for(ctx.ada), ctx.dm.id, %{"body" => "again"})
+      assert Alerts.recipients(muted) == []
+    end
+
+    test "the alert names the sender and links the message in the DM", ctx do
+      Topics.subscribe_user(ctx.bo.id)
+      {:ok, message} = Chat.create_message(scope_for(ctx.ada), ctx.dm.id, %{"body" => "psst"})
+
+      assert_receive {:alert, alert}
+      assert alert.title == "#{ctx.ada.display_name} sent you a message"
+      assert alert.path == "/?" <> URI.encode_query(dm: ctx.dm.id, message: message.id)
+    end
+  end
+
   describe "list_direct_messages/1" do
     test "lists an empty DM for its starter only, then for both once it holds a message", ctx do
       assert [_] = Chat.list_direct_messages(scope_for(ctx.ada))

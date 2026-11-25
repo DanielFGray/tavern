@@ -62,6 +62,17 @@ defmodule Tavern.Chat.DirectMessages do
     end
   end
 
+  @doc "The direct message `channel_id`, with `peer` set, when the scope is a participant, or nil."
+  def get_direct_message(%Scope{} = scope, channel_id) do
+    with {:ok, channel_id} <- Ids.cast(channel_id),
+         %Channel{kind: :direct} = channel <- Visibility.visible_channel(scope, channel_id),
+         %User{id: me} <- Visibility.member(scope) do
+      channel |> List.wrap() |> with_peers(me) |> hd()
+    else
+      _ -> nil
+    end
+  end
+
   @doc "Ids of the scope's direct messages, listed or not: the conversations it may read."
   def direct_message_ids(%Scope{} = scope) do
     case Visibility.member(scope) do

@@ -45,6 +45,8 @@ defmodule Tavern.Chat do
   defdelegate list_channels(scope), to: Channels
   defdelegate open_direct_message(scope, user_id), to: DirectMessages
   defdelegate list_direct_messages(scope), to: DirectMessages
+  defdelegate get_direct_message(scope, channel_id), to: DirectMessages
+  defdelegate direct_message_ids(scope), to: DirectMessages
   defdelegate block_user(scope, user_id), to: DirectMessages
   defdelegate unblock_user(scope, user_id), to: DirectMessages
   defdelegate list_blocked_users(scope), to: DirectMessages

@@ -44,7 +44,12 @@ defmodule TavernWeb.ServerComponents.Messages do
         >
           ☰
         </button>
-        <div class="min-w-0">
+        <.direct_message_title
+          :if={Chat.Channel.direct?(@server.active_channel)}
+          dm={@server.active_channel}
+          privacy={@server.server_settings.direct_message_privacy}
+        />
+        <div :if={!Chat.Channel.direct?(@server.active_channel)} class="min-w-0">
           <div class="flex items-center gap-1.5">
             <span
               :if={@server.active_channel.kind != :voice}
@@ -77,7 +82,7 @@ defmodule TavernWeb.ServerComponents.Messages do
           <span class="hidden sm:inline">Search</span>
         </button>
         <button
-          :if={@server.active_channel.kind != :voice}
+          :if={@server.active_channel.kind not in [:voice, :direct]}
           type="button"
           phx-click="open_pins"
           phx-value-channel-id={@server.active_channel.id}
@@ -137,6 +142,39 @@ defmodule TavernWeb.ServerComponents.Messages do
     """
   end
 
+  attr :dm, :map, required: true
+  attr :privacy, :atom, required: true
+
+  # A DM's header: the peer, and who can read the conversation. Members see the server's privacy
+  # setting, so the line states it plainly (docs/design/direct-messages.md).
+  defp direct_message_title(assigns) do
+    ~H"""
+    <div id="direct-message-title" class="flex min-w-0 items-center gap-3">
+      <.avatar :if={@dm.peer} user={@dm.peer} class="size-8 text-xs" />
+      <div class="min-w-0">
+        <h1 class="truncate text-[15px] leading-6 font-semibold text-base-content">
+          {Chat.Channel.title(@dm)}
+        </h1>
+        <p
+          id="direct-message-privacy"
+          class="flex items-center gap-1 truncate text-xs text-base-content/65"
+        >
+          <.icon
+            name={if(@privacy == :private, do: "hero-lock-closed", else: "hero-eye")}
+            class="size-3.5 shrink-0"
+          />
+          {privacy_line(@privacy)}
+        </p>
+      </div>
+    </div>
+    """
+  end
+
+  defp privacy_line(:private), do: "Only the two of you can read this conversation."
+
+  defp privacy_line(:owner_can_read),
+    do: "The server owner can read direct messages on this server."
+
   attr :server, :map, required: true
 
   def message_stream(assigns) do
@@ -152,9 +190,23 @@ defmodule TavernWeb.ServerComponents.Messages do
         class="mx-4 my-6 rounded-lg border border-dashed border-base-300 bg-base-100 p-6 text-left"
       >
         <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-base-content/50">
-          Start of #{@server.active_channel.slug}
+          Start of {if(Chat.Channel.direct?(@server.active_channel),
+            do: conversation_label(@server.active_channel),
+            else: "#" <> @server.active_channel.slug
+          )}
         </p>
-        <p class="mt-2 text-sm leading-6 text-base-content/80">
+        <p
+          :if={Chat.Channel.direct?(@server.active_channel)}
+          class="mt-2 text-sm leading-6 text-base-content/80"
+        >
+          This is the beginning of your direct messages with <span class="font-semibold text-base-content">
+            {Chat.Channel.title(@server.active_channel)}
+          </span>.
+        </p>
+        <p
+          :if={!Chat.Channel.direct?(@server.active_channel)}
+          class="mt-2 text-sm leading-6 text-base-content/80"
+        >
           This is the beginning of the
           <span class="font-semibold text-base-content">#{@server.active_channel.name}</span>
           channel. Drop a message to get the conversation moving.

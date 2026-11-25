@@ -71,6 +71,55 @@ defmodule TavernWeb.ServerComponents.Navigation do
     """
   end
 
+  attr :server, :map, required: true
+
+  @doc """
+  The member's direct messages under the channel tree, most recent activity first: the peer's
+  avatar and name, and the unread badge. Hidden while the member has none.
+  """
+  def direct_message_nav(assigns) do
+    ~H"""
+    <nav
+      :if={@server.direct_messages != []}
+      id="direct-message-nav"
+      class="mt-4"
+      aria-label="Direct messages"
+    >
+      <p class="mb-1 px-2 text-[11px] font-bold uppercase tracking-[0.18em] text-base-content/50">
+        Direct messages
+      </p>
+      <div class="space-y-0.5">
+        <.link
+          :for={dm <- @server.direct_messages}
+          id={"dm-link-#{dm.id}"}
+          patch={channel_path(dm)}
+          class={[
+            "group flex items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition",
+            channel_active?(@server.active_channel, dm) &&
+              "bg-base-100 text-base-content shadow-[inset_3px_0_0_color-mix(in_oklab,var(--color-primary)_32%,transparent)]",
+            !channel_active?(@server.active_channel, dm) &&
+              "text-base-content/70 hover:bg-base-100 hover:text-base-content"
+          ]}
+        >
+          <.avatar
+            :if={dm.peer}
+            user={dm.peer}
+            class="size-5 text-[9px] transition group-hover:scale-105"
+          />
+          <span class="min-w-0 flex-1 truncate">{Tavern.Chat.Channel.title(dm)}</span>
+          <span
+            :if={unread_count_for(dm, @server.unread_counts) > 0}
+            id={"dm-unread-#{dm.id}"}
+            class="rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold text-white"
+          >
+            {unread_count_for(dm, @server.unread_counts)}
+          </span>
+        </.link>
+      </div>
+    </nav>
+    """
+  end
+
   @sidebar_thread_limit 5
 
   attr :channel, :map, required: true

@@ -237,6 +237,7 @@ defmodule TavernWeb.ServerComponents.Shell do
         />
       </nav>
     <% end %>
+    <TavernWeb.ServerComponents.Navigation.direct_message_nav server={@server} />
     """
   end
 end

@@ -8,8 +8,9 @@ this link.
 
 ## The link
 
-`/?channel=<slug>&message=<id>`, or `/?channel=<parent slug>&thread=<id>&message=<id>` for a
-message in a thread. `TavernWeb.ServerLive.MessageJump.message_path/3` builds it on the chat
+`/?channel=<slug>&message=<id>`, `/?channel=<parent slug>&thread=<id>&message=<id>` for a
+message in a thread, or `/?dm=<id>&message=<id>` for a message in a direct message
+(docs/design/direct-messages.md). `TavernWeb.ServerLive.MessageJump.message_path/3` builds it on the chat
 page. `Tavern.Chat.Alerts` builds the same URL for desktop and push alerts, because the domain
 cannot call the web layer.
 

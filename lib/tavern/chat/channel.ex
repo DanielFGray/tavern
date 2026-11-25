@@ -194,6 +194,8 @@ defmodule Tavern.Chat.Channel do
   A thread whose starter was deleted shows `"Deleted message"`: the starter's body is a
   placeholder, and no part of it may show as a title.
   """
+  def title(%__MODULE__{kind: :direct, peer: %{display_name: name}}), do: name
+  def title(%__MODULE__{kind: :direct}), do: "Direct message"
   def title(%__MODULE__{name: name}) when is_binary(name), do: name
 
   def title(%__MODULE__{starter_message: %Tavern.Chat.Message{deleted_at: %DateTime{}}}),

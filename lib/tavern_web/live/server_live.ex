@@ -34,6 +34,8 @@ defmodule TavernWeb.ServerLive do
       |> assign(:page_title, server_settings.name)
       |> assign(:current_user, current_user)
       |> assign(:channels, [])
+      |> assign(:direct_messages, [])
+      |> assign(:direct_message_ids, MapSet.new())
       |> assign(:subscribed_channel_ids, MapSet.new())
       |> assign(:channel_sections, [])
       |> assign(:custom_emojis, [])

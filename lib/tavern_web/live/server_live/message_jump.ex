@@ -37,6 +37,9 @@ defmodule TavernWeb.ServerLive.MessageJump do
       {:channel, %{"thread" => thread_id, "message" => _}} ->
         thread_host(socket, conversation, thread_id)
 
+      {:channel, %{"dm" => id, "message" => message_id}} when id == conversation.id ->
+        {:message, message_id}
+
       {:channel, %{"channel" => slug, "message" => message_id}} when slug == conversation.slug ->
         {:message, message_id}
 
@@ -94,15 +97,20 @@ defmodule TavernWeb.ServerLive.MessageJump do
   def refuse(socket, {:host, _id}), do: socket
 
   @doc """
-  The URL that opens message `message_id` in place, in `channel`: a channel, or a thread under
-  its parent. A thread whose parent the member cannot see has no URL.
+  The URL that opens message `message_id` in place, in `channel`: a channel, a direct message,
+  or a thread under its parent. A thread whose parent the member cannot see has no URL.
   """
   def message_path(socket, %Channel{} = channel, message_id) do
-    if Channel.thread?(channel) do
-      parent = Enum.find(socket.assigns.channels, &(&1.id == channel.parent_channel_id))
-      parent && ~p"/?channel=#{parent.slug}&thread=#{channel.id}&message=#{message_id}"
-    else
-      ~p"/?channel=#{channel.slug}&message=#{message_id}"
+    cond do
+      Channel.direct?(channel) ->
+        ~p"/?dm=#{channel.id}&message=#{message_id}"
+
+      Channel.thread?(channel) ->
+        parent = Enum.find(socket.assigns.channels, &(&1.id == channel.parent_channel_id))
+        parent && ~p"/?channel=#{parent.slug}&thread=#{channel.id}&message=#{message_id}"
+
+      true ->
+        ~p"/?channel=#{channel.slug}&message=#{message_id}"
     end
   end
 

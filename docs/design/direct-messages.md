@@ -1,6 +1,7 @@
 # Direct messages
 
-Status: designed, not built.
+Status: the domain and the chat page are built (slices 1 and 2). Settings, owner reading and
+the bot API are not.
 
 A direct message (DM) is a private conversation between two accounts on the server. A member or
 a bot may start one. Group DMs are not part of this design.
@@ -111,9 +112,11 @@ recipient filter already drops non-participants. The link is `/?dm=<id>&message=
   (docs/design/message-links.md). The DM opens in the channel pane. `message_path` and
   `Alerts.message_path` build the `dm` form for a `:direct` channel.
 - **Sidebar:** a "Direct messages" section under the channel tree lists the member's DMs, with
-  the peer's avatar and an unread badge.
+  the peer's avatar and an unread badge. A session subscribes to every DM it is in, listed or
+  not, so the first message of a DM the peer opened arrives and lists it.
 - **Start:** a "Message" button on the profile card calls `open_direct_message` and opens the
-  DM. A refusal shows "You can't message this member."
+  DM. A refusal shows "You can't message this member." The button shows on every card but the
+  viewer's own, so the card does not reveal a block or an opt-out.
 - **Header:** the peer's name. Under it, the privacy line: "Only the two of you can read this
   conversation." or "The server owner can read direct messages on this server."
 - **Settings → Privacy:** the opt-out toggle, and the block list with Unblock.
