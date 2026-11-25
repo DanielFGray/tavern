@@ -802,7 +802,7 @@ defmodule TavernWeb.ServerComponents.Messages do
         </button>
 
         <button
-          :if={@rights.pin? and not question_message?(@message)}
+          :if={@rights.pin?}
           type="button"
           phx-click={if(@message.pinned_at, do: "unpin_message", else: "pin_message")}
           phx-value-id={@message.id}

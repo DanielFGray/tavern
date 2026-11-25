@@ -16,15 +16,19 @@ Pins drawer lists them, and a line in the conversation tells everyone that a pin
   `{:error, :pin_limit}`. A per-conversation advisory lock serializes the count and the write,
   so two pins at the same moment cannot pass 50. The lock does not block sends or pins in
   other conversations.
+- **Send limit.** The pin line counts toward the member's send limit (`SendLimit.admit/1`), so
+  pin and unpin in a loop cannot post lines without bound. Over the limit, the pin is
+  `{:error, {:rate_limited, seconds}}` and nothing changes.
 - **Repeats.** Pinning a pinned message, or unpinning one that is not pinned, changes nothing
   and broadcasts nothing.
 - **Pin line.** Each pin inserts a message with `kind: :pin`. Its author is the member who
   pinned, and its `reply_to_id` is the pinned message. Unpinning posts nothing.
-  - The line does not go through `send_message`. Slowmode, the send limit and
-    `send_messages` do not apply, so a moderator can pin in a read-only channel.
+  - The line does not go through `send_message`. Slowmode and `send_messages` do not apply,
+    so a moderator can pin in a read-only channel.
   - The line's text belongs to the server. It takes no edit, no pin and no thread.
     `search_messages` skips it.
-  - The line counts as a new message for unread state, as Discord's does.
+  - The line counts as a new message for unread state, as Discord's does. It is not counted as
+    a `message.created` product event.
 
 ## Existing servers
 
@@ -41,6 +45,8 @@ messages can pin from the start. Its `down` clears bit 30 everywhere.
 - The channel header and the thread panel header each have a Pins button. The drawer lists the
   pins of that conversation, most recently pinned first. A member who may pin sees Unpin on
   each row.
+- The drawer closes when its conversation stops being the open channel or thread, as after
+  browser Back.
 - An open drawer lists its pins again on each `:message_updated` or `:message_deleted` of its
   conversation, so it follows pins made in other sessions.
 - The acting session hears no broadcast of its own write (`Topics.broadcast_channel/2` uses

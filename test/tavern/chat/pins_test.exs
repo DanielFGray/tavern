@@ -76,6 +76,33 @@ defmodule Tavern.Chat.PinsTest do
     assert {:error, :forbidden} = Chat.pin_message(ctx.pinner, ctx.message.id)
   end
 
+  test "a locked thread takes pins only from a member who manages it", ctx do
+    owner = %Scope{user_id: ctx.owner.id}
+    thread = thread_fixture(ctx.channel, ctx.message, ctx.owner)
+    reply = message_fixture(thread, ctx.owner, %{body: "in the thread"})
+    {:ok, _} = Chat.lock_thread(owner, thread.id)
+
+    assert {:error, :forbidden} = Chat.pin_message(ctx.pinner, reply.id)
+    assert {:ok, %{line: line}} = Chat.pin_message(owner, reply.id)
+    assert line.channel_id == thread.id
+    assert {:ok, [pinned]} = Chat.list_pins(ctx.reader, thread.id)
+    assert pinned.id == reply.id
+    assert {:ok, []} = Chat.list_pins(ctx.reader, ctx.channel.id)
+  end
+
+  test "pinning a forum post's first message posts the line in the post", ctx do
+    forum = channel_fixture(%{name: "Help", slug: unique_slug(), kind: :forum})
+    owner = %Scope{user_id: ctx.owner.id}
+
+    {:ok, post} =
+      Chat.create_forum_post(owner, forum.id, %{"title" => "Plan", "body" => "starter"})
+
+    starter = Repo.one!(from m in Tavern.Chat.Message, where: m.channel_id == ^post.id)
+
+    assert {:ok, %{line: line}} = Chat.pin_message(owner, starter.id)
+    assert line.channel_id == post.id
+  end
+
   test "a hidden channel answers as a missing one", ctx do
     hidden = channel_fixture(%{name: "Hidden", slug: unique_slug()})
     secret = message_fixture(hidden, ctx.owner, %{body: "secret"})

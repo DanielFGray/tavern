@@ -14,6 +14,7 @@ defmodule Tavern.Chat.Pins do
   alias Tavern.Chat.Message
   alias Tavern.Chat.MessageRows
   alias Tavern.Chat.Messages
+  alias Tavern.Chat.SendLimit
   alias Tavern.Chat.Topics
   alias Tavern.Chat.Visibility
   alias Tavern.Repo
@@ -37,9 +38,10 @@ defmodule Tavern.Chat.Pins do
       message ->
         lock_conversation_pins!(message.channel_id)
 
-        if pin_count(message.channel_id) >= @limit do
-          {:error, :pin_limit}
-        else
+        # The pin line is a message, so it counts toward the member's send limit. Without that,
+        # pin and unpin in a loop would post lines without bound.
+        with :ok <- under_cap(message.channel_id),
+             :ok <- SendLimit.admit(scope.user_id) do
           pinned =
             message |> Ecto.Changeset.change(pinned_at: DateTime.utc_now()) |> Repo.update!()
 
@@ -139,6 +141,10 @@ defmodule Tavern.Chat.Pins do
   # so it never waits on sends or on pins elsewhere.
   defp lock_conversation_pins!(channel_id) do
     Repo.query!("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", ["pins:" <> channel_id])
+  end
+
+  defp under_cap(channel_id) do
+    if pin_count(channel_id) < @limit, do: :ok, else: {:error, :pin_limit}
   end
 
   defp pin_count(channel_id) do

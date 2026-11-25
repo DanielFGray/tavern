@@ -50,7 +50,8 @@ defmodule TavernWeb.ServerLive.Events do
 
   def handle_params(params, uri, socket) do
     socket = Phoenix.Component.assign(socket, :url_params, params)
-    Navigation.handle_params(params, uri, socket)
+    {:noreply, socket} = Navigation.handle_params(params, uri, socket)
+    {:noreply, TavernWeb.ServerLive.Pins.follow_conversation(socket)}
   end
 
   def handle_info({:typing_expired, _key, _user_id, _token} = message, socket),

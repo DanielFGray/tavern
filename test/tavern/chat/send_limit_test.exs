@@ -59,6 +59,23 @@ defmodule Tavern.Chat.SendLimitTest do
     refute Repo.get_by(Message, body: "three")
   end
 
+  test "a pin posts a pin line, so pin and unpin in a loop hit the limit", ctx do
+    member_role_fixture(
+      ctx.member,
+      role_fixture(%{name: "Pinner", permissions: PermissionBits.combine([:pin_messages])})
+    )
+
+    [first, second] =
+      for body <- ~w(a b), do: message_fixture(ctx.general, ctx.other, %{body: body})
+
+    scope = scope_for(ctx.member)
+    assert {:ok, _} = Chat.pin_message(scope, first.id)
+    assert {:ok, _} = Chat.pin_message(scope, second.id)
+    assert {:ok, _} = Chat.unpin_message(scope, first.id)
+    assert {:error, {:rate_limited, _}} = Chat.pin_message(scope, first.id)
+    assert Repo.get!(Message, first.id).pinned_at == nil
+  end
+
   test "a thread message counts against the same allowance", ctx do
     starter = message_fixture(ctx.general, ctx.member, %{body: "starter"})
     thread = thread_fixture(ctx.general, starter, ctx.member)

@@ -84,5 +84,42 @@ defmodule TavernWeb.ServerLivePinsTest do
     assert has_element?(view, "#pins-empty")
   end
 
+  test "a pin in an open thread lists in the thread's drawer, not the channel's",
+       %{conn: conn} = ctx do
+    conn = log_in_owner_user(conn)
+    me = current_user_from_conn(conn)
+    starter = message_fixture(ctx.general, me, %{body: "starter"})
+    thread = thread_fixture(ctx.general, starter, me)
+    reply = message_fixture(thread, me, %{body: "a reply worth keeping"})
+
+    {:ok, view, _html} = live_hydrated(conn, ~p"/?channel=general&thread=#{thread.id}")
+    open_menu(view, reply)
+    view |> element("#pin-message-#{reply.id}") |> render_click()
+
+    [line] = pin_lines()
+    assert line.channel_id == thread.id
+    assert has_element?(view, "#thread-messages-#{starter.id} #pin-line-open-#{line.id}")
+
+    view |> element("#open-thread-pins-#{starter.id}") |> render_click()
+    assert has_element?(view, "#pins-row-#{reply.id}")
+
+    view |> element("#close-pins") |> render_click()
+    view |> element("#open-channel-pins") |> render_click()
+    refute has_element?(view, "#pins-row-#{reply.id}")
+    assert has_element?(view, "#pins-empty")
+  end
+
+  test "the drawer closes when its conversation is no longer open", %{conn: conn} do
+    conn = log_in_owner_user(conn)
+    channel_fixture(%{name: "Elsewhere", slug: "elsewhere"})
+
+    {:ok, view, _html} = live_hydrated(conn, ~p"/?channel=general")
+    view |> element("#open-channel-pins") |> render_click()
+    assert has_element?(view, "#pins")
+
+    render_patch(view, ~p"/?channel=elsewhere")
+    refute has_element?(view, "#pins")
+  end
+
   defp pin_lines, do: Tavern.Repo.all(from(m in Tavern.Chat.Message, where: m.kind == :pin))
 end

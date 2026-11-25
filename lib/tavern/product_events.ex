@@ -92,6 +92,9 @@ defmodule Tavern.ProductEvents do
   def record({:upload_created, user_id, kind}),
     do: emit("upload.created", %{member: pseudonym(user_id), kind: Atom.to_string(kind)})
 
+  # A pin line is the server's record of a pin, not a message the member wrote.
+  def record({:message_created, %Message{kind: :pin}}), do: :ok
+
   def record({:message_created, %Message{author: %User{} = author} = message}) do
     emit(
       "message.created",

@@ -172,6 +172,8 @@ The root route now serves a minimal server chat shell:
 - markdown rendering with code blocks and simple rich link cards in the transcript
 - rich composer toolbar for bold, italic, inline code, code blocks, mentions, and slash commands
 - permission-aware transcript/composer UX for sending, reacting, deleting, and role-mention guidance
+- message search over every channel and thread you can read (the Search button in a channel header)
+- pinned messages per channel and thread, under the `pin_messages` permission (docs/design/pins.md)
 - admins with emoji permission can upload/delete custom emoji and everyone can use them in a searchable full Unicode + custom reaction picker
 
 Login is rate limited, session metadata stores IP/user-agent, and channel rendering/posting now respects membership + permission checks.

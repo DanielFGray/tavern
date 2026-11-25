@@ -24,6 +24,17 @@ defmodule TavernWeb.ServerLive.Pins do
 
   def close(socket), do: assign(socket, :pins, nil)
 
+  @doc """
+  Closes the drawer when its conversation is no longer the open channel or thread, as after
+  browser Back. The drawer's Unpin buttons take the rights of the open conversation.
+  """
+  def follow_conversation(socket) do
+    case socket.assigns.pins do
+      %{channel: %{id: id}} -> if open_conversation(socket, id), do: socket, else: close(socket)
+      nil -> socket
+    end
+  end
+
   @doc "Lists the open drawer's pins again when `message` belongs to its conversation."
   def refresh(socket, %{channel_id: channel_id}) do
     case socket.assigns.pins do
@@ -47,6 +58,9 @@ defmodule TavernWeb.ServerLive.Pins do
     else
       :error ->
         socket
+
+      {:error, {:rate_limited, seconds}} ->
+        put_flash(socket, :error, "You are pinning too fast. Try again in #{seconds}s.")
 
       {:error, :pin_limit} ->
         put_flash(
