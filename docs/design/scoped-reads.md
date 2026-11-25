@@ -92,6 +92,7 @@ Cost:
 | Data | Who may read |
 |---|---|
 | Channels, threads, messages, reactions | members who can view the channel and every parent: a thread's channel, a channel's category |
+| A direct message and its messages | its two participants only, whatever bits they hold; the owner reads one only through the audited reader (docs/design/direct-messages.md) |
 | Server name, icon, custom emojis | every active member |
 | Member directory (names, avatars, roles, bots) | every active member |
 | A member's notification settings and read state | that member only |
