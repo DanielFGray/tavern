@@ -54,7 +54,7 @@ The wipe changes the user row (`User.deletion_changeset/2`):
 It also:
 
 - deactivates the membership (`Membership.deleted_account_changeset/2`), keeping an earlier deactivation's date and flags, and clears the nickname, pronouns, server avatar, timeout and deletion schedule;
-- deletes the member roles, channel permission overwrites for the user, channel read state, notification settings and overrides, thread follows, bot tokens, and every `user_sessions` row of any context;
+- deletes the member roles, channel permission overwrites for the user, channel read state, notification settings and overrides, thread follows, push subscriptions, bot tokens, and every `user_sessions` row of any context;
 - deletes the `media_assets` rows of the avatar, banner and server avatar;
 - writes an `account_deleted` audit entry with the actor (none for the sweep).
 

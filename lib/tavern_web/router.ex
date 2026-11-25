@@ -42,6 +42,9 @@ defmodule TavernWeb.Router do
   # The platform health check: no session, no auth, no CSRF.
   get("/healthz", TavernWeb.HealthController, :show)
 
+  # The install manifest: public, because a browser fetches it without cookies.
+  get("/manifest.webmanifest", TavernWeb.ManifestController, :show)
+
   # Avatars, emoji, server icons and embed images: public, like the static assets, with no
   # session. Message attachments are not served here.
   get("/uploads/*key", TavernWeb.UploadController, :show)

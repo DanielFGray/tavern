@@ -23,6 +23,18 @@ defmodule Tavern.Embeds.PinnedAdapterTest do
     assert_received {:served, "pinned.invalid", "/hello", "x=1"}
   end
 
+  test "sends a POST's body and headers as given", %{url: url} do
+    {_request, response} =
+      run(url <> "/post", 2_000,
+        method: :post,
+        body: <<0, 1, 2, 255>>,
+        headers: [{"content-encoding", "aes128gcm"}]
+      )
+
+    assert response.status == 201
+    assert_received {:posted, "POST", "aes128gcm", <<0, 1, 2, 255>>}
+  end
+
   test "stops reading when the into function halts", %{url: url} do
     into = fn {:data, chunk}, {request, response} ->
       {:halt, {request, %{response | body: response.body <> chunk}}}
@@ -45,6 +57,12 @@ defmodule Tavern.Embeds.PinnedAdapterTest do
     send(test_pid, {:served, conn.host, conn.request_path, conn.query_string})
 
     case conn.request_path do
+      "/post" ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        [encoding] = Plug.Conn.get_req_header(conn, "content-encoding")
+        send(test_pid, {:posted, conn.method, encoding, body})
+        Plug.Conn.send_resp(conn, 201, "")
+
       "/stream" ->
         conn = Plug.Conn.send_chunked(conn, 200)
         {:ok, conn} = Plug.Conn.chunk(conn, "chunk-1")
@@ -72,6 +90,7 @@ defmodule Tavern.Embeds.PinnedAdapterTest do
       end)
 
     [url: url, into: into]
+    |> Keyword.merge(Keyword.take(opts, [:method, :body, :headers]))
     |> Req.new()
     |> PinnedAdapter.pin({127, 0, 0, 1}, deadline)
     |> PinnedAdapter.run()

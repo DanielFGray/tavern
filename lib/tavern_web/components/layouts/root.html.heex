@@ -17,6 +17,9 @@
         href={Tavern.Chat.server_icon_url(@current_server)}
       />
     <% end %>
+    <link rel="manifest" href={~p"/manifest.webmanifest"} />
+    <meta name="theme-color" content={TavernWeb.ManifestController.theme_color()} />
+    <link rel="apple-touch-icon" href={~p"/images/apple-touch-icon.png"} />
     <link phx-track-static rel="stylesheet" href={~p"/assets/css/app.css"} />
     <script defer phx-track-static type="text/javascript" src={~p"/assets/js/app.js"}>
     </script>

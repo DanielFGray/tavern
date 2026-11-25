@@ -433,38 +433,6 @@ defmodule TavernWeb.ServerLive.State do
     end
   end
 
-  def maybe_push_mention_notification(socket, message) do
-    current_user = socket.assigns.current_user
-    active_channel = socket.assigns.active_channel
-    channel = Enum.find(socket.assigns.channels, &(&1.id == message.channel_id))
-
-    cond do
-      message.author_id == current_user.id ->
-        socket
-
-      active_channel && active_channel.id == message.channel_id ->
-        socket
-
-      is_nil(channel) ->
-        socket
-
-      not Chat.message_mentions_user?(message, current_user) ->
-        socket
-
-      not Chat.mention_notifications_enabled?(socket.assigns.current_scope, channel) ->
-        socket
-
-      true ->
-        push_event(socket, "notify:mention", %{
-          channel_id: message.channel_id,
-          channel_name: channel && channel.name,
-          author_name: message.author.display_name,
-          body: message.body,
-          message_id: message.id
-        })
-    end
-  end
-
   def refresh_thread_summaries_for_active_channel(socket) do
     case socket.assigns.active_channel do
       %{} = channel ->

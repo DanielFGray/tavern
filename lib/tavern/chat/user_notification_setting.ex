@@ -8,7 +8,6 @@ defmodule Tavern.Chat.UserNotificationSetting do
   schema "user_notification_settings" do
     field(:desktop_enabled, :boolean, default: true)
     field(:email_enabled, :boolean, default: false)
-    field(:push_enabled, :boolean, default: false)
     field(:notify_on_all_messages, :boolean, default: false)
     field(:notify_on_mentions, :boolean, default: true)
     field(:suppress_everyone, :boolean, default: false)
@@ -25,7 +24,6 @@ defmodule Tavern.Chat.UserNotificationSetting do
       :user_id,
       :desktop_enabled,
       :email_enabled,
-      :push_enabled,
       :notify_on_all_messages,
       :notify_on_mentions,
       :suppress_everyone,

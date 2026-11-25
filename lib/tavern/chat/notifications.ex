@@ -4,9 +4,9 @@ defmodule Tavern.Chat.Notifications do
   of `scope.user_id`, the read policy's "that member only". The channel ids it takes come from
   the caller's scoped channel reads, except where a function says it decides the channel itself.
 
-  `message_mentions_user?/2` and `message_mentions_user_directly?/2` take a `%User{}`, not a
-  scope: they are pure, and decide from rows already preloaded, so each receiver of a broadcast
-  decides without a query.
+  `message_mentions_user?/2` takes a `%User{}`, not a scope: it is pure, and decides from rows
+  already preloaded, so each receiver of a broadcast counts its unread mentions without a query.
+  Whether a message alerts a member is `Tavern.Chat.Alerts`.
   """
 
   import Ecto.Query, warn: false
@@ -14,7 +14,6 @@ defmodule Tavern.Chat.Notifications do
   alias Tavern.Accounts.Scope
   alias Tavern.Chat.Channel
   alias Tavern.Chat.ChannelMembership
-  alias Tavern.Chat.ChannelNotificationOverride
   alias Tavern.Chat.Message
   alias Tavern.Chat.MessageRoleMention
   alias Tavern.Chat.MessageUserMention
@@ -113,37 +112,6 @@ defmodule Tavern.Chat.Notifications do
       Enum.any?(role_mentions, fn mention ->
         MapSet.member?(role_ids, mention.mentioned_role_id) or mention.mentioned_role.is_default
       end)
-  end
-
-  @doc """
-  Whether `message` mentions `user` by name. A role or @everyone mention does not count. A thread
-  the user does not follow notifies only on this kind of mention.
-  """
-  def message_mentions_user_directly?(%Message{user_mentions: user_mentions}, %User{id: user_id})
-      when is_list(user_mentions),
-      do: Enum.any?(user_mentions, &(&1.mentioned_user_id == user_id))
-
-  @doc """
-  Whether a mention in `channel` should alert the scope: desktop and mention alerts are on, and
-  the channel's effective level is not `:nothing`. The channel struct is read for its parent
-  link only.
-  """
-  def mention_notifications_enabled?(%Scope{} = scope, %Channel{} = channel) do
-    setting = get_user_notification_setting(scope)
-
-    cond do
-      not setting.desktop_enabled ->
-        false
-
-      not setting.notify_on_mentions ->
-        false
-
-      true ->
-        case effective_channel_notification_level(scope.user_id, channel) do
-          :nothing -> false
-          _ -> true
-        end
-    end
   end
 
   @doc """
@@ -265,33 +233,5 @@ defmodule Tavern.Chat.Notifications do
            message.inserted_at > membership.last_read_at) or
         (is_nil(membership.last_read_message_id) and is_nil(membership.last_read_at))
     )
-  end
-
-  # A thread whose own level is :default takes its parent channel's level, so muting a channel
-  # also mutes the threads under it.
-  defp effective_channel_notification_level(user_id, %Channel{} = channel) do
-    case own_notification_level(user_id, channel.id) do
-      :default when is_binary(channel.parent_channel_id) ->
-        if Channel.thread?(channel),
-          do: own_notification_level(user_id, channel.parent_channel_id),
-          else: :default
-
-      level ->
-        level
-    end
-  end
-
-  defp own_notification_level(user_id, channel_id) do
-    override =
-      Repo.get_by(ChannelNotificationOverride, user_id: user_id, channel_id: channel_id)
-
-    membership =
-      Repo.get_by(ChannelMembership, user_id: user_id, channel_id: channel_id)
-
-    cond do
-      override && override.level != :default -> override.level
-      membership && membership.notification_level != :default -> membership.notification_level
-      true -> :default
-    end
   end
 end

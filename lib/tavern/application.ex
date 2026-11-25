@@ -28,6 +28,9 @@ defmodule Tavern.Application do
       # Link preview fetches (`Tavern.Chat.Embeds`). The cap bounds the outbound requests one
       # burst of messages can start; a write over it gets no embed.
       {Task.Supervisor, name: Tavern.Embeds.TaskSupervisor, max_children: 50},
+      # Web Push sends (`Tavern.WebPush`), one task per message that alerts a member with a
+      # subscription. Each task holds at most 16 requests at once.
+      {Task.Supervisor, name: Tavern.WebPush.TaskSupervisor, max_children: 50},
       # Closes polls when their end time passes. Tests close polls by calling
       # `Tavern.Chat.Questions.close_due/1`, so they run without it.
       Application.get_env(:tavern, :question_closer, true) && Tavern.Chat.QuestionCloser,

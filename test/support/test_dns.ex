@@ -14,6 +14,7 @@ defmodule Tavern.TestDNS do
     "internal.site.test" => [{10, 0, 0, 7}],
     "mixed.site.test" => [{93, 184, 215, 14}, {192, 168, 1, 20}],
     "tailnet.site.test" => [{100, 101, 102, 103}],
+    "push.site.test" => [{93, 184, 215, 20}],
     "mapped.site.test" => [{0, 0, 0, 0, 0, 0xFFFF, 0x7F00, 0x0001}]
   }
 

@@ -49,7 +49,6 @@ defmodule TavernWeb.ServerLive.Events.Messages do
     socket =
       socket
       |> State.insert_message(message)
-      |> State.maybe_push_mention_notification(message)
       |> update_unread_state(message)
 
     {:noreply, socket}

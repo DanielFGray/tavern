@@ -186,8 +186,6 @@ defmodule Tavern.Chat do
   defdelegate list_audit_actors(scope), to: AuditLog, as: :list_actors
 
   defdelegate message_mentions_user?(message, user), to: Notifications
-  defdelegate message_mentions_user_directly?(message, user), to: Notifications
-  defdelegate mention_notifications_enabled?(scope, channel), to: Notifications
   defdelegate mark_channel_read(scope, channel_id, message \\ nil), to: Notifications
 
   @doc """

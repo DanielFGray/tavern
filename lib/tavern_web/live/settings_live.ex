@@ -7,7 +7,9 @@ defmodule TavernWeb.SettingsLive do
   alias Tavern.Chat
   alias TavernWeb.Live.SharedHelpers
   alias TavernWeb.Plugs.ClientIp
+  alias TavernWeb.PushSubscriptionEvents
   alias Tavern.Chat.Topics
+  alias Tavern.WebPush
   alias TavernWeb.SettingsLive.Audit
   alias TavernWeb.SettingsLive.InviteRequests
   alias TavernWeb.SettingsLive.InviteTree
@@ -33,10 +35,11 @@ defmodule TavernWeb.SettingsLive do
   @invite_tree_events InviteTree.events()
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(_params, session, socket) do
     socket =
       socket
       |> assign(:client_ip, ClientIp.socket_client_ip(socket))
+      |> assign(:session_id, PushSubscriptionEvents.session_id(session))
       |> allow_upload(:server_icon,
         accept: ~w(.png .jpg .jpeg .gif .webp),
         max_entries: 1,
@@ -53,6 +56,7 @@ defmodule TavernWeb.SettingsLive do
         max_file_size: 512_000
       )
       |> State.init()
+      |> assign(:push_public_key, push_public_key())
       |> Roles.init()
       |> Audit.init()
       |> InviteRequests.init()
@@ -198,6 +202,11 @@ defmodule TavernWeb.SettingsLive do
         {:noreply, assign(socket, :notification_form, to_form(changeset, as: :notification))}
     end
   end
+
+  # The push card's hook sends the subscription its browser made, from a click or on mount.
+  @impl true
+  def handle_event(event, params, socket) when event in ["push_subscribe", "push_unsubscribe"],
+    do: PushSubscriptionEvents.handle_event(event, params, socket)
 
   @impl true
   def handle_event("enable_desktop_mentions", _params, socket) do
@@ -660,6 +669,15 @@ defmodule TavernWeb.SettingsLive do
     case Chat.list_moderation_cases(scope, user_id) do
       {:ok, moderation_cases} -> moderation_cases
       {:error, _reason} -> []
+    end
+  end
+
+  # The key a browser subscribes with, base64url as the Push API takes it. None when the push key
+  # was made for another server URL: this copy of the server sends no push.
+  defp push_public_key do
+    case WebPush.public_key() do
+      {:ok, key} -> Base.url_encode64(key, padding: false)
+      {:error, :other_origin} -> nil
     end
   end
 end

@@ -131,10 +131,11 @@ defmodule TavernWeb.ServerLiveThreadFollowTest do
       thread = new_thread(ctx.general, ctx.me, "Followed")
       {:ok, view, _html} = live_hydrated(ctx.conn, ~p"/?channel=general")
 
-      message_fixture(thread, ctx.other, %{body: "hi @#{ctx.me.username}"})
+      message = message_fixture(thread, ctx.other, %{body: "hi @#{ctx.me.username}"})
 
-      thread_id = thread.id
-      assert_push_event(view, "notify:mention", %{channel_id: ^thread_id})
+      tag = "mention-#{message.id}"
+      path = "/?channel=general&thread=#{thread.id}"
+      assert_push_event(view, "notify:alert", %{tag: ^tag, path: ^path})
     end
 
     test "a muted parent channel silences its followed threads", ctx do
@@ -145,7 +146,7 @@ defmodule TavernWeb.ServerLiveThreadFollowTest do
       message_fixture(thread, ctx.other, %{body: "hi @#{ctx.me.username}"})
       render(view)
 
-      refute_push_event(view, "notify:mention", %{})
+      refute_push_event(view, "notify:alert", %{})
     end
 
     test "an unfollowed thread notifies on a direct mention only", ctx do
@@ -155,12 +156,12 @@ defmodule TavernWeb.ServerLiveThreadFollowTest do
 
       message_fixture(thread, ctx.other, %{body: "no mention here"})
       render(view)
-      refute_push_event(view, "notify:mention", %{})
+      refute_push_event(view, "notify:alert", %{})
 
-      message_fixture(thread, ctx.other, %{body: "but @#{ctx.me.username} here"})
+      message = message_fixture(thread, ctx.other, %{body: "but @#{ctx.me.username} here"})
 
-      thread_id = thread.id
-      assert_push_event(view, "notify:mention", %{channel_id: ^thread_id})
+      tag = "mention-#{message.id}"
+      assert_push_event(view, "notify:alert", %{tag: ^tag})
       refute has_element?(view, "#sidebar-thread-#{thread.id}")
     end
   end

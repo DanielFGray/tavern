@@ -15,11 +15,12 @@ defmodule TavernWeb.ServerLive do
   alias TavernWeb.Live.SharedHelpers
 
   @impl true
-  def mount(_params, _session, socket) do
+  def mount(_params, session, socket) do
     current_user = socket.assigns.current_user
 
     if connected?(socket) do
       Topics.subscribe_server()
+      Topics.subscribe_user(current_user.id)
     end
 
     server_settings = Chat.get_server_settings()
@@ -27,6 +28,7 @@ defmodule TavernWeb.ServerLive do
     socket =
       socket
       |> assign(:server_settings, server_settings)
+      |> assign(:session_id, TavernWeb.PushSubscriptionEvents.session_id(session))
       |> assign(:server_name, server_settings.name)
       |> assign(:current_server, server_settings)
       |> assign(:page_title, server_settings.name)

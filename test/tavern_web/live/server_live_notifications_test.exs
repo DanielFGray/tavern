@@ -23,7 +23,6 @@ defmodule TavernWeb.ServerLiveNotificationsTest do
       })
 
     engineering = channel_by_slug!("engineering")
-    channel_id = engineering.id
 
     {:ok, _message} =
       Chat.create_message(scope_for(sender), engineering.id, %{
@@ -41,10 +40,8 @@ defmodule TavernWeb.ServerLiveNotificationsTest do
 
     expected_body = "hello @#{current_user.username}"
 
-    assert_push_event(view, "notify:mention", %{
-      author_name: "Mention Notify Sender",
-      channel_id: ^channel_id,
-      channel_name: "Engineering",
+    assert_push_event(view, "notify:alert", %{
+      title: "Mention Notify Sender mentioned you in #Engineering",
       body: ^expected_body
     })
   end
@@ -99,7 +96,7 @@ defmodule TavernWeb.ServerLiveNotificationsTest do
         }
       })
 
-    refute_push_event(view, "notify:mention", %{})
+    refute_push_event(view, "notify:alert", %{})
   end
 
   test "renders member sidebar with owner and activity indicators", %{conn: conn} do

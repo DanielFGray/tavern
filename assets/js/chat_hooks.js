@@ -558,8 +558,9 @@ const MessageListHook = {
     this.renderMarkdownBodies()
 
     if(this.el.dataset.enableNotifications !== "false") {
-      this.handleEvent("notify:mention", payload => this.showMentionNotification(payload))
+      this.handleEvent("notify:alert", payload => this.showAlert(payload))
       this.handleEvent("notifications:request-permission", () => this.requestNotificationPermission())
+      this.syncPushSubscription()
     }
 
     requestAnimationFrame(() => this.scrollToBottom())
@@ -677,22 +678,35 @@ const MessageListHook = {
     this.el.scrollTop = this.el.scrollHeight
   },
 
-  showMentionNotification(payload) {
+  // The tag matches the Web Push notification's (priv/static/sw.js), so a browser that gets both
+  // shows one.
+  showAlert(payload) {
     if(typeof window === "undefined" || typeof Notification === "undefined") return
     if(document.visibilityState === "visible") return
     if(Notification.permission !== "granted") return
 
-    const bodyPreview = (payload.body || "").trim().slice(0, 140) || "You were mentioned in a message"
-    const channelName = payload.channel_name ? `#${payload.channel_name}` : "another channel"
-
-    const notification = new Notification(`${payload.author_name} mentioned you in ${channelName}`, {
-      body: bodyPreview,
-      tag: `mention-${payload.message_id}`,
-    })
+    // Tavern.Chat.Alerts writes the text; a push of the same message carries the same tag.
+    const notification = new Notification(payload.title, {body: payload.body, tag: payload.tag})
 
     notification.onclick = () => {
       window.focus()
+      if(payload.path) this.js().navigate(payload.path)
       notification.close()
+    }
+  },
+
+  // A push subscription belongs to the browser session that sent it, and gets pushes only while
+  // that session is live. Sending this browser's subscription on load moves it to the session
+  // signed in now, so signing in again turns push back on (docs/design/push-notifications.md).
+  async syncPushSubscription() {
+    if(!("serviceWorker" in navigator) || !("PushManager" in window)) return
+
+    try {
+      const registration = await navigator.serviceWorker.getRegistration("/")
+      const subscription = registration && await registration.pushManager.getSubscription()
+      if(subscription) this.pushEvent("push_subscribe", subscription.toJSON())
+    } catch(_error) {
+      // No service worker access (a private window): this page sends nothing.
     }
   },
 

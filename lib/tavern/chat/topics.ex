@@ -2,6 +2,9 @@ defmodule Tavern.Chat.Topics do
   @moduledoc """
   Owns the PubSub topics for chat events.
 
+  Each member also has a topic of their own, which carries `{:alert, alert}` for the member's open
+  tabs (`Tavern.Chat.Alerts`).
+
   Server-structure events (`:channel_created`, `:channel_updated`, `:channel_deleted`,
   `:channels_reordered`, `:roles_changed`, `{:email_confirmed, user_id}`) go to one server
   topic. Message, reaction and typing events go to the topic of the channel or thread they
@@ -67,6 +70,14 @@ defmodule Tavern.Chat.Topics do
 
     wanted
   end
+
+  def subscribe_user(user_id), do: Phoenix.PubSub.subscribe(@pubsub, user_topic(user_id))
+
+  @doc "Sends `event` to every open tab of member `user_id`. It stands for no product event."
+  def broadcast_user(user_id, event),
+    do: Phoenix.PubSub.broadcast(@pubsub, user_topic(user_id), event)
+
+  defp user_topic(user_id), do: "chat:user:" <> user_id
 
   defp channel_topic(channel_id), do: "chat:channel:" <> channel_id
 end

@@ -311,4 +311,26 @@ defmodule Tavern.ChatFixtures do
     {:ok, bot_user} = Bots.create_bot(scope_for(actor), attrs)
     bot_user
   end
+
+  @doc "Signs `user` in on a new browser session and returns `{token, session_id}`."
+  def browser_session(user) do
+    token = Tavern.Accounts.generate_user_session_token(user)
+    {token, Tavern.Accounts.session_id(token)}
+  end
+
+  @doc """
+  The JSON a browser's `PushSubscription.toJSON()` gives, for a new device key pair: what the
+  Settings push card sends.
+  """
+  def push_subscription_params(endpoint) do
+    {public_key, _private_key} = :crypto.generate_key(:ecdh, :prime256v1)
+
+    %{
+      "endpoint" => endpoint,
+      "keys" => %{
+        "p256dh" => Base.url_encode64(public_key, padding: false),
+        "auth" => Base.url_encode64(:crypto.strong_rand_bytes(16), padding: false)
+      }
+    }
+  end
 end

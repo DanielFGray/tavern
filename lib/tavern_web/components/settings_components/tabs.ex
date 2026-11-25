@@ -157,6 +157,8 @@ defmodule TavernWeb.SettingsComponents.Tabs do
         </div>
       </div>
 
+      <.push_alerts_card public_key={@push_public_key} />
+
       <.form
         for={@notification_form}
         id="notification-form"
@@ -164,8 +166,6 @@ defmodule TavernWeb.SettingsComponents.Tabs do
         class="mt-5 grid gap-4 md:grid-cols-2"
       >
         <.input field={@notification_form[:desktop_enabled]} type="checkbox" label="Desktop alerts" />
-        <.input field={@notification_form[:email_enabled]} type="checkbox" label="Email alerts" />
-        <.input field={@notification_form[:push_enabled]} type="checkbox" label="Push alerts" />
         <.input
           field={@notification_form[:notify_on_all_messages]}
           type="checkbox"
@@ -194,6 +194,159 @@ defmodule TavernWeb.SettingsComponents.Tabs do
         </div>
       </.form>
     </div>
+    """
+  end
+
+  attr :public_key, :string, default: nil
+
+  # Push is per device, so the browser, not the server, knows whether this device is on: the
+  # hook reads the subscription and shows the one line and button for its state.
+  defp push_alerts_card(assigns) do
+    ~H"""
+    <div
+      id="push-alerts"
+      phx-hook=".PushAlerts"
+      phx-update="ignore"
+      data-public-key={@public_key}
+      data-state="checking"
+      class="group mt-3 rounded-xl border border-base-300 bg-base-200 p-4"
+    >
+      <div class="flex items-center justify-between gap-3">
+        <div>
+          <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-base-content/50">
+            Push alerts on this device
+          </p>
+          <p class="mt-1 text-[11px] text-base-content/70">
+            Alerts reach this device even when Tavern is closed. Turn it on for each phone or
+            browser you use.
+          </p>
+          <p class="mt-2 hidden text-[11px] text-warning group-data-[state=unsupported]:block">
+            This browser cannot receive push alerts.
+          </p>
+          <p class="mt-2 hidden text-[11px] text-warning group-data-[state=install]:block">
+            On iPhone and iPad, add Tavern to the Home Screen first (Share, then Add to Home
+            Screen), and turn push on from there.
+          </p>
+          <p class="mt-2 hidden text-[11px] text-warning group-data-[state=denied]:block">
+            This browser blocks notifications from Tavern. Allow them in the site settings.
+          </p>
+          <p class="mt-2 hidden text-[11px] text-warning group-data-[state=unavailable]:block">
+            Push is off on this server.
+          </p>
+          <p class="mt-2 hidden text-[11px] text-error group-data-[state=failed]:block">
+            Could not turn push on. Try again.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          id="enable-push"
+          data-push-action="enable"
+          class="hidden shrink-0 rounded-md bg-violet-500 px-2.5 py-1 text-[11px] font-semibold text-white transition hover:bg-violet-400 group-data-[state=failed]:block group-data-[state=off]:block"
+        >
+          Turn on
+        </button>
+        <button
+          type="button"
+          id="disable-push"
+          data-push-action="disable"
+          class="hidden shrink-0 rounded-md px-2.5 py-1 text-[11px] font-semibold text-base-content/80 transition hover:bg-base-300 hover:text-base-content group-data-[state=on]:block"
+        >
+          On · turn off
+        </button>
+      </div>
+    </div>
+    <script :type={Phoenix.LiveView.ColocatedHook} name=".PushAlerts">
+      // docs/design/push-notifications.md, "The browser side".
+      const appleTouch = () =>
+        /iP(hone|ad|od)/.test(navigator.userAgent) ||
+        (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+
+      const keyBytes = key => {
+        const base64 = (key + "=".repeat((4 - key.length % 4) % 4)).replace(/-/g, "+").replace(/_/g, "/")
+        return Uint8Array.from(atob(base64), c => c.charCodeAt(0))
+      }
+
+      export default {
+        mounted() {
+          this.el.addEventListener("click", event => {
+            const action = event.target.closest("[data-push-action]")?.dataset.pushAction
+            if (action === "enable") this.enable()
+            if (action === "disable") this.disable()
+          })
+          this.refresh()
+        },
+
+        setState(state) {
+          this.el.dataset.state = state
+        },
+
+        supported() {
+          return "serviceWorker" in navigator && "PushManager" in window && "Notification" in window
+        },
+
+        async subscription() {
+          const registration = await navigator.serviceWorker.getRegistration("/")
+          return registration ? registration.pushManager.getSubscription() : null
+        },
+
+        // A subscription this device already holds is sent again, so the server has it under the
+        // member and session signed in now. One made with another server key gets no push that
+        // this server signs, so it is dropped and the card offers to turn push on again.
+        async refresh() {
+          if (!this.supported()) return this.setState(appleTouch() ? "install" : "unsupported")
+          if (!this.el.dataset.publicKey) return this.setState("unavailable")
+          if (Notification.permission === "denied") return this.setState("denied")
+
+          let subscription = await this.subscription()
+          if (subscription && !this.sameKey(subscription.options.applicationServerKey)) {
+            this.pushEvent("push_unsubscribe", {endpoint: subscription.endpoint})
+            await subscription.unsubscribe()
+            subscription = null
+          }
+
+          if (subscription) this.pushEvent("push_subscribe", subscription.toJSON())
+          this.setState(subscription ? "on" : "off")
+        },
+
+        sameKey(buffer) {
+          if (!buffer) return true
+          const held = new Uint8Array(buffer)
+          const current = keyBytes(this.el.dataset.publicKey)
+          return held.length === current.length && held.every((byte, i) => byte === current[i])
+        },
+
+        // The permission request must run first, inside the click: Safari refuses it otherwise.
+        async enable() {
+          try {
+            const permission = await Notification.requestPermission()
+            if (permission !== "granted") return this.refresh()
+
+            await navigator.serviceWorker.register("/sw.js", {scope: "/"})
+            const registration = await navigator.serviceWorker.ready
+            const subscription = await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: keyBytes(this.el.dataset.publicKey),
+            })
+
+            this.pushEvent("push_subscribe", subscription.toJSON(), reply => {
+              this.setState(reply.ok ? "on" : "failed")
+            })
+          } catch (_error) {
+            this.setState("failed")
+          }
+        },
+
+        async disable() {
+          const subscription = await this.subscription()
+          if (subscription) {
+            this.pushEvent("push_unsubscribe", {endpoint: subscription.endpoint})
+            await subscription.unsubscribe()
+          }
+          this.setState("off")
+        },
+      }
+    </script>
     """
   end
 
