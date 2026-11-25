@@ -13,6 +13,7 @@ defmodule TavernWeb.SettingsLive do
   alias TavernWeb.SettingsLive.Audit
   alias TavernWeb.SettingsLive.InviteRequests
   alias TavernWeb.SettingsLive.InviteTree
+  alias TavernWeb.SettingsLive.OwnerDirectMessages
   alias TavernWeb.SettingsLive.Privacy
   alias TavernWeb.SettingsLive.Roles
   alias TavernWeb.SettingsLive.State
@@ -29,13 +30,15 @@ defmodule TavernWeb.SettingsLive do
     "invites",
     "bots",
     "roles",
-    "audit"
+    "audit",
+    "direct_messages"
   ]
   @role_events Roles.events()
   @audit_events Audit.events()
   @invite_request_events InviteRequests.events()
   @invite_tree_events InviteTree.events()
   @privacy_events Privacy.events()
+  @owner_direct_message_events OwnerDirectMessages.events()
 
   @impl true
   def mount(_params, session, socket) do
@@ -65,6 +68,7 @@ defmodule TavernWeb.SettingsLive do
       |> InviteRequests.init()
       |> InviteTree.init()
       |> Privacy.init()
+      |> OwnerDirectMessages.init()
 
     if connected?(socket), do: Topics.subscribe_server()
 
@@ -104,6 +108,12 @@ defmodule TavernWeb.SettingsLive do
 
   def handle_event(event, params, socket) when event in @invite_tree_events do
     InviteTree.handle_event(event, params, socket)
+  end
+
+  def handle_event(event, params, socket) when event in @owner_direct_message_events do
+    if tab_allowed?(socket, "direct_messages"),
+      do: OwnerDirectMessages.handle_event(event, params, socket),
+      else: {:noreply, socket}
   end
 
   def handle_event(event, params, socket) when event in @privacy_events do
@@ -666,11 +676,14 @@ defmodule TavernWeb.SettingsLive do
   defp tab_allowed?(socket, "audit"),
     do: SharedHelpers.can_view_audit_log?(socket.assigns.current_scope)
 
+  defp tab_allowed?(socket, "direct_messages"), do: socket.assigns.owner_reader?
+
   defp tab_allowed?(_socket, tab), do: tab in @tabs
 
   defp load_tab(socket, "audit"), do: Audit.load(socket)
   defp load_tab(socket, "invites"), do: InviteTree.load(socket)
   defp load_tab(socket, "privacy"), do: Privacy.load(socket)
+  defp load_tab(socket, "direct_messages"), do: OwnerDirectMessages.load(socket)
   defp load_tab(socket, _tab), do: socket
 
   # A scope without `view_audit_log` reads no cases, and so does a malformed id.

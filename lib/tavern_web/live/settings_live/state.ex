@@ -154,6 +154,7 @@ defmodule TavernWeb.SettingsLive.State do
     |> assign(:can_manage_emojis?, SharedHelpers.can_manage_emojis?(scope))
     |> assign(:can_moderate_members?, SharedHelpers.can_moderate_members?(scope))
     |> assign(:can_view_audit_log?, SharedHelpers.can_view_audit_log?(scope))
+    |> assign(:owner_reader?, Chat.owner_reader?(scope))
     |> assign(:can_manage_server?, SharedHelpers.can_manage_server?(scope))
     |> assign(:can_manage_bots?, Bots.can_manage_bots?(scope))
   end

@@ -1,7 +1,6 @@
 # Direct messages
 
-Status: the domain, the chat page, the settings and the bot API are built (slices 1, 2, 3
-and 5). Owner reading is not.
+Status: built (slices 1 to 5).
 
 A direct message (DM) is a private conversation between two accounts on the server. A member or
 a bot may start one. Group DMs are not part of this design.
@@ -132,14 +131,24 @@ recipient filter already drops non-participants. The link is `/?dm=<id>&message=
 The owner's read is not visibility. A visibility grant would show every DM in search and in
 lists, with no audit entry.
 
-- Only with `owner_can_read`, the moderation panel has a "Direct messages" tab. It lists every
-  DM with its participants and last activity.
-- Opening one calls `Chat.read_direct_message_for_owner(scope, dm_id, cursor)`. It checks that
-  the scope is the owner and the setting is `owner_can_read`, writes the audit entry
-  `view_direct_message` (target: the DM, metadata: both participant ids), then returns a page
-  of messages.
-- The panel renders a read-only transcript. It does not use the chat pane, so it does not mark
-  anything read or subscribe to the DM.
+`Tavern.Chat.OwnerDirectMessages` holds it.
+
+- **Who:** `Chat.owner_reader?(scope)` holds when the setting is `owner_can_read` and the scope
+  is a person (not a bot token) who owns the server now. An administrator is not enough. Both
+  functions below check it on every call.
+- **List:** Settings has a "Direct messages" tab in the Server group, shown only to an owner
+  reader. It lists every live DM with both participants and its last activity
+  (`list_direct_messages_for_owner/1`). The list reads no message, so it writes no entry.
+- **Read:** "Read" calls `Chat.read_direct_message_for_owner(scope, dm_id, cursor)`. In one
+  transaction it checks the owner reader, writes the audit entry `view_direct_message`
+  (target: `direct_message` and the DM id; metadata: both participant ids and usernames), then
+  returns the newest 50 messages before `cursor`. **Every page writes its own entry**, so no
+  read skips the log. The cursor stays in the server's assigns. A deleted message is not
+  shown.
+- **Transcript:** read-only plain text. It does not use the chat pane, so it marks nothing
+  read and subscribes to nothing. An attachment shows its name and size only: the attachment
+  route serves only a viewer the DM is visible to, and this read is not visibility.
+- The audit page shows the entry as "@owner read the direct messages between @ada and @bo".
 
 ## Bot API
 

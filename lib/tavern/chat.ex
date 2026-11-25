@@ -11,6 +11,7 @@ defmodule Tavern.Chat do
   alias Tavern.Chat.ChannelOverwrites
   alias Tavern.Chat.Channels
   alias Tavern.Chat.DirectMessages
+  alias Tavern.Chat.OwnerDirectMessages
   alias Tavern.Chat.Emojis
   alias Tavern.Chat.Forums
   alias Tavern.Chat.Ids
@@ -48,6 +49,12 @@ defmodule Tavern.Chat do
   defdelegate get_direct_message(scope, channel_id), to: DirectMessages
   defdelegate direct_message_ids(scope), to: DirectMessages
   defdelegate blocked_user_ids(scope), to: DirectMessages
+  defdelegate owner_reader?(scope), to: OwnerDirectMessages
+  defdelegate list_direct_messages_for_owner(scope), to: OwnerDirectMessages
+
+  defdelegate read_direct_message_for_owner(scope, dm_id, cursor \\ nil),
+    to: OwnerDirectMessages
+
   defdelegate block_user(scope, user_id), to: DirectMessages
   defdelegate unblock_user(scope, user_id), to: DirectMessages
   defdelegate list_blocked_users(scope), to: DirectMessages

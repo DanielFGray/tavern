@@ -59,6 +59,10 @@ defmodule TavernWeb.SettingsComponents.Shell do
           <%= if @active_tab == "audit" and @can_view_audit_log? do %>
             <TavernWeb.SettingsComponents.Audit.audit_tab {assigns} />
           <% end %>
+
+          <%= if @active_tab == "direct_messages" and @owner_reader? do %>
+            <TavernWeb.SettingsComponents.OwnerDirectMessages.direct_messages_tab {assigns} />
+          <% end %>
         </section>
       </div>
     </div>
@@ -164,6 +168,13 @@ defmodule TavernWeb.SettingsComponents.Shell do
             tab="audit"
             id="settings-tab-audit"
             label="Audit log"
+          />
+          <.tab_button
+            :if={@owner_reader?}
+            active_tab={@active_tab}
+            tab="direct_messages"
+            id="settings-tab-direct-messages"
+            label="Direct messages"
           />
         </.tab_group>
       </nav>
