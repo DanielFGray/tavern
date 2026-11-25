@@ -12,6 +12,7 @@ defmodule Tavern.Chat.Messages do
   import Ecto.Query, warn: false
 
   alias Tavern.Accounts.Scope
+  alias Tavern.Chat.Alerts
   alias Tavern.Chat.Attachments
   alias Tavern.Chat.Channel
   alias Tavern.Chat.Channels
@@ -266,6 +267,7 @@ defmodule Tavern.Chat.Messages do
 
     broadcast(:message_created, message)
     ThreadFollows.broadcast_message_created(message, new_followers)
+    :ok = Alerts.publish(message)
     schedule_embeds(message, [])
   end
 

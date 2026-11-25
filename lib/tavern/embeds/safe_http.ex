@@ -1,7 +1,7 @@
 defmodule Tavern.Embeds.SafeHTTP do
   @moduledoc """
-  GETs a URL a message author wrote, without letting the author point the server at itself or
-  its private network (server-side request forgery).
+  Requests a URL that a member chose (a link in a message, a Web Push endpoint), without letting
+  the member point the server at itself or its private network (server-side request forgery).
 
   Every hop, the first request and each redirect (at most three), is checked the same way:
 
@@ -71,6 +71,26 @@ defmodule Tavern.Embeds.SafeHTTP do
   def get(url, opts) when is_binary(url) do
     deadline = System.monotonic_time(:millisecond) + @timeout_ms
     follow(url, opts, deadline, 0)
+  end
+
+  @doc """
+  POSTs `body` to `url` once, with no redirect, and returns `{:ok, %{status: status, body: body}}`
+  for any status, so the caller decides what each one means. Web Push posts to a URL a member's
+  browser chose, so it takes the same checks as a GET.
+
+  Options: `:headers` (a list of pairs), `:user_agent`, and `:max_bytes` for the answer body
+  (default 4096).
+  """
+  def post(url, body, opts \\ []) when is_binary(url) and is_binary(body) do
+    deadline = System.monotonic_time(:millisecond) + @timeout_ms
+    opts = opts |> Keyword.put(:method, :post) |> Keyword.put(:body, body)
+    opts = Keyword.put_new(opts, :max_bytes, 4096)
+
+    with {:ok, uri} <- check_url(url),
+         {:ok, address} <- resolve_public(uri.host, deadline),
+         {:ok, response} <- request(uri, address, opts, deadline) do
+      {:ok, %{status: response.status, body: response.body}}
+    end
   end
 
   defp follow(url, opts, deadline, hops) do
@@ -144,9 +164,14 @@ defmodule Tavern.Embeds.SafeHTTP do
     over_limit = Keyword.get(opts, :over_limit, :truncate)
 
     [
-      method: :get,
+      method: Keyword.get(opts, :method, :get),
       url: uri,
-      headers: [{"user-agent", @user_agent}, {"accept", Keyword.get(opts, :accept, "*/*")}],
+      body: Keyword.get(opts, :body),
+      headers:
+        [
+          {"user-agent", Keyword.get(opts, :user_agent, @user_agent)},
+          {"accept", Keyword.get(opts, :accept, "*/*")}
+        ] ++ Keyword.get(opts, :headers, []),
       adapter: PinnedAdapter,
       into: &collect(&1, &2, max_bytes, over_limit),
       redirect: false,

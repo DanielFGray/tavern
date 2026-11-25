@@ -1,7 +1,7 @@
 defmodule Tavern.Embeds.PinnedAdapter do
   @moduledoc """
-  A `Req` adapter that sends one request over one new Mint connection to an address the caller
-  already checked, then closes it. TLS still verifies the certificate for the URL's host name,
+  A `Req` adapter that sends one request (with its body, if any) over one new Mint connection to
+  an address the caller already checked, then closes it. TLS still verifies the certificate for the URL's host name,
   which Mint uses for SNI, the certificate check and the Host header.
 
   Req's default adapter can pin an address only through a `connect_options: [hostname: ...]`
@@ -34,7 +34,7 @@ defmodule Tavern.Embeds.PinnedAdapter do
              transport_opts: transport_opts(address, deadline)
            ) do
       {conn, result} =
-        case Mint.HTTP.request(conn, method(request), path(uri), headers(request), nil) do
+        case Mint.HTTP.request(conn, method(request), path(uri), headers(request), request.body) do
           {:ok, conn, ref} ->
             receive_response(conn, ref, {request, Req.Response.new()}, deadline)
 

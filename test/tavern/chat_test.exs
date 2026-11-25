@@ -11,7 +11,6 @@ defmodule Tavern.ChatTest do
   alias Tavern.Chat.Role
   alias Tavern.Chat.ServerSettings
   alias Tavern.Chat.User
-  alias Tavern.Chat.UserNotificationSetting
   alias Tavern.Repo
 
   import Tavern.ChatFixtures
@@ -392,22 +391,6 @@ defmodule Tavern.ChatTest do
       assert role_id == default_role().id
       refute role_id == impostor.id
       assert Chat.message_mentions_user?(message, Repo.preload(receiver, :member_roles))
-    end
-
-    test "mention_notifications_enabled?/2 respects user desktop mention setting" do
-      user = user_fixture(%{email: "notify-prefs@example.com", username: "notify_prefs"})
-      channel = channel_fixture()
-
-      assert Chat.mention_notifications_enabled?(scope_for(user), channel)
-
-      assert {:ok, %UserNotificationSetting{} = setting} =
-               Chat.update_user_notification_setting(scope_for(user), %{
-                 desktop_enabled: false,
-                 notify_on_mentions: true
-               })
-
-      refute setting.desktop_enabled
-      refute Chat.mention_notifications_enabled?(scope_for(user), channel)
     end
 
     test "a channel preference for a hidden or malformed channel is not_found and stores no row" do

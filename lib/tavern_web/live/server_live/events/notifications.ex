@@ -15,6 +15,21 @@ defmodule TavernWeb.ServerLive.Events.Notifications do
 
   def events, do: @events
 
+  @doc """
+  Shows an alert `Tavern.Chat.Alerts` decided for this member, unless this tab shows its
+  conversation. The browser shows it only while the tab is hidden.
+  """
+  def handle_info({:alert, alert}, socket) do
+    shown_ids = [socket.assigns.active_channel, socket.assigns.active_thread]
+
+    if Enum.any?(shown_ids, &match?(%{id: id} when id == alert.channel_id, &1)) do
+      {:noreply, socket}
+    else
+      {:noreply,
+       push_event(socket, "notify:alert", Map.take(alert, [:title, :body, :tag, :path]))}
+    end
+  end
+
   def handle_event("tab_visibility", params, socket),
     do: {:noreply, State.set_tab_visible(socket, params["visible"] == true)}
 

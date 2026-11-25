@@ -794,6 +794,22 @@ defmodule Tavern.Accounts do
     token
   end
 
+  @doc "The id of the live browser session `token` names, or nil."
+  def session_id(token) when is_binary(token) do
+    hashed_token = hash_token(token)
+    now = DateTime.utc_now()
+
+    from(session in UserSession,
+      where:
+        session.token_hash == ^hashed_token and session.context == "session" and
+          is_nil(session.revoked_at) and session.expires_at > ^now,
+      select: session.id
+    )
+    |> Repo.one()
+  end
+
+  def session_id(_token), do: nil
+
   def delete_user_session_token(token) when is_binary(token) do
     hashed_token = hash_token(token)
     now = DateTime.utc_now()

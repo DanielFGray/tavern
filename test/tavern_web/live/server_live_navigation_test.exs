@@ -265,10 +265,9 @@ defmodule TavernWeb.ServerLiveNavigationTest do
 
     assert has_element?(receiver_view, "#channel-mention-engineering")
 
-    assert_push_event(receiver_view, "notify:mention", %{
-      author_name: "Test User",
-      body: ^expected_body,
-      channel_name: "Engineering"
+    assert_push_event(receiver_view, "notify:alert", %{
+      title: "Test User mentioned you in #Engineering",
+      body: ^expected_body
     })
   end
 

@@ -12,7 +12,6 @@ defmodule TavernWeb.ServerLive.ThreadNav do
   """
 
   import Phoenix.Component, only: [assign: 3, to_form: 2]
-  import Phoenix.LiveView, only: [push_event: 3]
 
   alias Tavern.Chat
   alias TavernWeb.ServerLive.State
@@ -51,13 +50,9 @@ defmodule TavernWeb.ServerLive.ThreadNav do
 
   @doc """
   Applies a message posted in a thread under a listed channel: moves a followed thread to the top
-  and counts the message unread, and pushes a desktop notification when the rules allow one.
+  and counts the message unread.
   """
-  def apply_thread_message(socket, message) do
-    socket
-    |> bump_entry(message)
-    |> maybe_notify(message)
-  end
+  def apply_thread_message(socket, message), do: bump_entry(socket, message)
 
   @doc """
   Reloads the follow state when the change names the signed-in member, and redraws the open
@@ -173,52 +168,10 @@ defmodule TavernWeb.ServerLive.ThreadNav do
     end
   end
 
-  # A followed thread notifies like a channel: any mention the member's settings allow. Any other
-  # thread notifies on a direct mention only, and only after a read confirms the member may view
-  # it, because this event reached the session through the parent channel's topic.
-  defp maybe_notify(socket, message) do
-    %{current_user: user, current_scope: scope} = socket.assigns
-    thread = message.channel
-
-    notify? =
-      counts_unread?(socket, message) and
-        if followed?(socket, thread.id) do
-          Chat.message_mentions_user?(message, user) and
-            Chat.mention_notifications_enabled?(scope, thread)
-        else
-          Chat.message_mentions_user_directly?(message, user) and
-            not is_nil(Chat.get_thread(scope, thread.id)) and
-            Chat.mention_notifications_enabled?(scope, thread)
-        end
-
-    if notify? do
-      push_event(socket, "notify:mention", %{
-        channel_id: thread.id,
-        channel_name: notification_title(scope, thread),
-        author_name: message.author.display_name,
-        body: message.body,
-        message_id: message.id
-      })
-    else
-      socket
-    end
-  end
-
-  # The message's channel comes without its starter message, which an unnamed thread's title needs.
-  defp notification_title(scope, thread) do
-    case Chat.get_thread(scope, thread.id) do
-      %Chat.Channel{} = thread -> Chat.Channel.title(thread)
-      nil -> nil
-    end
-  end
-
   defp counts_unread?(socket, message) do
     message.author_id != socket.assigns.current_user.id and
       not thread_open?(socket, message.channel_id)
   end
-
-  defp followed?(socket, thread_id),
-    do: Enum.any?(socket.assigns.followed_threads, &(&1.thread.id == thread_id))
 
   defp thread_open?(socket, thread_id),
     do: match?(%{id: ^thread_id}, socket.assigns.active_thread)

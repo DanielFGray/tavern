@@ -129,7 +129,7 @@ Every reader runs the same loop, through `Tavern.Events.Reader`:
 4. **Install, apply, then advance.** The consumer handles a page in this order:
    1. For each channel in `known_channel_ids` but not in `visible`, clear that channel's state.
    2. For each channel in `gained`, install its loaded state and record `floor[channel] = page.floor`.
-   3. Apply the events in order. Skip every event of a channel whose `seq <= floor[channel]`, with all its side effects (stream insert, unread count, mention push, desktop notification). The loaded state already shows those messages, and messages sent before the member gained the channel send no notification.
+   3. Apply the events in order. Skip every event of a channel whose `seq <= floor[channel]`, with all its side effects (stream insert, unread count). Alerts are not among them: `Tavern.Chat.Alerts` sends each one once, when the message is written, on the member's own topic ([push-notifications.md](push-notifications.md)), so a replay cannot repeat one. The loaded state already shows those messages, and messages sent before the member gained the channel send no notification.
    4. Store `page.cursor`.
 
    Every side effect happens only on this path, and only for events above the stored cursor. The gained and lost channels are installed first, because the page can hold a gained channel's events before the permission event that made it visible.
@@ -142,7 +142,7 @@ Authorization follows scoped reads: "may this scope see this now", decided once 
 
 What each consumer does with accepted events:
 
-- ServerLive applies message and reaction events to its stream only for the open channel or thread, as today. It updates unread counts for the other visible channels, and it sends notifications under the member's notification settings.
+- ServerLive applies message and reaction events to its stream only for the open channel or thread, as today. It updates unread counts for the other visible channels. It does not decide notifications; it only shows the alerts that arrive on the member's topic.
 - On structure, permission, member and role events, ServerLive reloads the channel tree through a scoped read. For each channel that left the visible set, it clears that channel's messages and unread state.
 - Channels that joined or left the visible set are handled by step 4, before the page's events. A floor does not affect other channels' events.
 

@@ -31,9 +31,7 @@ The follow writes run inside the transaction of the event that causes them: `ins
 ## What following changes
 
 - **Sidebar.** The followed, unarchived threads the member may view appear under their parent channel, newest activity first, with an unread count. At most 5 show per channel; "N more" opens the thread browser on that channel.
-- **Notifications.** A followed thread notifies like a channel, under the member's notification settings: any mention (direct, role or default role) when desktop alerts and mention alerts are on and the effective level is not `:nothing`. A thread whose own level is `:default` takes its parent channel's level, so muting a channel mutes its threads. A thread the member does not follow notifies on a direct mention only.
-
-Channels push only mention alerts today; `notify_on_all_messages` is stored but nothing reads it. Followed threads do the same, so they follow any later change to the channel rule without a separate path.
+- **Notifications.** A followed thread alerts like a channel, under the member's level and settings. A thread whose own level is `:default` takes its parent channel's level, so muting a channel mutes its threads. A thread the member does not follow alerts on a direct mention only. `Tavern.Chat.Alerts` decides this once per message (docs/design/push-notifications.md, "The alert rule").
 
 ## Last activity
 
@@ -62,14 +60,14 @@ An open thread renders under its starter message as a flat region (`Threads.thre
 A session subscribes to the topics of the channels it lists, plus its open channel and open thread (`State.sync_channel_subscriptions/1`). It does not subscribe to every thread. Thread activity reaches it on the parent channel's topic instead:
 
 1. `{:message_created, message}` on the thread's topic, as for any message.
-2. `{:thread_message_created, message}` on the parent's topic. A session bumps a followed thread to the top of its sidebar, counts the message unread unless the thread is open or the member wrote it, and decides a notification.
+2. `{:thread_message_created, message}` on the parent's topic. A session bumps a followed thread to the top of its sidebar, counts the message unread unless the thread is open or the member wrote it. Alerts do not come this way: they arrive on the member's own topic.
 3. `{:thread_followers_changed, thread_id, user_ids}` on the parent's topic, when the message made new followers, and after every manual follow or unfollow. A session whose member is named reloads its followed threads from the database.
 
 The message event goes before the follow event. A session that reloads on the follow event therefore already sees the message in its unread count, and never counts it twice.
 
 Why the parent's topic: a member who may view a thread may view its parent, so every session of an affected member already listens there. Subscribing each session to every thread would grow with the number of threads on the server.
 
-A session may list a parent and still not see a thread under it. So the unfollowed-thread notification re-reads the thread through the scope (`Chat.get_thread/2`) before it shows a message body. A followed thread is already a visible one: the sidebar list came from a scoped read.
+A session may list a parent and still not see a thread under it. So an alert is decided on the server, which checks each member's view of the thread with their own scope before the alert carries a message body.
 
 `Topics` broadcasts skip the calling process, so the session that posts, creates, follows or unfollows reloads its own sidebar after the call.
 

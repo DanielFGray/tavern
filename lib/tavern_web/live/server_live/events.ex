@@ -16,6 +16,7 @@ defmodule TavernWeb.ServerLive.Events do
   alias TavernWeb.ServerLive.Events.Search
   alias TavernWeb.ServerLive.Events.Threads
   alias TavernWeb.ServerLive.Events.Verification
+  alias TavernWeb.PushSubscriptionEvents
   alias TavernWeb.ServerLive.Voice
 
   require Logger
@@ -29,6 +30,7 @@ defmodule TavernWeb.ServerLive.Events do
     Notifications,
     Pins,
     Profile,
+    PushSubscriptionEvents,
     Questions,
     Reactions,
     Search,
@@ -90,6 +92,9 @@ defmodule TavernWeb.ServerLive.Events do
              elem(message, 0) in [:question_answered, :question_closed] do
     Questions.handle_info(message, socket)
   end
+
+  def handle_info({:alert, _alert} = message, socket),
+    do: Notifications.handle_info(message, socket)
 
   def handle_info({:email_confirmed, _user_id} = message, socket),
     do: Verification.handle_info(message, socket)
