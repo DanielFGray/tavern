@@ -4,6 +4,7 @@ defmodule TavernWeb.API.BotController do
   alias Tavern.Accounts.Scope
   alias Tavern.Bots
   alias Tavern.Chat
+  alias Tavern.Chat.Channel
   alias Tavern.Chat.Topics
   alias Tavern.Chat.User
   alias Tavern.Chat.Visibility
@@ -143,6 +144,7 @@ defmodule TavernWeb.API.BotController do
       |> send_chunked(200)
 
     :ok = Topics.subscribe_server()
+    :ok = Topics.subscribe_user(bot_user.id)
     scope = conn.assigns.current_bot_scope
     subscribed = sync_subscriptions(MapSet.new(), scope)
 
@@ -166,7 +168,7 @@ defmodule TavernWeb.API.BotController do
   end
 
   # Message events arrive only from the channel topics in `state.subscribed`: the channels and
-  # threads the bot can view. A server event re-syncs that set before anything is emitted, so a bot
+  # threads the bot can view, and its DMs. The bot's user topic announces a new DM. A server event re-syncs that set before anything is emitted, so a bot
   # that has received `thread.created` is already subscribed to that thread.
   #
   # A `:reauthorize` message, sent every `@reauthorize_interval`, re-checks the bearer token and
@@ -185,6 +187,7 @@ defmodule TavernWeb.API.BotController do
     * `{:emit, event_name, payload}` writes an event to the client;
     * `:resync` recomputes the subscribed channels;
     * `{:thread_created, thread}` resyncs, then emits `thread.created` if the bot now views it;
+    * `{:direct_message_opened, dm}` resyncs, then emits `direct_message.opened`;
     * `:reauthorize` re-checks the token;
     * `:ignore` is a message the stream does not use.
   """
@@ -212,6 +215,7 @@ defmodule TavernWeb.API.BotController do
   def dispatch({:channel_created, %{kind: :thread_public} = thread}),
     do: {:thread_created, thread}
 
+  def dispatch({:direct_message_opened, dm}), do: {:direct_message_opened, dm}
   def dispatch({:channel_created, _channel}), do: :resync
   def dispatch({event, _channel}) when event in [:channel_updated, :channel_deleted], do: :resync
   def dispatch(:roles_changed), do: :resync
@@ -231,6 +235,11 @@ defmodule TavernWeb.API.BotController do
     else
       stream_events(conn, state)
     end
+  end
+
+  defp act({:direct_message_opened, dm}, conn, state) do
+    payload = %{channel_id: dm.id, user_id: Channel.peer_id(dm, state.bot_user.id)}
+    emit(conn, "direct_message.opened", payload, resync(state))
   end
 
   # A banned or removed bot keeps a valid token, so the member read is part of the check: a
@@ -276,6 +285,7 @@ defmodule TavernWeb.API.BotController do
       |> Chat.list_channels()
       |> Enum.reject(&(&1.kind == :category))
       |> MapSet.new(& &1.id)
+      |> MapSet.union(MapSet.new(Chat.direct_message_ids(scope)))
 
     Topics.sync_channel_subscriptions(subscribed, wanted)
   end

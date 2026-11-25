@@ -29,6 +29,15 @@ Returns `{"data": <serialized message>}`, the same shape as `message.created`. T
 
 Returns `{"data": {"id", "username", "display_name", "bot", "system", "role_ids"}}`. `role_ids` holds the roles the member holds, the Unverified role when the member holds it (docs/design/accounts.md), and the default role. The scope is checked first (`Chat.get_member/2` through `Visibility.member/1`): a user who is not an active, visible member (a stranger, a deactivated or deleted member, a malformed id) answers 404 `not_found`. A request without a bot token answers 401.
 
+## Direct messages
+
+A bot opens, lists and talks in direct messages by the rules a member follows (direct-messages.md).
+
+- `POST /api/v1/direct_messages` with `{"user_id"}` returns `{"data": {"id", "kind": "direct", "peer", "inserted_at"}}`: the pair's DM, opened if it has none. `peer` is the member, in the shape of `author`. A block either way, a member who turned off new contacts, an unknown id and a malformed id all answer 404 `not_available`, so the answer does not say which. A request with no `user_id` answers 422.
+- `GET /api/v1/direct_messages` lists the bot's DMs in the same shape, most recent activity first.
+- Send and read with `POST` and `GET /api/v1/channels/:id/messages`, using the DM's id. A DM the bot is not in answers as a hidden channel does.
+- The event stream subscribes to the bot's DMs and to its user topic. `direct_message.opened` carries `{channel_id, user_id}`, where `user_id` is the peer, when the bot or a member opens a new DM with it. Message and reaction events in a DM follow, as in a channel. A DM message's `channel.kind` is `direct`.
+
 ## Reactions
 
 A bot sees who reacted through two events, and what a message holds through a summary.

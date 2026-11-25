@@ -1,7 +1,7 @@
 # Direct messages
 
-Status: the domain, the chat page and the settings are built (slices 1 to 3). Owner reading
-and the bot API are not.
+Status: the domain, the chat page, the settings and the bot API are built (slices 1, 2, 3
+and 5). Owner reading is not.
 
 A direct message (DM) is a private conversation between two accounts on the server. A member or
 a bot may start one. Group DMs are not part of this design.
@@ -142,6 +142,8 @@ lists, with no audit entry.
   anything read or subscribe to the DM.
 
 ## Bot API
+
+The endpoint details are in bot-api.md.
 
 - `POST /api/v1/direct_messages` with `{"user_id"}` opens (or returns) the DM, with the same
   rules and the same `not_available` refusal (404).

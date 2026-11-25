@@ -150,6 +150,8 @@ defmodule TavernWeb.Router do
     post("/messages/:message_id/threads", MessageController, :create_thread)
     post("/commands/execute", CommandController, :execute)
     get("/members/:user_id", MemberController, :show)
+    get("/direct_messages", DirectMessageController, :index)
+    post("/direct_messages", DirectMessageController, :create)
   end
 
   scope "/api/v1", TavernWeb.API, as: :bot_api do
