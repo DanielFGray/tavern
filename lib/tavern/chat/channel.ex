@@ -22,7 +22,8 @@ defmodule Tavern.Chat.Channel do
         :stage,
         :thread_public,
         :thread_private,
-        :thread_announcement
+        :thread_announcement,
+        :direct
       ],
       default: :text
     )
@@ -43,6 +44,12 @@ defmodule Tavern.Chat.Channel do
     belongs_to(:parent_channel, __MODULE__)
     belongs_to(:created_by, Tavern.Chat.User)
     belongs_to(:starter_message, Tavern.Chat.Message)
+    # A direct message names its two participants, the lower id first
+    # (docs/design/direct-messages.md). Every other kind leaves both nil.
+    belongs_to(:direct_low_user, Tavern.Chat.User)
+    belongs_to(:direct_high_user, Tavern.Chat.User)
+    # The other participant of a direct message, for the account that read it.
+    field(:peer, :any, virtual: true)
 
     has_many(:messages, Tavern.Chat.Message)
     has_many(:child_channels, __MODULE__, foreign_key: :parent_channel_id)
@@ -64,6 +71,38 @@ defmodule Tavern.Chat.Channel do
   def thread_host?(%__MODULE__{kind: kind}), do: kind in [:text, :announcement, :forum]
 
   def forum?(%__MODULE__{kind: kind}), do: kind == :forum
+
+  def direct?(%__MODULE__{kind: kind}), do: kind == :direct
+
+  @doc "The two participants of a direct message, the lower id first."
+  def participant_ids(%__MODULE__{kind: :direct} = channel),
+    do: [channel.direct_low_user_id, channel.direct_high_user_id]
+
+  @doc "Whether `user_id` is one of the two participants of a direct message."
+  def participant?(%__MODULE__{kind: :direct} = channel, user_id),
+    do: user_id in participant_ids(channel)
+
+  def participant?(%__MODULE__{}, _user_id), do: false
+
+  @doc "The participant of a direct message who is not `user_id`."
+  def peer_id(%__MODULE__{kind: :direct} = channel, user_id),
+    do: channel |> participant_ids() |> Enum.find(&(&1 != user_id))
+
+  @doc """
+  A new direct message between two accounts, unsaved. The ids are put in order, so a pair always
+  names the same row (the unique index `channels_direct_pair_index`). A DM has no name: each
+  viewer sees the peer's. Its slug is a placeholder, as a thread's is.
+  """
+  def new_direct(user_id, other_user_id) do
+    [low, high] = Enum.sort([user_id, other_user_id])
+
+    %__MODULE__{
+      kind: :direct,
+      slug: "dm-#{Ecto.UUID.generate()}",
+      direct_low_user_id: low,
+      direct_high_user_id: high
+    }
+  end
 
   # The kinds a manager may create. Voice channels carry the voice room rules (docs/design/voice.md).
   @managed_kinds [:text, :announcement, :forum, :category, :voice]

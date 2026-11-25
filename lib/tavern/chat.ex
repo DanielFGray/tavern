@@ -10,6 +10,7 @@ defmodule Tavern.Chat do
   alias Tavern.Chat.Channel
   alias Tavern.Chat.ChannelOverwrites
   alias Tavern.Chat.Channels
+  alias Tavern.Chat.DirectMessages
   alias Tavern.Chat.Emojis
   alias Tavern.Chat.Forums
   alias Tavern.Chat.Ids
@@ -42,6 +43,13 @@ defmodule Tavern.Chat do
   defdelegate default_server_name(), to: ServerConfig
 
   defdelegate list_channels(scope), to: Channels
+  defdelegate open_direct_message(scope, user_id), to: DirectMessages
+  defdelegate list_direct_messages(scope), to: DirectMessages
+  defdelegate block_user(scope, user_id), to: DirectMessages
+  defdelegate unblock_user(scope, user_id), to: DirectMessages
+  defdelegate list_blocked_users(scope), to: DirectMessages
+
+  defdelegate set_direct_messages_from_new_contacts(scope, allowed?), to: DirectMessages
 
   defdelegate list_roles(scope), to: Roles
   defdelegate role_controls(scope), to: Roles

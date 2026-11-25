@@ -23,6 +23,10 @@ defmodule Tavern.Chat.Channels do
 
   @thread_kinds [:thread_public, :thread_private, :thread_announcement]
 
+  # Kinds with no place in the channel tree: threads hang under a channel, and a direct message
+  # under no one.
+  @off_tree_kinds [:direct | @thread_kinds]
+
   def list_channels(%Scope{} = scope) do
     Visibility.visible_channels(scope)
   end
@@ -361,7 +365,7 @@ defmodule Tavern.Chat.Channels do
   defp sibling_order(channel, parent, before_id) do
     siblings =
       from(sibling in Channel,
-        where: sibling.id != ^channel.id and sibling.kind not in ^@thread_kinds,
+        where: sibling.id != ^channel.id and sibling.kind not in ^@off_tree_kinds,
         order_by: [asc: sibling.position, asc: sibling.inserted_at]
       )
       |> under_parent(parent && parent.id)
@@ -442,7 +446,7 @@ defmodule Tavern.Chat.Channels do
 
   defp next_position(parent_id) do
     from(channel in Channel,
-      where: channel.kind not in ^@thread_kinds,
+      where: channel.kind not in ^@off_tree_kinds,
       select: max(channel.position)
     )
     |> under_parent(parent_id)

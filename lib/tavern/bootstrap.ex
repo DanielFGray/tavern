@@ -163,13 +163,29 @@ defmodule Tavern.Bootstrap do
     |> Repo.insert!()
   end
 
+  # The DM privacy is fixed here, once, from the deploy setting (docs/design/direct-messages.md).
+  # No changeset casts it, so it never changes after the server exists.
   defp create_server_settings! do
-    %ServerSettings{}
+    %ServerSettings{direct_message_privacy: direct_message_privacy()}
     |> ServerSettings.changeset(%{
       singleton: true,
       name: Application.get_env(:tavern, :server_name, "Tavern"),
       registration_mode: :invite_only
     })
     |> Repo.insert!()
+  end
+
+  defp direct_message_privacy do
+    case Application.get_env(:tavern, :direct_message_privacy, "private") do
+      "private" ->
+        :private
+
+      "owner_can_read" ->
+        :owner_can_read
+
+      other ->
+        raise ArgumentError,
+              "TAVERN_DM_PRIVACY must be private or owner_can_read, got: #{inspect(other)}"
+    end
   end
 end

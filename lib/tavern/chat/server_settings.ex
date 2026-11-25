@@ -10,6 +10,12 @@ defmodule Tavern.Chat.ServerSettings do
     field(:name, :string)
     field(:registration_mode, Ecto.Enum, values: [:open, :invite_only], default: :open)
     field(:accept_invite_requests, :boolean, default: false)
+    # Who may read direct messages besides their two participants. Fixed when the server is
+    # created (`Tavern.Bootstrap`), so no changeset casts it (docs/design/direct-messages.md).
+    field(:direct_message_privacy, Ecto.Enum,
+      values: [:private, :owner_can_read],
+      default: :private
+    )
 
     belongs_to(:icon_asset, Tavern.Chat.MediaAsset)
 
