@@ -171,6 +171,62 @@ defmodule TavernWeb.ServerComponents.Messages do
           server={@server}
         />
       </div>
+
+      <.load_newer_button pane={@server.channel_pane} />
+    </div>
+    """
+  end
+
+  attr :pane, :map, required: true
+
+  @doc """
+  The controls of a transcript that holds a window around an older message
+  (`TavernWeb.ServerLive.MessageJump`), rendered only while newer messages exist. "Load newer"
+  sits under the last row and loads the page after it; in the channel pane `MessageListHook`
+  presses it when the reader scrolls down to it. "Jump to present" returns to the newest page.
+  It sticks to the bottom of the scroll box, because a page that loads under it would otherwise
+  move it away from the reader's pointer.
+  """
+  def load_newer_button(assigns) do
+    ~H"""
+    <div
+      :if={@pane.newer_cursor}
+      id={"newer-messages-#{@pane.kind}"}
+      class="flex justify-center px-4 pt-1 pb-3"
+    >
+      <button
+        id={"load-newer-#{@pane.kind}"}
+        type="button"
+        phx-click="load_newer_messages"
+        phx-value-pane={@pane.kind}
+        class={[
+          "rounded-full border border-base-300 bg-base-100 px-3 py-1 text-xs font-medium",
+          "text-base-content/70 transition hover:border-primary/50 hover:text-base-content",
+          "phx-click-loading:pointer-events-none phx-click-loading:opacity-60"
+        ]}
+      >
+        Load newer messages
+      </button>
+    </div>
+    <div
+      :if={@pane.newer_cursor}
+      class="pointer-events-none sticky bottom-3 z-10 flex justify-center px-4"
+    >
+      <button
+        id={"jump-to-present-#{@pane.kind}"}
+        type="button"
+        phx-click="jump_to_present"
+        phx-value-pane={@pane.kind}
+        class={[
+          "pointer-events-auto inline-flex items-center gap-1.5 rounded-full bg-base-content/90 px-3.5 py-1.5",
+          "text-xs font-semibold text-base-100 shadow-lg ring-1 ring-black/10 backdrop-blur transition",
+          "hover:-translate-y-0.5 hover:bg-base-content motion-reduce:hover:translate-y-0",
+          "phx-click-loading:pointer-events-none phx-click-loading:opacity-60"
+        ]}
+      >
+        You are viewing older messages · Jump to present
+        <.icon name="hero-arrow-down" class="size-3.5" />
+      </button>
     </div>
     """
   end
@@ -252,20 +308,35 @@ defmodule TavernWeb.ServerComponents.Messages do
                 phx-value-id={@message.id}
               >
                 <div :if={@message.reply_to} class="mt-1 text-xs text-base-content/65">
-                  <span class="truncate">
-                    Replying to
-                    <span class="font-semibold text-base-content/80">
-                      {@message.reply_to.author.display_name}
-                    </span>
-                    ·
-                    <%= if deleted_message?(@message.reply_to) do %>
+                  <%= if deleted_message?(@message.reply_to) do %>
+                    <span class="truncate">
+                      Replying to
+                      <span class="font-semibold text-base-content/80">
+                        {@message.reply_to.author.display_name}
+                      </span>
+                      ·
                       <span id={"reply-deleted-#{@message.id}"} class="italic">
                         Original message deleted
                       </span>
-                    <% else %>
-                      {body_preview(@message.reply_to.body)}
-                    <% end %>
-                  </span>
+                    </span>
+                  <% else %>
+                    <%!-- The closest phx-click wins, so this does not also toggle the row's
+                         controls. --%>
+                    <button
+                      type="button"
+                      id={"reply-jump-#{@message.id}"}
+                      phx-click="open_message"
+                      phx-value-id={@message.reply_to.id}
+                      title="Show the original message"
+                      class="max-w-full truncate rounded text-left transition hover:text-base-content"
+                    >
+                      Replying to
+                      <span class="font-semibold text-base-content/80">
+                        {@message.reply_to.author.display_name}
+                      </span>
+                      · {body_preview(@message.reply_to.body)}
+                    </button>
+                  <% end %>
                 </div>
 
                 <div class="flex items-baseline gap-2">

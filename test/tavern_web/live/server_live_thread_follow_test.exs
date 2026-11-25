@@ -134,7 +134,7 @@ defmodule TavernWeb.ServerLiveThreadFollowTest do
       message = message_fixture(thread, ctx.other, %{body: "hi @#{ctx.me.username}"})
 
       tag = "mention-#{message.id}"
-      path = "/?channel=general&thread=#{thread.id}"
+      path = "/?channel=general&thread=#{thread.id}&message=#{message.id}"
       assert_push_event(view, "notify:alert", %{tag: ^tag, path: ^path})
     end
 

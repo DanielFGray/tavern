@@ -1,6 +1,6 @@
 defmodule TavernWeb.ServerLiveSearchTest do
   @moduledoc """
-  The message search drawer lists matching messages and opens the conversation that holds one.
+  The message search drawer lists matching messages and opens one in place.
   """
   use TavernWeb.ConnCase, async: false
 
@@ -22,7 +22,7 @@ defmodule TavernWeb.ServerLiveSearchTest do
     view |> form("#message-search-form", message_search: %{query: query}) |> render_change()
   end
 
-  test "a result in a channel opens that channel", ctx do
+  test "a result in a channel opens it in that channel", ctx do
     other = channel_fixture(%{name: "Elsewhere", slug: "elsewhere"})
     hit = message_fixture(other, ctx.me, %{body: "the kraken wakes"})
     message_fixture(ctx.general, ctx.me, %{body: "nothing to see"})
@@ -34,11 +34,11 @@ defmodule TavernWeb.ServerLiveSearchTest do
     assert view |> element("#message-search-results li") |> render() =~ "# Elsewhere"
 
     view |> element("#message-search-open-#{hit.id}") |> render_click()
-    assert_patch(view, ~p"/?channel=elsewhere")
+    assert_patch(view, ~p"/?channel=elsewhere&message=#{hit.id}")
     refute has_element?(view, "#message-search")
   end
 
-  test "a result in a thread opens the thread under its channel", ctx do
+  test "a result in a thread opens it in the thread under its channel", ctx do
     starter = message_fixture(ctx.general, ctx.me, %{body: "starter"})
     thread = thread_fixture(ctx.general, starter, ctx.me)
     hit = message_fixture(thread, ctx.me, %{body: "threaded needle"})
@@ -47,10 +47,10 @@ defmodule TavernWeb.ServerLiveSearchTest do
     search(view, "needle")
 
     view |> element("#message-search-open-#{hit.id}") |> render_click()
-    assert_patch(view, ~p"/?channel=general&thread=#{thread.id}")
+    assert_patch(view, ~p"/?channel=general&thread=#{thread.id}&message=#{hit.id}")
   end
 
-  test "a result in a forum post opens the post under its forum", ctx do
+  test "a result in a forum post opens it in the post under its forum", ctx do
     forum = channel_fixture(%{name: "Help", slug: "help", kind: :forum})
 
     {:ok, post} =
@@ -65,7 +65,7 @@ defmodule TavernWeb.ServerLiveSearchTest do
     search(view, "needle")
 
     view |> element("#message-search-open-#{hit.id}") |> render_click()
-    assert_patch(view, ~p"/?channel=help&thread=#{post.id}")
+    assert_patch(view, ~p"/?channel=help&thread=#{post.id}&message=#{hit.id}")
   end
 
   test "an empty search and a search with no hits say so; Escape closes", ctx do

@@ -20,6 +20,9 @@ defmodule Tavern.ChatTest do
     :ok
   end
 
+  defp mentions?(message, user, setting \\ %Tavern.Chat.UserNotificationSetting{}),
+    do: Chat.message_mentions_user?(message, user, setting)
+
   describe "channels" do
     test "list_channels/0 returns channels ordered by position" do
       later = channel_fixture(%{name: "Later", slug: unique_slug(), position: 2})
@@ -320,9 +323,9 @@ defmodule Tavern.ChatTest do
 
       [author, user] = Repo.preload([author, user], :member_roles, force: true)
 
-      refute Chat.message_mentions_user?(direct_message, author)
-      assert Chat.message_mentions_user?(direct_message, user)
-      assert Chat.message_mentions_user?(role_message, user)
+      refute mentions?(direct_message, author)
+      assert mentions?(direct_message, user)
+      assert mentions?(role_message, user)
     end
 
     test "metadata cannot mention a user who is absent from the body" do
@@ -343,7 +346,7 @@ defmodule Tavern.ChatTest do
                mentioned_user_id: user.id
              )
 
-      refute Chat.message_mentions_user?(message, Repo.preload(user, :member_roles))
+      refute mentions?(message, Repo.preload(user, :member_roles))
     end
 
     test "@here and @everyone use the protected default role" do
@@ -366,7 +369,7 @@ defmodule Tavern.ChatTest do
         assert {:ok, message} =
                  Chat.create_message(scope_for(allowed_author), channel.id, %{body: token})
 
-        assert Chat.message_mentions_user?(message, Repo.preload(receiver, :member_roles))
+        assert mentions?(message, Repo.preload(receiver, :member_roles))
 
         assert Repo.get_by(MessageRoleMention,
                  message_id: message.id,
@@ -375,6 +378,34 @@ defmodule Tavern.ChatTest do
       end
 
       assert Chat.unread_mentions(scope_for(receiver), [channel.id])[channel.id] == 2
+    end
+
+    test "a suppressed @everyone or role mention does not count toward the mention badge" do
+      Bootstrap.ensure_seed_data!()
+      channel = channel_fixture()
+      owner = owner_fixture()
+      receiver = user_fixture()
+      role = role_fixture(%{name: "crew", mentionable: true})
+      member_role_fixture(receiver, role)
+
+      {:ok, everyone} = Chat.create_message(scope_for(owner), channel.id, %{body: "@everyone"})
+      {:ok, crew} = Chat.create_message(scope_for(owner), channel.id, %{body: "@crew"})
+      receiver = Repo.preload(receiver, :member_roles, force: true)
+
+      {:ok, setting} =
+        Chat.update_user_notification_setting(scope_for(receiver), %{
+          suppress_everyone: true,
+          suppress_roles: true
+        })
+
+      refute mentions?(everyone, receiver, setting)
+      refute mentions?(crew, receiver, setting)
+      assert Chat.unread_mentions(scope_for(receiver), [channel.id])[channel.id] == 0
+
+      {:ok, _} =
+        Chat.update_user_notification_setting(scope_for(receiver), %{suppress_roles: false})
+
+      assert Chat.unread_mentions(scope_for(receiver), [channel.id])[channel.id] == 1
     end
 
     test "@here follows the default role, not the name @everyone" do
@@ -390,7 +421,7 @@ defmodule Tavern.ChatTest do
       assert [%{mentioned_role_id: role_id}] = message.role_mentions
       assert role_id == default_role().id
       refute role_id == impostor.id
-      assert Chat.message_mentions_user?(message, Repo.preload(receiver, :member_roles))
+      assert mentions?(message, Repo.preload(receiver, :member_roles))
     end
 
     test "a channel preference for a hidden or malformed channel is not_found and stores no row" do

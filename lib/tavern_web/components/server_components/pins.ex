@@ -41,18 +41,27 @@ defmodule TavernWeb.ServerComponents.Pins do
             id={"pins-row-#{message.id}"}
             class="group flex gap-3 rounded-lg px-3 py-2.5 transition hover:bg-base-200"
           >
-            <.avatar user={message.author} class="mt-0.5 size-8 text-[11px]" />
-            <div class="min-w-0 flex-1">
-              <p class="flex items-baseline gap-2 text-[11px] text-base-content/55">
-                <span class="truncate text-sm font-semibold text-base-content">
-                  {message.author.display_name}
+            <button
+              type="button"
+              id={"pins-open-#{message.id}"}
+              phx-click="open_message"
+              phx-value-id={message.id}
+              title="Show in the conversation"
+              class="flex min-w-0 flex-1 gap-3 text-left"
+            >
+              <.avatar user={message.author} class="mt-0.5 size-8 text-[11px]" />
+              <span class="block min-w-0 flex-1">
+                <span class="flex items-baseline gap-2 text-[11px] text-base-content/55">
+                  <span class="truncate text-sm font-semibold text-base-content">
+                    {message.author.display_name}
+                  </span>
+                  <span class="ml-auto shrink-0">{message_timestamp(message.inserted_at)}</span>
                 </span>
-                <span class="ml-auto shrink-0">{message_timestamp(message.inserted_at)}</span>
-              </p>
-              <p class="mt-0.5 line-clamp-3 text-sm break-words text-base-content/80">
-                {body_preview(message.body)}
-              </p>
-            </div>
+                <span class="mt-0.5 line-clamp-3 text-sm break-words text-base-content/80">
+                  {body_preview(message.body)}
+                </span>
+              </span>
+            </button>
             <button
               :if={@unpin?}
               type="button"

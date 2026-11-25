@@ -4,7 +4,7 @@ defmodule Tavern.Chat.Notifications do
   of `scope.user_id`, the read policy's "that member only". The channel ids it takes come from
   the caller's scoped channel reads, except where a function says it decides the channel itself.
 
-  `message_mentions_user?/2` takes a `%User{}`, not a scope: it is pure, and decides from rows
+  `message_mentions_user?/3` takes a `%User{}`, not a scope: it is pure, and decides from rows
   already preloaded, so each receiver of a broadcast counts its unread mentions without a query.
   Whether a message alerts a member is `Tavern.Chat.Alerts`.
   """
@@ -12,6 +12,7 @@ defmodule Tavern.Chat.Notifications do
   import Ecto.Query, warn: false
 
   alias Tavern.Accounts.Scope
+  alias Tavern.Chat.Alerts
   alias Tavern.Chat.Channel
   alias Tavern.Chat.ChannelMembership
   alias Tavern.Chat.Message
@@ -79,39 +80,56 @@ defmodule Tavern.Chat.Notifications do
   end
 
   @doc """
-  The number of unread messages in each of `channel_ids` that mention the scope: directly,
-  through one of its roles, or through the default role. By channel id.
+  The number of unread messages in each of `channel_ids` with a mention that counts for the
+  scope (`Tavern.Chat.Alerts.mention_counts?/2`): directly, through one of its roles unless it
+  suppresses role mentions, or through the default role unless it suppresses @everyone. By
+  channel id.
   """
-  def unread_mentions(%Scope{user_id: user_id}, channel_ids) when is_list(channel_ids) do
+  def unread_mentions(%Scope{user_id: user_id} = scope, channel_ids) when is_list(channel_ids) do
+    setting = get_user_notification_setting(scope)
+
     role_ids =
       Role
       |> join(:left, [role], member_role in assoc(role, :member_roles),
         on: member_role.user_id == ^user_id
       )
       |> where([role, member_role], role.is_default or not is_nil(member_role.id))
-      |> select([role, _member_role], role.id)
+      |> select([role, _member_role], {role.id, role.is_default})
       |> Repo.all()
+      |> Enum.filter(fn {_id, default?} ->
+        if default?,
+          do: not setting.suppress_everyone,
+          else: not setting.suppress_roles
+      end)
+      |> Enum.map(fn {id, _default?} -> id end)
 
     mentions = unread_mentions_by_channel(user_id, role_ids, channel_ids)
     Map.new(channel_ids, &{&1, Map.get(mentions, &1, 0)})
   end
 
   @doc """
-  Whether `message` mentions `user`: directly, through one of the user's roles, or through
-  the default role. It reads the mention rows preloaded on the message, which
+  Whether `message` has a mention that counts for `user` with `setting`
+  (`Tavern.Chat.Alerts.mention_counts?/2`): directly, through one of the user's roles, or
+  through the default role. It reads the mention rows preloaded on the message, which
   Chat.create_message/3 loads before it broadcasts, so every receiver decides without a query.
   """
   def message_mentions_user?(
         %Message{user_mentions: user_mentions, role_mentions: role_mentions},
-        %User{id: user_id, member_roles: member_roles}
+        %User{id: user_id, member_roles: member_roles},
+        %UserNotificationSetting{} = setting
       )
       when is_list(user_mentions) and is_list(role_mentions) and is_list(member_roles) do
     role_ids = MapSet.new(member_roles, & &1.role_id)
+    {everyone, roles} = Enum.split_with(role_mentions, & &1.mentioned_role.is_default)
 
-    Enum.any?(user_mentions, &(&1.mentioned_user_id == user_id)) or
-      Enum.any?(role_mentions, fn mention ->
-        MapSet.member?(role_ids, mention.mentioned_role_id) or mention.mentioned_role.is_default
-      end)
+    Alerts.mention_counts?(
+      %{
+        direct?: Enum.any?(user_mentions, &(&1.mentioned_user_id == user_id)),
+        role?: Enum.any?(roles, &MapSet.member?(role_ids, &1.mentioned_role_id)),
+        everyone?: everyone != []
+      },
+      setting
+    )
   end
 
   @doc """

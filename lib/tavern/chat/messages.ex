@@ -57,8 +57,9 @@ defmodule Tavern.Chat.Messages do
   A page of up to `:limit` messages (default 50) in a channel the scope may view, oldest first,
   as `{:ok, messages}`. Without a cursor it is the newest page. `after: message_id` is the page
   that starts just after that message; `before: message_id` is the page that ends just before
-  it. A cursor names a message of this channel, deleted or not, or the call is
-  `{:error, :invalid_cursor}`; both cursors at once are `{:error, :invalid_cursor}` too. A
+  it; `around: message_id` is up to `:limit` messages before it, the message, and up to `:limit`
+  after it. A cursor names a message of this channel, deleted or not, or the call is
+  `{:error, :invalid_cursor}`; two cursors at once are `{:error, :invalid_cursor}` too. A
   missing channel and a hidden one are both `{:error, :not_found}`. A deleted message is listed
   only as the tombstone of a thread it starts (`Message.where_transcript/1`).
   """
@@ -68,15 +69,22 @@ defmodule Tavern.Chat.Messages do
       with {:ok, cursor} <- message_cursor(channel_id, opts) do
         limit = Keyword.get(opts, :limit, 50)
 
-        messages =
+        transcript =
           Message
           |> where([message], message.channel_id == ^channel_id)
           |> Message.where_transcript()
-          |> page_from(cursor)
-          |> limit(^limit)
-          |> preload(^@read_preloads)
-          |> Repo.all()
-          |> chronological(cursor)
+
+        messages =
+          cursor
+          |> pages(limit)
+          |> Enum.flat_map(fn {page, limit} ->
+            transcript
+            |> page_from(page)
+            |> limit(^limit)
+            |> preload(^@read_preloads)
+            |> Repo.all()
+            |> chronological(page)
+          end)
           |> Enum.map(&%{&1 | channel: channel})
 
         {:ok, messages}
@@ -429,13 +437,19 @@ defmodule Tavern.Chat.Messages do
   end
 
   defp message_cursor(channel_id, opts) do
-    case {Keyword.get(opts, :after), Keyword.get(opts, :before)} do
-      {nil, nil} -> {:ok, nil}
-      {id, nil} -> find_cursor(:after, channel_id, id)
-      {nil, id} -> find_cursor(:before, channel_id, id)
-      {_after, _before} -> {:error, :invalid_cursor}
+    case for(direction <- [:after, :before, :around], opts[direction], do: direction) do
+      [] -> {:ok, nil}
+      [direction] -> find_cursor(direction, channel_id, opts[direction])
+      _cursors -> {:error, :invalid_cursor}
     end
   end
+
+  # The reads a cursor takes, each with its row limit. An `around` window is the page before the
+  # message and the page from it, which holds the message itself and so takes one row more.
+  defp pages({:around, inserted_at, id}, limit),
+    do: [{{:before, inserted_at, id}, limit}, {{:from, inserted_at, id}, limit + 1}]
+
+  defp pages(cursor, limit), do: [{cursor, limit}]
 
   defp find_cursor(direction, channel_id, message_id) do
     with {:ok, message_id} <- Ids.cast(message_id),
@@ -459,6 +473,16 @@ defmodule Tavern.Chat.Messages do
     |> order_by([message], asc: message.inserted_at, asc: message.id)
   end
 
+  defp page_from(query, {:from, inserted_at, id}) do
+    query
+    |> where(
+      [message],
+      message.inserted_at > ^inserted_at or
+        (message.inserted_at == ^inserted_at and message.id >= ^id)
+    )
+    |> order_by([message], asc: message.inserted_at, asc: message.id)
+  end
+
   defp page_from(query, {:before, inserted_at, id}) do
     query
     |> where(
@@ -469,8 +493,11 @@ defmodule Tavern.Chat.Messages do
     |> order_by([message], desc: message.inserted_at, desc: message.id)
   end
 
-  # `page_from/2` reads every page except an `after` page newest first, so those rows are turned back.
-  defp chronological(messages, {:after, _inserted_at, _id}), do: messages
+  # `page_from/2` reads `before` pages and the newest page newest first, so those rows are turned
+  # back.
+  defp chronological(messages, {direction, _inserted_at, _id}) when direction in [:after, :from],
+    do: messages
+
   defp chronological(messages, _cursor), do: Enum.reverse(messages)
 
   defp visible_messages(scope, ids) do
