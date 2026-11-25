@@ -68,3 +68,41 @@ test('a member opens a DM from a profile card and the peer answers', async ({ br
 
   await peerContext.close()
 })
+
+test('blocking a member collapses their channel messages, and Show opens one', async ({ page, request, isMobile }, testInfo) => {
+  test.skip(isMobile, 'the member list that opens the card is a drawer on a phone')
+
+  const marker = unique(testInfo)
+  const peer = {
+    email: `e2e_block_${marker}@example.com`,
+    username: `e2e_block_${marker}`,
+    display_name: `Loud ${marker}`,
+  }
+  const { user } = await command(request, 'upsert_user', peer)
+  const { message } = await command(request, 'create_message', {
+    channel_slug: 'general',
+    username: peer.username,
+    body: `hot take ${marker}`,
+  })
+
+  await login(page, { next: '/?channel=general' })
+  await expect(page.locator(`#message-body-${message.id}`)).toBeVisible()
+
+  await page.locator(`#member-presence-${user.id} button[data-profile-user-id]`).click()
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.locator('#profile-card-block').click()
+
+  const line = page.locator(`#blocked-line-${message.id}`)
+  await expect(line).toContainText('Blocked message')
+  await expect(page.locator(`#message-body-${message.id}`)).toBeHidden()
+
+  await line.getByRole('button', { name: 'Show' }).click()
+  await expect(page.locator(`#message-body-${message.id}`)).toBeVisible()
+  await expect(line).toBeHidden()
+
+  await page.goto('/settings?tab=privacy')
+  await expect(page.locator('[data-phx-main]')).toHaveClass(/phx-connected/)
+  await expect(page.locator(`#blocked-user-${user.id}`)).toContainText(peer.display_name)
+  await page.locator(`#unblock-user-${user.id}`).click()
+  await expect(page.locator(`#blocked-user-${user.id}`)).toHaveCount(0)
+})

@@ -52,6 +52,7 @@ defmodule TavernWeb.ServerLive.State do
     |> assign(:channels, channels)
     |> assign(:channel_sections, Chat.build_channel_tree(visible_channels))
     |> assign_direct_messages()
+    |> assign_blocks()
     |> assign(:navigation_ready?, true)
     |> sync_active_channel(channels)
     |> sync_channel_subscriptions()
@@ -69,6 +70,29 @@ defmodule TavernWeb.ServerLive.State do
     |> assign_direct_messages()
     |> sync_channel_subscriptions()
   end
+
+  @doc """
+  Reads the member's blocks again after one changed: the rows of a blocked author collapse, and
+  the DM with a blocked account takes no messages. The open panes load again, because a stream
+  re-renders only the rows it is given.
+  """
+  def refresh_blocks(socket) do
+    socket =
+      socket
+      |> assign_blocks()
+      |> refresh_direct_messages()
+      |> refresh_channels()
+
+    Enum.reduce(Pane.kinds(), socket, &reload_pane(&2, &1, pane(&2, &1).jump))
+  end
+
+  defp assign_blocks(socket),
+    do:
+      assign(
+        socket,
+        :blocked_user_ids,
+        MapSet.new(Chat.blocked_user_ids(socket.assigns.current_scope))
+      )
 
   defp assign_direct_messages(socket) do
     scope = socket.assigns.current_scope

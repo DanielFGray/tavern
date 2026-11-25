@@ -151,9 +151,7 @@ defmodule TavernWeb.ServerLive.Events.Navigation do
   def handle_info({:direct_message_opened, _channel}, socket),
     do: {:noreply, State.refresh_direct_messages(socket)}
 
-  # A block changes whether this member may send in the DM with the blocked account.
-  def handle_info(:blocks_changed, socket),
-    do: {:noreply, socket |> State.refresh_direct_messages() |> State.refresh_channels()}
+  def handle_info(:blocks_changed, socket), do: {:noreply, State.refresh_blocks(socket)}
 
   def handle_info(:channels_reordered, socket) do
     {:noreply, State.refresh_channels(socket)}

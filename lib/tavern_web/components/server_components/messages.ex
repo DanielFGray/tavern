@@ -142,6 +142,39 @@ defmodule TavernWeb.ServerComponents.Messages do
     """
   end
 
+  # A blocked author's message in a channel collapses for the blocker. In the DM with that
+  # account it stays open: the block keeps the DM's history readable.
+  defp blocked_author?(server, message) do
+    MapSet.member?(server.blocked_user_ids, message.author_id) and
+      not Chat.Channel.direct?(server.active_channel)
+  end
+
+  attr :message, :map, required: true
+
+  # "Show" opens the row on the client only, so the next patch keeps it open.
+  defp blocked_line(assigns) do
+    ~H"""
+    <div
+      id={"blocked-line-#{@message.id}"}
+      class="flex items-center gap-2 px-4 py-1.5 pl-[4.25rem] text-xs text-base-content/50"
+    >
+      <.icon name="hero-no-symbol" class="size-3.5" />
+      <span>Blocked message</span>
+      <button
+        type="button"
+        id={"show-blocked-#{@message.id}"}
+        phx-click={
+          JS.remove_class("hidden", to: "#message-body-#{@message.id}")
+          |> JS.hide(to: "#blocked-line-#{@message.id}")
+        }
+        class="rounded px-1.5 py-0.5 font-semibold text-base-content/70 transition hover:bg-base-200 hover:text-base-content"
+      >
+        Show
+      </button>
+    </div>
+    """
+  end
+
   attr :dm, :map, required: true
   attr :privacy, :atom, required: true
 
@@ -325,13 +358,14 @@ defmodule TavernWeb.ServerComponents.Messages do
   """
   def message_item(assigns) do
     rights = message_rights(assigns.server, assigns.message)
+    blocked? = blocked_author?(assigns.server, assigns.message)
 
     thread =
       if rights.thread?,
         do: nil,
         else: thread_for_message(assigns.message, assigns.server.thread_summaries)
 
-    assigns = assign(assigns, rights: rights, thread: thread)
+    assigns = assign(assigns, rights: rights, thread: thread, blocked?: blocked?)
 
     ~H"""
     <div id={@dom_id}>
@@ -341,7 +375,14 @@ defmodule TavernWeb.ServerComponents.Messages do
         <% Tavern.Chat.Message.pin_line?(@message) -> %>
           <.pin_line_row message={@message} />
         <% true -> %>
-          <div class="group anchor-scope relative px-4 py-0.5 hover:bg-base-100/80">
+          <.blocked_line :if={@blocked?} message={@message} />
+          <div
+            id={"message-body-#{@message.id}"}
+            class={[
+              "group anchor-scope relative px-4 py-0.5 hover:bg-base-100/80",
+              @blocked? && "hidden"
+            ]}
+          >
             <article class="relative flex gap-3 py-2">
               <div class="shrink-0 pt-0.5">
                 <button

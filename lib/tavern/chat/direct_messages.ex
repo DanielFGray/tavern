@@ -122,6 +122,22 @@ defmodule Tavern.Chat.DirectMessages do
     end
   end
 
+  @doc "Ids of the accounts the scope blocks."
+  def blocked_user_ids(%Scope{} = scope) do
+    case Visibility.member(scope) do
+      nil ->
+        []
+
+      %User{id: blocker_id} ->
+        Repo.all(
+          from(block in UserBlock,
+            where: block.blocker_id == ^blocker_id,
+            select: block.blocked_id
+          )
+        )
+    end
+  end
+
   @doc "The accounts the scope blocks, most recently blocked first."
   def list_blocked_users(%Scope{} = scope) do
     case Visibility.member(scope) do

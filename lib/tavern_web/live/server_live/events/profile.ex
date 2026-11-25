@@ -2,7 +2,8 @@ defmodule TavernWeb.ServerLive.Events.Profile do
   @moduledoc """
   The profile card. The client asks for one member's card when a name, an avatar or an @mention
   opens it, and closes it again. The server keeps at most one card, so a newer request replaces
-  the older one. Its "Message" button opens the direct message with the member.
+  the older one. Its buttons open the direct message with the member, and block or unblock them.
+  A block arrives back as `:blocks_changed` (`State.refresh_blocks/1`).
   """
 
   use TavernWeb, :verified_routes
@@ -13,7 +14,7 @@ defmodule TavernWeb.ServerLive.Events.Profile do
   alias Tavern.Accounts
   alias Tavern.Chat
 
-  @events ~w(show_profile hide_profile message_member)
+  @events ~w(show_profile hide_profile message_member block_member unblock_member)
 
   def events, do: @events
 
@@ -39,6 +40,21 @@ defmodule TavernWeb.ServerLive.Events.Profile do
 
       {:error, :not_available} ->
         {:noreply, put_flash(socket, :error, "You can't message this member.")}
+    end
+  end
+
+  def handle_event(event, %{"user-id" => user_id}, socket)
+      when event in ["block_member", "unblock_member"] do
+    scope = socket.assigns.current_scope
+
+    result =
+      if event == "block_member",
+        do: Chat.block_user(scope, user_id),
+        else: Chat.unblock_user(scope, user_id)
+
+    case result do
+      :ok -> {:noreply, assign(socket, :profile_card, nil)}
+      {:error, :not_found} -> {:noreply, put_flash(socket, :error, "That member does not exist.")}
     end
   end
 

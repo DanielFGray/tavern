@@ -28,6 +28,10 @@ defmodule TavernWeb.SettingsComponents.Shell do
             <TavernWeb.SettingsComponents.Tabs.theme_tab {assigns} />
           <% end %>
 
+          <%= if @active_tab == "privacy" do %>
+            <TavernWeb.SettingsComponents.Privacy.privacy_tab {assigns} />
+          <% end %>
+
           <%= if @active_tab == "server" and @can_manage_server? do %>
             <TavernWeb.SettingsComponents.Server.server_tab {assigns} />
           <% end %>
@@ -104,6 +108,12 @@ defmodule TavernWeb.SettingsComponents.Shell do
             label="Channel notifications"
           />
           <.tab_button active_tab={@active_tab} tab="theme" id="settings-tab-theme" label="Theme" />
+          <.tab_button
+            active_tab={@active_tab}
+            tab="privacy"
+            id="settings-tab-privacy"
+            label="Privacy"
+          />
         </.tab_group>
 
         <.tab_group label="Server" id="settings-group-server">

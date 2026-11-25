@@ -13,6 +13,7 @@ defmodule TavernWeb.ServerComponents.ProfileCard do
 
   attr :card, :map, default: nil
   attr :current_user_id, :string, required: true
+  attr :blocked_user_ids, :any, required: true
 
   def profile_card(assigns) do
     ~H"""
@@ -95,15 +96,39 @@ defmodule TavernWeb.ServerComponents.ProfileCard do
         </div>
 
         <%!-- Shown for every other member: whether a DM would be refused is not revealed here. --%>
-        <div :if={@card.user.id != @current_user_id} class="border-t border-base-300 px-4 py-3">
+        <div
+          :if={@card.user.id != @current_user_id}
+          class="flex gap-2 border-t border-base-300 px-4 py-3"
+        >
           <button
             type="button"
             id="profile-card-message"
             phx-click="message_member"
             phx-value-user-id={@card.user.id}
-            class="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-500 active:scale-[0.98]"
+            class="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-violet-600 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-500 active:scale-[0.98]"
           >
             <.icon name="hero-chat-bubble-left-ellipsis" class="size-4" /> Message
+          </button>
+          <button
+            :if={!MapSet.member?(@blocked_user_ids, @card.user.id)}
+            type="button"
+            id="profile-card-block"
+            phx-click="block_member"
+            phx-value-user-id={@card.user.id}
+            data-confirm={"Block #{@card.user.display_name}? Their messages collapse for you, and neither of you can send direct messages to the other."}
+            class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-base-300 px-3 py-2 text-sm font-semibold text-base-content/75 transition hover:border-rose-400/60 hover:bg-rose-500/10 hover:text-rose-500 active:scale-[0.98]"
+          >
+            <.icon name="hero-no-symbol" class="size-4" /> Block
+          </button>
+          <button
+            :if={MapSet.member?(@blocked_user_ids, @card.user.id)}
+            type="button"
+            id="profile-card-unblock"
+            phx-click="unblock_member"
+            phx-value-user-id={@card.user.id}
+            class="inline-flex items-center justify-center gap-1.5 rounded-lg border border-base-300 px-3 py-2 text-sm font-semibold text-base-content/75 transition hover:bg-base-200 hover:text-base-content active:scale-[0.98]"
+          >
+            Unblock
           </button>
         </div>
 

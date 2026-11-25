@@ -1,7 +1,7 @@
 # Direct messages
 
-Status: the domain and the chat page are built (slices 1 and 2). Settings, owner reading and
-the bot API are not.
+Status: the domain, the chat page and the settings are built (slices 1 to 3). Owner reading
+and the bot API are not.
 
 A direct message (DM) is a private conversation between two accounts on the server. A member or
 a bot may start one. Group DMs are not part of this design.
@@ -119,9 +119,13 @@ recipient filter already drops non-participants. The link is `/?dm=<id>&message=
   viewer's own, so the card does not reveal a block or an opt-out.
 - **Header:** the peer's name. Under it, the privacy line: "Only the two of you can read this
   conversation." or "The server owner can read direct messages on this server."
-- **Settings → Privacy:** the opt-out toggle, and the block list with Unblock.
-- **Block:** a "Block" item on the profile card. In channels, a blocked author's message
-  renders as one collapsed line, "Blocked message", with "Show" to open it.
+- **Settings → Privacy:** the server's privacy line, the opt-out toggle, and the block list
+  with Unblock.
+- **Block:** "Block" (after a confirm) and "Unblock" on the profile card. In channels and
+  threads, a blocked author's message renders as one collapsed line, "Blocked message", with
+  "Show" to open it. "Show" acts in the browser only. The DM with a blocked account does not
+  collapse: the block keeps its history readable. A block reloads the blocker's open panes,
+  because a stream re-renders only the rows it is given.
 
 ## Owner reading
 

@@ -11,6 +11,7 @@ defmodule TavernWeb.ServerLiveDirectMessagesTest do
 
   alias Tavern.Bootstrap
   alias Tavern.Chat
+  alias Tavern.Chat.Visibility
 
   setup %{conn: conn} do
     Bootstrap.ensure_seed_data!()
@@ -103,6 +104,39 @@ defmodule TavernWeb.ServerLiveDirectMessagesTest do
     view |> form("#message-form", message: %{body: "back to now"}) |> render_submit()
     assert_patch(view, ~p"/?dm=#{dm.id}")
     assert has_element?(view, "#direct-message-title h1", "Peer Person")
+  end
+
+  test "blocking from the card collapses the author's channel messages, and Show opens one",
+       ctx do
+    message = message_fixture(channel_by_slug!("general"), ctx.peer, %{body: "loud take"})
+    {:ok, view, _html} = live_hydrated(ctx.conn, ~p"/?channel=general")
+    refute has_element?(view, "#blocked-line-#{message.id}")
+
+    render_hook(view, "show_profile", %{"user_id" => ctx.peer.id})
+    view |> element("#profile-card-block") |> render_click()
+    _ = render(view)
+
+    assert has_element?(view, "#blocked-line-#{message.id}", "Blocked message")
+    assert has_element?(view, "#message-body-#{message.id}.hidden")
+    refute Visibility.can?(scope_for(ctx.viewer), :start_direct_message, ctx.peer.id)
+
+    render_hook(view, "show_profile", %{"user_id" => ctx.peer.id})
+    view |> element("#profile-card-unblock") |> render_click()
+    _ = render(view)
+
+    refute has_element?(view, "#blocked-line-#{message.id}")
+    refute has_element?(view, "#message-body-#{message.id}.hidden")
+  end
+
+  test "the DM with a blocked account keeps its history open", ctx do
+    {:ok, dm} = Chat.open_direct_message(scope_for(ctx.peer), ctx.viewer.id)
+    {:ok, message} = Chat.create_message(scope_for(ctx.peer), dm.id, %{"body" => "before"})
+    :ok = Chat.block_user(scope_for(ctx.viewer), ctx.peer.id)
+
+    {:ok, view, _html} = live_hydrated(ctx.conn, ~p"/?dm=#{dm.id}")
+
+    assert has_element?(view, "#messages-#{message.id}")
+    refute has_element?(view, "#blocked-line-#{message.id}")
   end
 
   test "the address of a DM the viewer is not in opens nothing", ctx do

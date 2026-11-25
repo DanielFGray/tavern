@@ -13,6 +13,7 @@ defmodule TavernWeb.SettingsLive do
   alias TavernWeb.SettingsLive.Audit
   alias TavernWeb.SettingsLive.InviteRequests
   alias TavernWeb.SettingsLive.InviteTree
+  alias TavernWeb.SettingsLive.Privacy
   alias TavernWeb.SettingsLive.Roles
   alias TavernWeb.SettingsLive.State
 
@@ -21,6 +22,7 @@ defmodule TavernWeb.SettingsLive do
     "notifications",
     "channel_notifications",
     "theme",
+    "privacy",
     "server",
     "emoji",
     "members",
@@ -33,6 +35,7 @@ defmodule TavernWeb.SettingsLive do
   @audit_events Audit.events()
   @invite_request_events InviteRequests.events()
   @invite_tree_events InviteTree.events()
+  @privacy_events Privacy.events()
 
   @impl true
   def mount(_params, session, socket) do
@@ -61,6 +64,7 @@ defmodule TavernWeb.SettingsLive do
       |> Audit.init()
       |> InviteRequests.init()
       |> InviteTree.init()
+      |> Privacy.init()
 
     if connected?(socket), do: Topics.subscribe_server()
 
@@ -100,6 +104,10 @@ defmodule TavernWeb.SettingsLive do
 
   def handle_event(event, params, socket) when event in @invite_tree_events do
     InviteTree.handle_event(event, params, socket)
+  end
+
+  def handle_event(event, params, socket) when event in @privacy_events do
+    Privacy.handle_event(event, params, socket)
   end
 
   def handle_event(event, params, socket) when event in @invite_request_events do
@@ -662,6 +670,7 @@ defmodule TavernWeb.SettingsLive do
 
   defp load_tab(socket, "audit"), do: Audit.load(socket)
   defp load_tab(socket, "invites"), do: InviteTree.load(socket)
+  defp load_tab(socket, "privacy"), do: Privacy.load(socket)
   defp load_tab(socket, _tab), do: socket
 
   # A scope without `view_audit_log` reads no cases, and so does a malformed id.
